@@ -26,16 +26,11 @@ export default async function AdvancesPage() {
   const sb = await getSupabaseServer()
   const today = todayInBangkok()
 
-  // 🔴 รายชื่อโครงการมาจาก RLS ไม่ใช่จาก where ที่เขียนเอง — เห็นเฉพาะที่ดูแล
-  // อยู่ **ณ วันนี้** · คนที่เพิ่งถูกย้ายออกจะไม่เห็นโครงการเดิมทันที
-  const [{ data: sites, error: sErr }, { data: workers, error: wErr }, { data: rows, error: rErr }] =
+  // 🔴 ไม่ถามโครงการแล้ว (22 ก.ย. 2569) — ค่าแรงเป็นของคน ไม่ใช่ของโครงการ
+  // และเบิกเป็นเงินสดออก ไม่เข้าต้นทุนโครงการไหนอยู่แล้ว · ใบเก่าที่เคยผูก
+  // โครงการไว้ยังแสดงชื่อโครงการตามเดิมผ่าน embed ข้างล่าง
+  const [{ data: workers, error: wErr }, { data: rows, error: rErr }] =
     await Promise.all([
-      sb
-        .from('sites')
-        .select('id, name')
-        .in('status', ['planning', 'active', 'paused'])
-        .order('name', { ascending: true })
-        .range(0, PAGE_SIZE - 1),
       sb
         .from('employees')
         .select('id, full_name, job_title')
@@ -55,8 +50,8 @@ export default async function AdvancesPage() {
         .range(0, PAGE_SIZE - 1),
     ])
 
-  if (sErr || wErr || rErr) {
-    console.error('[advances] โหลดหน้าไม่ได้', sErr?.message ?? wErr?.message ?? rErr?.message)
+  if (wErr || rErr) {
+    console.error('[advances] โหลดหน้าไม่ได้', wErr?.message ?? rErr?.message)
     return (
       <>
         <PageHeader title="ตั้งเบิกค่าแรง" />
@@ -73,7 +68,6 @@ export default async function AdvancesPage() {
       />
       <AdvanceRequestBoard
         today={today}
-        sites={sites ?? []}
         workers={workers ?? []}
         rows={(rows ?? []).map((r) => ({
           id: r.id,

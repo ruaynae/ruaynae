@@ -20,6 +20,7 @@ import { EmptyState } from '@/components/ui/states'
 import { MoneyBars, OverrunBadge, ProfitChip, SiteSummary } from '@/components/sites/money-bars'
 import { TodayBoard } from '@/components/overview/today-board'
 import { BondAlert } from '@/components/overview/bond-alert'
+import { OverdrawnAlert } from '@/components/overview/overdrawn-alert'
 import { PageHeader } from '@/components/ui/page-header'
 import { BOND_SOON_DAYS } from '@/lib/bonds'
 import { DataError } from '@/components/ui/data-error'
@@ -48,7 +49,12 @@ export default async function OverviewPage() {
   // และไม่มีการดึงแถวมานับใน JS ซึ่งจะเพี้ยนเงียบ ๆ ที่ 1,000 แถว
   const isOwner = me.role === 'owner'
 
-  const [{ data: summary, error: sErr }, { data: sites, error: lErr }, { data: bondSum }] = await Promise.all([
+  const [
+    { data: summary, error: sErr },
+    { data: sites, error: lErr },
+    { data: bondSum },
+    { data: overdrawn },
+  ] = await Promise.all([
     sb.rpc('site_overview', { p_on: today }),
     sb
       .from('sites')
@@ -61,6 +67,14 @@ export default async function OverviewPage() {
     isOwner
       ? sb.rpc('bond_summary', { p_on: today, p_soon_days: BOND_SOON_DAYS }).then(({ data, error }) => {
           if (error) console.error('[overview] อ่านสรุปหลักประกันไม่ได้', error.message)
+          return { data: data ?? null }
+        })
+      : Promise.resolve({ data: null }),
+    // ใครเบิกเกินค่าแรงค้างจ่ายอยู่บ้าง (22 ก.ย. 2569) — เจ้าของเท่านั้น
+    // · รวมยอดในฐานข้อมูล ไม่ใช่ดึงรายคนมาบวกใน JS (§7)
+    isOwner
+      ? sb.rpc('overdrawn_summary').then(({ data, error }) => {
+          if (error) console.error('[overview] อ่านยอดเบิกเกินไม่ได้', error.message)
           return { data: data ?? null }
         })
       : Promise.resolve({ data: null }),
@@ -128,6 +142,13 @@ export default async function OverviewPage() {
 
       {/* ── หลักประกันสัญญาที่ครบ/ใกล้ครบ — เด่นสุดบนหน้าแรก (เจ้าของสั่ง 19 ก.ย. 2569) ──
           วาดเฉพาะตอนมีของจริง · ไม่มี = ไม่มีแถบ */}
+      {isOwner && overdrawn?.[0] && (
+        <OverdrawnAlert
+          people={Number(overdrawn[0].people ?? 0)}
+          total={Number(overdrawn[0].total ?? 0)}
+        />
+      )}
+
       {isOwner && bondSum?.[0] && (
         <BondAlert
           overdueCount={Number(bondSum[0].overdue_count ?? 0)}

@@ -150,9 +150,14 @@ export default async function ApprovalsPage({
                     <span className="truncate font-semibold text-ink">
                       {a.employees?.full_name ?? 'คนงานที่ถูกลบแล้ว'}
                     </span>
-                    <span className="chip border border-brand-tint-strong bg-brand-tint text-brand-on-tint ring-0">
-                      {a.sites?.name ?? 'ไม่ระบุโครงการ'}
-                    </span>
+                    {/* คำขอเบิกไม่ผูกโครงการอีกแล้ว (22 ก.ย. 2569) — ชิปจึงขึ้น
+                        เฉพาะใบเก่าที่เคยผูกไว้ · ป้ายที่ขึ้นว่า "ไม่ระบุโครงการ"
+                        ทุกใบคือป้ายที่คนเลิกอ่านภายในวันเดียว */}
+                    {a.sites?.name && (
+                      <span className="chip border border-brand-tint-strong bg-brand-tint text-brand-on-tint ring-0">
+                        {a.sites.name}
+                      </span>
+                    )}
                   </div>
                   <div className="mt-0.5 text-sm text-muted-token">
                     {fmtDate(a.advance_date)}

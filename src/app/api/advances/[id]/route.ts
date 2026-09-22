@@ -72,9 +72,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (!canEditAdvance(existing, me)) {
       return NextResponse.json({ error: 'EDIT_FORBIDDEN' }, { status: 403 })
     }
-    const parsed = parseAdvanceFields(body, todayInBangkok(), {
-      requireSite: me.role !== 'owner',
-    })
+    const parsed = parseAdvanceFields(body, todayInBangkok())
     if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 })
     Object.assign(patch, parsed.fields)
     // 🔴 สถานะไม่อยู่ใน patch โดยตั้งใจ — ใครเปลี่ยนสถานะได้เป็นเรื่องของ
