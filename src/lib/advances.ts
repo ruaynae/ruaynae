@@ -63,14 +63,13 @@ export type AdvanceParse =
 /**
  * ตรวจฟิลด์ที่ client ส่งมา — ตัวเดียวกันทั้งตอนสร้างและตอนแก้
  *
- * 🔴 `requireSite` = true สำหรับหัวหน้าโครงการ · ขอบเขตของเขาคือโครงการ
- * ใบที่ไม่ผูกโครงการจึงเป็นของเจ้าของเท่านั้น (เหมือนรายจ่ายส่วนกลาง)
+ * 🔴 **โครงการไม่บังคับสำหรับใครทั้งนั้น** (คำสั่งเจ้าของ 22 ก.ย. 2569) —
+ * ค่าแรงเป็นของคน ไม่ใช่ของโครงการ · คนหนึ่งคนเข้าหลายโครงการในสัปดาห์เดียวได้
+ * และยอดค้างจ่ายของเขาเป็นก้อนเดียว การบังคับเลือกโครงการตอนยื่นคำขอจึงเป็น
+ * การถามคำถามที่ไม่มีใครใช้คำตอบ · ถ้า**เลือก**มา RLS ยังบังคับว่าต้องเป็น
+ * โครงการที่ตัวเองดูแลจริง
  */
-export function parseAdvanceFields(
-  b: unknown,
-  today: string,
-  opts: { requireSite: boolean },
-): AdvanceParse {
+export function parseAdvanceFields(b: unknown, today: string): AdvanceParse {
   const body = (b ?? {}) as Record<string, unknown>
 
   const employeeId = body.employeeId ?? body.employee_id
@@ -87,7 +86,6 @@ export function parseAdvanceFields(
 
   const siteRaw = body.siteId ?? body.site_id
   const siteId = isUuid(siteRaw) ? siteRaw : null
-  if (opts.requireSite && !siteId) return { ok: false, error: 'SITE_REQUIRED' }
 
   const note = String(body.note ?? '').trim().slice(0, MAX_NOTE)
   const payMethod = body.payMethod ?? body.pay_method

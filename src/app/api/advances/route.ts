@@ -12,7 +12,8 @@ export const runtime = 'nodejs'
  * สองทางที่ต่างกันคนละเรื่อง (คำสั่งเจ้าของ 21 ก.ย. 2569):
  *  - **เจ้าของ** = จ่ายเงินจริงเดี๋ยวนี้ → เข้าเป็น `approved` ทันที
  *  - **หัวหน้าโครงการ** = ยื่นคำขอแทนลูกน้อง → เข้าเป็น `pending` รอเจ้าของกด
- *    · ต้องผูกโครงการที่ตัวเองดูแล · คำขอยังไม่ใช่เงิน ไม่กระทบยอดใด ๆ
+ *    · **ไม่ต้องผูกโครงการ** (22 ก.ย. 2569) เพราะค่าแรงเป็นของคน ไม่ใช่ของโครงการ
+ *    · คำขอยังไม่ใช่เงิน ไม่กระทบยอดใด ๆ จนกว่าเจ้าของจะอนุมัติ
  *
  * 🔴 **เบิกเกินค่าแรงค้างจ่ายได้** (20 ก.ย. 2569) — ฐานข้อมูลไม่ห้าม
  * คนตัดสินใจคือเจ้าของตอนกดอนุมัติ และหน้าจอของเจ้าของเป็นคนเตือน
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
   }
 
   const isOwner = me.role === 'owner'
-  const parsed = parseAdvanceFields(body, todayInBangkok(), { requireSite: !isOwner })
+  const parsed = parseAdvanceFields(body, todayInBangkok())
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 })
 
   const sb = await getSupabaseServer()

@@ -13,7 +13,6 @@ import {
   ADVANCE_STATUS_LABEL, ADVANCE_STATUS_TONE, advanceError, type AdvanceStatus,
 } from '@/lib/advances'
 
-type Site = { id: string; name: string }
 type Worker = { id: string; full_name: string; job_title: string | null }
 
 export type RequestRow = {
@@ -40,10 +39,9 @@ export type RequestRow = {
  *   นั่นคือกับดัก §17 ข้อ 18 ซ้ำรอบที่สอง
  */
 export function AdvanceRequestBoard({
-  today, sites, workers, rows,
+  today, workers, rows,
 }: {
   today: string
-  sites: Site[]
   workers: Worker[]
   rows: RequestRow[]
 }) {
@@ -55,8 +53,6 @@ export function AdvanceRequestBoard({
   /** กำลังแก้คำขอใบไหนอยู่ · null = กำลังยื่นใบใหม่ */
   const [editing, setEditing] = useState<RequestRow | null>(null)
   const [employeeId, setEmployeeId] = useState('')
-  // โครงการเดียวก็ไม่ต้องให้เลือก — เลือกให้เลย (หัวหน้าส่วนใหญ่ดูแลที่เดียว)
-  const [siteId, setSiteId] = useState(sites.length === 1 ? sites[0].id : '')
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState(today)
   const [note, setNote] = useState('')
@@ -64,7 +60,6 @@ export function AdvanceRequestBoard({
   const resetForm = () => {
     setEditing(null)
     setEmployeeId('')
-    setSiteId(sites.length === 1 ? sites[0].id : '')
     setAmount('')
     setDate(today)
     setNote('')
@@ -74,7 +69,6 @@ export function AdvanceRequestBoard({
   const startEdit = (r: RequestRow) => {
     setEditing(r)
     setEmployeeId(r.employee_id)
-    setSiteId(r.site_id ?? (sites.length === 1 ? sites[0].id : ''))
     setAmount(String(r.amount))
     setDate(r.advance_date)
     setNote(r.note ?? '')
@@ -114,13 +108,10 @@ export function AdvanceRequestBoard({
   }
 
   const submit = async () => {
-    const payload = {
-      employeeId,
-      siteId,
-      amount,
-      advanceDate: date,
-      note,
-    }
+    // 🔴 ไม่ส่ง `siteId` เลย — ค่าแรงเป็นของคน ไม่ใช่ของโครงการ (22 ก.ย. 2569)
+    // เบิกไม่ได้เข้าต้นทุนโครงการอยู่แล้ว (เงินสดออก ไม่ใช่ต้นทุน) การถามว่า
+    // "โครงการไหน" จึงเป็นคำถามที่ไม่มีใครใช้คำตอบ และตอบผิดก็ไม่มีอะไรทัก
+    const payload = { employeeId, amount, advanceDate: date, note }
     const ok = editing
       ? await send('form', `/api/advances/${editing.id}`, 'PATCH', payload)
       : await send('form', '/api/advances', 'POST', payload)
@@ -130,7 +121,7 @@ export function AdvanceRequestBoard({
   }
 
   const canSubmit =
-    employeeId !== '' && siteId !== '' && amount.trim() !== '' && date !== '' && busy === null
+    employeeId !== '' && amount.trim() !== '' && date !== '' && busy === null
 
   return (
     <>
@@ -155,21 +146,6 @@ export function AdvanceRequestBoard({
                   {w.full_name}
                   {w.job_title ? ` · ${w.job_title}` : ''}
                 </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label htmlFor="adv-site" className="label-base">โครงการ</label>
-            <select
-              id="adv-site"
-              value={siteId}
-              onChange={(e) => setSiteId(e.target.value)}
-              className="input-base"
-            >
-              <option value="">— เลือกโครงการ —</option>
-              {sites.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
           </div>

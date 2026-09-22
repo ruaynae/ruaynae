@@ -194,6 +194,12 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
 
   const totalAccrued = rows.reduce((s, r) => s + r.accrued, 0)
   const totalAdvanced = rows.reduce((s, r) => s + r.advanced, 0)
+  // 🔴 คนที่ **เบิกเกินค่าแรงที่ทำมาแล้ว** — เจ้าของอนุญาตให้เบิกเกินได้ (20 ก.ย. 2569)
+  // ยอดก้อนนี้จึงไม่ใช่ความผิดพลาด แต่เป็นเงินที่บริษัทจ่ายล่วงหน้าไปแล้วและยังไม่ได้คืน
+  // · มันลดลงเองทุกครั้งที่คนนั้นมาทำงาน และถูกหักจริงตอนกดจ่ายค่าแรง
+  // · บวกจากแถวที่หน้านี้โหลดมาทั้งชุดอยู่แล้ว (RPC คืนทุกคนที่มียอด) เหมือนสองยอดข้างบน
+  const overdrawnRows = rows.filter((r) => r.balance < 0)
+  const overdrawnTotal = overdrawnRows.reduce((s, r) => s + Math.abs(r.balance), 0)
 
   return (
     <>
@@ -222,6 +228,14 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
           hint="ค่าแรงค้างจ่าย − เบิกไปแล้ว"
         />
         <Metric label="คนที่มียอดค้าง" value={rows.length} unit="คน" />
+        {overdrawnRows.length > 0 && (
+          <Metric
+            label="เบิกเกินค้างอยู่"
+            value={fmtBaht(overdrawnTotal)}
+            tone="urgent"
+            hint={`${overdrawnRows.length} คน · หักคืนตอนจ่ายค่าแรง`}
+          />
+        )}
       </MetricBar>
 
       {/* ── สองมุมมอง — ยอดค้างจ่ายรายคน / ตารางการทำงานของเดือนที่เลือก ── */}

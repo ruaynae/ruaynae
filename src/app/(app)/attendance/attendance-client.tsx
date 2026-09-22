@@ -60,6 +60,7 @@ export function AttendanceBoard({
   signedIn,
   canSeeMoney,
   dayWage,
+  overdrawn,
   yesterdaySignIns,
   bookedElsewhere,
   presets,
@@ -75,6 +76,14 @@ export function AttendanceBoard({
   canSeeMoney: boolean
   /** ค่าแรงรวมของวัน จาก RPC ฝั่งเซิร์ฟเวอร์ — undefined = คนดูไม่มีสิทธิ์เห็นเงิน */
   dayWage?: number
+  /**
+   * ใครเบิกเกินค่าแรงค้างจ่ายอยู่เท่าไหร่ (ค่าบวกเสมอ = จำนวนที่ติดลบ)
+   *
+   * 🔴 **ว่างเปล่าเสมอสำหรับหัวหน้าโครงการ** — หน้า page ไม่ยิง query ให้เขาเลย
+   * ตัวเลขจึงไม่เคยเดินทางมาถึงเบราว์เซอร์ของคนที่ไม่มีสิทธิ์เห็น (P4.5)
+   * · เจ้าของเห็นตั้งแต่ตอนติ๊กว่าคนนี้ยังติดลบอยู่เท่าไหร่ โดยไม่ต้องเปิดอีกหน้า
+   */
+  overdrawn?: Record<string, number>
   /** ใครเข้าโครงการนี้เมื่อวาน (วันก่อนวันที่เลือก) — ป้อนปุ่ม "เหมือนเมื่อวาน" */
   yesterdaySignIns: { employee_id: string; work_units: number }[]
   /**
@@ -447,6 +456,11 @@ export function AttendanceBoard({
                       {Number(row.work_units) === 0.5 && (
                         <span className="ml-1.5 text-sm font-normal text-muted-token">ครึ่งวัน</span>
                       )}
+                      {(overdrawn?.[e.id] ?? 0) > 0 && (
+                        <span className="ml-1.5 text-sm font-normal text-urgent">
+                          เบิกเกิน {fmtBaht(overdrawn?.[e.id] ?? 0)}
+                        </span>
+                      )}
                     </span>
                     {row.lines.length > 0 && (
                       <span className="block truncate text-xs text-muted-token">{linesText(row.lines)}</span>
@@ -590,6 +604,16 @@ export function AttendanceBoard({
                       </span>
                       <span className="block truncate text-xs text-muted-token">
                         {e.job_title ?? 'ไม่ได้ระบุตำแหน่ง'}
+                        {/* เบิกเกินไม่ใช่ข้อห้าม — เจ้าของอนุญาตเอง · ป้ายนี้มีไว้ให้
+                            รู้ตัวตอนติ๊ก ว่าค่าแรงวันนี้ของเขาจะไปหักหนี้ก้อนไหน */}
+                        {(overdrawn?.[e.id] ?? 0) > 0 && (
+                          <>
+                            {' · '}
+                            <span className="font-medium text-urgent">
+                              เบิกเกิน {fmtBaht(overdrawn?.[e.id] ?? 0)}
+                            </span>
+                          </>
+                        )}
                         {/* บอกตั้งแต่ก่อนกด ไม่ใช่ให้กดแล้วค่อยขึ้น error */}
                         {other && (
                           <>

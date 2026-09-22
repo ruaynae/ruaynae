@@ -27,7 +27,7 @@ migration `20260831040000_branding_company_name.sql` ซึ่งเติม**�
 | Role | ล็อกอิน | เห็น | ทำได้ |
 |---|---|---|---|
 | `owner` | อีเมล + รหัสผ่าน | ทุกโครงการ ทุกตัวเลข กำไร audit log | ทุกอย่าง · อนุมัติ/ตีกลับ · ปิดรอบจ่ายค่าแรง · CRUD ทั้งหมด |
-| `site_supervisor` | PIN 6 หลัก | เฉพาะโครงการที่ดูแล **ณ ช่วงเวลานั้น** | คีย์รายจ่ายโครงการตัวเอง (เข้าคิวรออนุมัติ) · ลงชื่อคนเข้าโครงการ · **ตั้งเบิกค่าแรงให้ลูกน้อง (เข้าคิวรออนุมัติ ไม่ใช่การจ่ายเงิน)** |
+| `site_supervisor` | PIN 6 หลัก | เฉพาะโครงการที่ดูแล **ณ ช่วงเวลานั้น** | คีย์รายจ่ายโครงการตัวเอง (เข้าคิวรออนุมัติ) · ลงชื่อคนเข้าโครงการ · **ตั้งเบิกค่าแรงให้ลูกน้อง (เข้าคิวรออนุมัติ ไม่ใช่การจ่ายเงิน · ไม่ต้องผูกโครงการ ไม่มีเพดาน)** |
 
 **คนงานไม่ล็อกอิน** — เป็นแถวใน `employees` ไม่ใช่ผู้ใช้ระบบ `role` ถูกกำหนดฝั่งเซิร์ฟเวอร์เท่านั้น ห้ามเชื่อ metadata จาก client
 
@@ -98,7 +98,7 @@ create type advance_status as enum ('pending','approved','rejected');
 | `transactions` | `kind`, `site_id` (NULL = ส่วนกลาง), `category_id`, `amount`, `txn_date`, `pay_method`, `status`, `income_kind`, `installment_no`, **`mcp_key_id`** (NULL = คนคีย์เอง · มีค่า = AI คีย์ผ่านคีย์ใบนั้น) | supervisor เขียน `pending` ของโครงการตัวเอง · **แก้เป็น `approved` ได้เฉพาะ owner** |
 | `attachments` | `transaction_id`, `object_key`, `thumb_key`, `byte_size`, `content_type` | ตาม transaction |
 | `upload_intents` | `object_key`, `thumb_key`, `created_by`, `site_id`, `expires_at`, `consumed_at` | ของตัวเองเท่านั้น |
-| `advances` | เบิกล่วงหน้า: `employee_id`, `amount`, `advance_date` (**เลือกวันเองได้ ลงย้อนหลังได้**), `pay_method`, `site_id`, `payroll_run_id` (มีค่า = หักครบทั้งใบแล้ว), **`deducted_amount`** (หักคืนไปแล้วเท่าไหร่ · > 0 แต่ไม่ครบ = ค้างไปหักรอบหน้า), `mcp_key_id`, **`status`** (R14 · `pending` = คำขอของหัวหน้าโครงการ **ยังไม่ใช่เงิน** · `approved` = จ่ายแล้ว · `rejected` + `rejected_reason`), `approved_by/_at` | supervisor ยื่นคำขอ (`pending`) ของโครงการตัวเอง และเห็นเฉพาะใบที่ตัวเองยื่น · **เปลี่ยนสถานะเองไม่ได้** |
+| `advances` | เบิกล่วงหน้า: `employee_id`, `amount`, `advance_date` (**เลือกวันเองได้ ลงย้อนหลังได้**), `pay_method`, `site_id`, `payroll_run_id` (มีค่า = หักครบทั้งใบแล้ว), **`deducted_amount`** (หักคืนไปแล้วเท่าไหร่ · > 0 แต่ไม่ครบ = ค้างไปหักรอบหน้า), `mcp_key_id`, **`status`** (R14 · `pending` = คำขอของหัวหน้าโครงการ **ยังไม่ใช่เงิน** · `approved` = จ่ายแล้ว · `rejected` + `rejected_reason`), `approved_by/_at` | supervisor ยื่นคำขอ (`pending`) **โดยไม่ต้องผูกโครงการ** (22 ก.ย. 2569 · ค่าแรงเป็นของคน ไม่ใช่ของโครงการ) และเห็นเฉพาะใบที่ตัวเองยื่น · **เปลี่ยนสถานะเองไม่ได้** · ถ้าเลือกโครงการมา ต้องเป็นโครงการที่ตัวเองดูแล |
 | `payroll_runs` | `period_start`, `period_end`, `site_id`, `status`, `total_accrued`, `total_advance_deducted`, `total_paid` | **owner เท่านั้น** |
 | `payroll_lines` | `run_id`, `employee_id`, `days`, `accrued`, `advance_deducted`, `net_paid` | ตาม run |
 | `recurring_expenses` | ค่าใช้จ่ายรายเดือนที่ระบบลงให้เอง: `name`, `amount`, `category_id`, `site_id` (NULL = ส่วนกลาง), `employee_id` (NULL = ไม่ผูกคน), `day_of_month`, `start_month`, `end_month`, `is_active` | **owner เท่านั้น** |
@@ -162,6 +162,15 @@ create type advance_status as enum ('pending','approved','rejected');
    `20260922090000`) — เจ้าของคีย์เบิกคือเงินสดออกไปแล้ว ไม่ใช่คำขอ · กฎนี้ทำให้
    client เวอร์ชันเก่า (ที่ยังไม่รู้จักคอลัมน์ `status`) ปลอดภัยด้วย ซึ่งสำคัญมาก
    ในช่วงระหว่าง "apply migration" กับ "deploy โค้ด" ที่ทั้งสองอย่างไม่ได้เกิดพร้อมกัน
+1c. 🔴 **ยอดติดลบ (เบิกเกิน) หักจริง "ตอนกดจ่ายค่าแรง" เท่านั้น ไม่ใช่ตอนลงชื่อ**
+   (เจ้าของเลือกเอง 22 ก.ย. 2569) — `คงเหลือ = ค่าแรงที่ยังไม่จ่าย − เบิกที่ยังไม่ถูกหัก`
+   · ลงชื่อเข้าโครงการทำให้ **ยอดติดลบลดลงทันทีอยู่แล้ว** เพราะค่าแรงใหม่เข้าสูตร
+   · ถ้าไปหัก `deducted_amount` ตอนลงชื่อด้วยโดยที่วันนั้นยังไม่ถูกตีตราว่าจ่ายแล้ว
+   ค่าแรงวันนั้นจะถูกนับสองรอบ = **หนี้หายฟรีเท่าค่าแรงวันนั้น** (หนี้ ฿2,000 ลงชื่อได้
+   ฿500 → คงเหลือกลายเป็น −฿1,000 ทั้งที่ต้องเป็น −฿1,500) ไม่มี error ที่ไหนเลย
+   · ตัวเลขรายคนอ่านจาก `overdrawn_employees()` / `overdrawn_summary()` **ที่เดียว**
+   (หน้าแรก · `/payroll` · ป้ายข้างชื่อคนใน `/attendance` ของเจ้าของ)
+   · ร่องรอยการหักอยู่ใน `audit_log` ของ `advances` ทุกใบ (before/after ของ `deducted_amount`)
 2. **`wage_snapshot` ห้ามแก้หลังปิดรอบ** — guard trigger บน `attendance`
 3. **`transactions.status`** — supervisor เปลี่ยนเป็น `approved` ไม่ได้ · supervisor แก้/ลบรายการที่
    `approved` แล้วไม่ได้ · supervisor แก้รายการที่ `rejected` ของตัวเองได้ และ trigger จะดันสถานะ
@@ -178,6 +187,8 @@ is_owner() -> boolean
 supervises_site(p_site uuid, p_on date default current_date) -> boolean
 employee_balance(p_employee uuid)      -- ประตูของ authenticated · **เจ้าของเท่านั้น**
 employee_balance_raw(p_employee uuid)  -- สูตรเปล่า ไม่มีด่าน · เฉพาะ definer/superuser
+overdrawn_employees()                  -- ใครติดลบอยู่เท่าไหร่ (invoker · ห่อ payroll_balances)
+overdrawn_summary()                    -- กี่คน รวมเท่าไหร่ — แถบเตือนหน้าแรก
 ```
 ⚠️ **ยอดค่าแรงเป็นความลับจากหัวหน้าโครงการ (P4.5)** — ตั้งแต่ R14 หัวหน้าโครงการ
 ยุ่งกับใบเบิกได้แล้ว `employee_balance()` จึงต้องมีด่าน `is_owner()` ไม่งั้นเขายิง

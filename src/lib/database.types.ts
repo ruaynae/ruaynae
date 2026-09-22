@@ -1816,6 +1816,24 @@ export type Database = {
         Args: { p_kind: Database["public"]["Enums"]["doc_kind"] }
         Returns: string
       }
+      overdrawn_employees: {
+        Args: never
+        Returns: {
+          accrued: number
+          advanced: number
+          balance: number
+          employee_id: string
+          full_name: string
+          job_title: string
+        }[]
+      }
+      overdrawn_summary: {
+        Args: never
+        Returns: {
+          people: number
+          total: number
+        }[]
+      }
       pay_employee_wage: {
         Args: { p_employee: string }
         Returns: {

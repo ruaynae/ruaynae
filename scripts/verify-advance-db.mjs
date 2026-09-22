@@ -86,14 +86,18 @@ begin
     json_build_object('sub', v_sup::text, 'role', 'authenticated')::text, true);
   execute 'set local role authenticated';
 
-  -- R14-DB-04 · คำขอต้องผูกโครงการ
+  -- R14-DB-04 · ยื่นคำขอ **โดยไม่ผูกโครงการ** ได้ (คำสั่งเจ้าของ 22 ก.ย. 2569)
+  -- ค่าแรงเป็นของคน ไม่ใช่ของโครงการ · เดิมแถวนี้ยืนยันสิ่งตรงข้าม (SITE_REQUIRED)
   begin
-    insert into public.advances(employee_id, amount, advance_date) values (v_emp, 300, v_today);
-    v_fail := v_fail + 1; v_out := v_out || E'❌ R14-DB-04 ไม่ผูกโครงการแล้วผ่านได้\\n';
+    insert into public.advances(employee_id, amount, advance_date)
+      values (v_emp, 300, v_today) returning id into v_adv;
+    select status::text, site_id is null into v_st, v_bool from public.advances where id = v_adv;
+    if v_st = 'pending' and v_bool then v_pass := v_pass + 1;
+      v_out := v_out || E'✅ R14-DB-04 ยื่นคำขอโดยไม่ผูกโครงการได้ → pending · site_id เป็น null\\n';
+    else v_fail := v_fail + 1;
+      v_out := v_out || format(E'❌ R14-DB-04 status=%s site ว่าง=%s\\n', v_st, v_bool); end if;
   exception when others then
-    if sqlerrm like '%SITE_REQUIRED%' then v_pass := v_pass + 1;
-      v_out := v_out || E'✅ R14-DB-04 ไม่ผูกโครงการ → SITE_REQUIRED\\n';
-    else v_fail := v_fail + 1; v_out := v_out || format(E'❌ R14-DB-04 ได้ error อื่น: %s\\n', sqlerrm); end if;
+    v_fail := v_fail + 1; v_out := v_out || format(E'❌ R14-DB-04 ถูกปฏิเสธ: %s\\n', sqlerrm);
   end;
 
   -- R14-DB-03 · ตั้งสถานะ approved เองไม่ได้
@@ -407,12 +411,77 @@ begin
   raise exception '%', v_out;
 end $c$;`
 
+const BLOCK4 = `do $c$
+declare
+  v_out text := E'\\n';
+  v_pass int := 0; v_fail int := 0;
+  v_owner uuid; v_sup uuid; v_site uuid; v_emp uuid; v_adv uuid;
+  v_today date := (now() at time zone 'Asia/Bangkok')::date;
+  v_bal numeric; v_bal2 numeric; v_ded numeric; v_people int; v_total numeric; v_n int;
+begin
+  perform pg_catalog.set_config('search_path','public',true);
+  select id into v_owner from public.profiles where role='owner' and is_active limit 1;
+  select id into v_sup   from public.profiles where role='site_supervisor' and is_active limit 1;
+  insert into public.sites(name,status) values ('R14 ตรวจ ติดลบ','active') returning id into v_site;
+  insert into public.site_supervisors(site_id,profile_id,effective_from) values (v_site,v_sup,v_today-30);
+  insert into public.employees(full_name,job_title) values ('R14 ตรวจ ติดลบ','กรรมกร') returning id into v_emp;
+  insert into public.employee_wages(employee_id,wage_type,daily_rate) values (v_emp,'daily',500);
+
+  perform set_config('request.jwt.claims', json_build_object('sub',v_owner::text,'role','authenticated')::text, true);
+
+  -- เจ้าของจ่ายเบิกล่วงหน้า ฿2,000 ให้คนที่ยังไม่มีค่าแรงเลย → ติดลบ ฿2,000
+  insert into public.advances(employee_id, amount, advance_date, status)
+    values (v_emp, 2000, v_today - 3, 'approved') returning id into v_adv;
+
+  -- R14-DB-25 · ยอดติดลบรายคนอ่านได้จากสูตรเดียว
+  select o.balance into v_bal from public.overdrawn_employees() o where o.employee_id = v_emp;
+  select s.people, s.total into v_people, v_total from public.overdrawn_summary() s;
+  if v_bal = -2000 and v_people >= 1 and v_total >= 2000 then v_pass := v_pass+1;
+    v_out := v_out || E'✅ R14-DB-25 overdrawn_employees/summary เห็นคนติดลบ ฿2,000 ตรงกันทั้งสองตัว\\n';
+  else v_fail := v_fail+1;
+    v_out := v_out || format(E'❌ R14-DB-25 balance=%s people=%s total=%s\\n', v_bal, v_people, v_total); end if;
+
+  -- R14-DB-26 · 🔴 ลงชื่อเข้าโครงการ → ยอดติดลบลดลงทันที **โดยใบเบิกไม่ถูกแตะ**
+  -- (คำสั่งเจ้าของ 22 ก.ย. 2569 · หักจริงเกิดตอนกดจ่ายค่าแรง ไม่ใช่ตอนลงชื่อ —
+  --  หักตอนลงชื่อโดยไม่ตีตราว่าวันนั้นจ่ายแล้ว = หนี้หายฟรีเท่าค่าแรงวันนั้น)
+  insert into public.attendance(work_date, site_id, employee_id, work_units)
+    values (v_today - 1, v_site, v_emp, 1);
+  select o.balance into v_bal2 from public.overdrawn_employees() o where o.employee_id = v_emp;
+  select a.deducted_amount into v_ded from public.advances a where a.id = v_adv;
+  if v_bal2 = -1500 and v_ded = 0 then v_pass := v_pass+1;
+    v_out := v_out || E'✅ R14-DB-26 ลงชื่อได้ค่าแรง ฿500 → ติดลบ ฿2,000 เหลือ ฿1,500 · ใบเบิกยังไม่ถูกหัก (ไม่นับซ้ำ)\\n';
+  else v_fail := v_fail+1;
+    v_out := v_out || format(E'❌ R14-DB-26 balance=%s deducted=%s (ควรได้ -1500 และ 0)\\n', v_bal2, v_ded); end if;
+
+  -- R14-DB-27 · กดจ่ายค่าแรง → หักจริง + มีร่องรอยใน audit_log
+  perform public.pay_employee_wage(v_emp);
+  select a.deducted_amount into v_ded from public.advances a where a.id = v_adv;
+  select count(*) into v_n from public.audit_log l
+   where l.table_name = 'advances' and l.row_id::text = v_adv::text and l.action = 'UPDATE'
+     and (l.before->>'deducted_amount')::numeric is distinct from (l.after->>'deducted_amount')::numeric;
+  if v_ded = 500 and v_n >= 1 then v_pass := v_pass+1;
+    v_out := v_out || format(E'✅ R14-DB-27 จ่ายค่าแรงแล้วหักคืน ฿500 · audit_log บันทึกการหัก %s แถว\\n', v_n);
+  else v_fail := v_fail+1;
+    v_out := v_out || format(E'❌ R14-DB-27 deducted=%s audit=%s\\n', v_ded, v_n); end if;
+
+  -- R14-DB-28 · ค่าแรงยังเป็นความลับจากหัวหน้าโครงการ
+  perform set_config('request.jwt.claims', json_build_object('sub',v_sup::text,'role','authenticated')::text, true);
+  execute 'set local role authenticated';
+  select count(*) into v_n from public.overdrawn_employees();
+  reset role;
+  if v_n = 0 then v_pass := v_pass+1;
+    v_out := v_out || E'✅ R14-DB-28 หัวหน้าโครงการเรียก overdrawn_employees → 0 แถว (ไม่ใช่ตัวเลขศูนย์ที่อ่านเหมือนไม่มีหนี้)\\n';
+  else v_fail := v_fail+1; v_out := v_out || format(E'❌ R14-DB-28 หัวหน้าโครงการเห็น %s แถว\\n', v_n); end if;
+
+  raise exception '%', v_out;
+end $c$;`
+
 console.log('\n── R14 · คำขอเบิกค่าแรง (ฐานข้อมูล) ──────────────────────────')
 
 let pass = 0
 let fail = 0
 
-for (const [i, sql] of [BLOCK1, BLOCK2, BLOCK3].entries()) {
+for (const [i, sql] of [BLOCK1, BLOCK2, BLOCK3, BLOCK4].entries()) {
   const { rolledBack, message } = await run(sql)
   if (!rolledBack) {
     fail += 1

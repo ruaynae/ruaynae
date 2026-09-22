@@ -90,6 +90,7 @@ export default async function AttendancePage({
     { data: employees, error: eErr },
     { data: rows, error: aErr },
     { data: dayWage },
+    { data: overdrawn },
     { data: prevRows, error: pErr },
     { data: otherSiteRows, error: oErr },
     { data: wageRows, error: wErr },
@@ -160,6 +161,16 @@ export default async function AttendancePage({
       // โครงการที่มีคนงานเกินหนึ่งหน้า ยอดจะน้อยกว่าความจริงโดยไม่มี error
       // · RPC คืน null ให้คนที่ไม่ใช่เจ้าของ ยอดเงินจึงหายไป ไม่ใช่โชว์ ฿0
       sb.rpc('site_day_wage', { p_site: siteId, p_on: date }),
+      // ใครเบิกเกินค่าแรงค้างจ่ายอยู่บ้าง (22 ก.ย. 2569) — **เจ้าของเท่านั้น**
+      // · ป้ายข้างชื่อคนทำให้เจ้าของรู้ตั้งแต่ตอนติ๊กว่าคนนี้ยังติดลบอยู่เท่าไหร่
+      // · หัวหน้าโครงการไม่ยิง query นี้เลย ไม่ใช่ยิงแล้วเอาไปซ่อน — ค่าแรงเป็น
+      //   ความลับจากเขาตั้งแต่ P4.5 และ RPC ก็คืน 0 แถวให้เขาอยู่แล้วอีกชั้น
+      isOwner
+        ? sb.rpc('overdrawn_employees').then(({ data, error }) => {
+            if (error) console.error('[attendance] อ่านยอดเบิกเกินไม่ได้', error.message)
+            return { data: data ?? [] }
+          })
+        : Promise.resolve({ data: [] }),
       sb
         .from('attendance')
         .select('employee_id, work_units')
@@ -236,6 +247,10 @@ export default async function AttendancePage({
         canSeeMoney={isOwner}
         signedIn={rows}
         dayWage={dayWage === null ? undefined : Number(dayWage)}
+        /* ยอดติดลบรายคน — คีย์เป็น employee_id · ว่างเสมอสำหรับหัวหน้าโครงการ */
+        overdrawn={Object.fromEntries(
+          (overdrawn ?? []).map((o) => [o.employee_id, Math.abs(Number(o.balance))]),
+        )}
         yesterdaySignIns={(prevRows ?? []).map((r) => ({
           employee_id: r.employee_id,
           work_units: Number(r.work_units),
