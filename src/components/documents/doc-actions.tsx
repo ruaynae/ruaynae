@@ -234,8 +234,19 @@ export function DocActions({
             <Dialog.Title className="text-lg font-bold text-ink">ยกเลิกเอกสาร</Dialog.Title>
             <Dialog.Description className="mt-0.5 text-sm text-muted-token">
               เลขที่ใบนี้จะ<span className="font-semibold text-ink">ไม่ถูกนำกลับมาใช้ซ้ำ</span> และยังอยู่ในระบบ
-              เพื่อให้ตอบได้ว่าใบนั้นไปไหน · ออกใบใหม่ได้เลยหลังยกเลิก
+              เพื่อให้ตอบได้ว่าใบนั้นไปไหน · ใบใหม่จะได้เลขถัดไป
             </Dialog.Description>
+            {/* 🔴 คีย์ผิดแต่ยังไม่ได้ส่งให้ลูกค้า = แก้ใบเดิม ไม่ใช่ยกเลิก
+                ยกเลิกแล้วเลขจะหายไปหนึ่งเลขถาวร (กฎของเอกสารภาษี ไม่ใช่ข้อจำกัดของระบบ) */}
+            {isEditable(status, txnId) && (
+              <div className="mt-3 rounded-md border border-line bg-surface-2 p-3 text-sm text-ink-2">
+                ถ้าแค่<span className="font-semibold text-ink">พิมพ์ผิด</span> และยังไม่ได้ให้ลูกค้า
+                ให้กด<span className="font-semibold text-ink">แก้ไข</span>แทน — ใช้เลขเดิมต่อได้ ไม่เสียเลข
+                <Link href={`/documents/${id}/edit`} className="btn-secondary mt-2 w-full">
+                  แก้ไขใบนี้แทน
+                </Link>
+              </div>
+            )}
             <div className="mt-4">
               <label htmlFor="void-reason" className="label-base">เหตุผล</label>
               <input

@@ -13,6 +13,7 @@ const MESSAGES: Record<string, string> = {
   UNAUTHENTICATED: 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่',
   FORBIDDEN: 'เฉพาะเจ้าของเท่านั้นที่ทำได้',
   DOC_NO_FORMAT: 'ต้องลงท้ายด้วยตัวเลข เช่น RC1140',
+  TAX_ID_FORMAT: 'เลขประจำตัวผู้เสียภาษีต้องเป็นตัวเลข 13 หลัก',
   UPDATE_FAILED: 'บันทึกไม่สำเร็จ กรุณาลองใหม่',
 }
 
@@ -32,6 +33,10 @@ const PLACEHOLDER: Record<DocKind, string> = {
 
 export function DocSettingsClient({
   lastNos,
+  address,
+  taxId,
+  signatoryName,
+  signatoryTitle,
   phone,
   email,
   branchLabel,
@@ -40,6 +45,10 @@ export function DocSettingsClient({
 }: {
   /** เลขล่าสุดของทุกชนิด — คีย์มาจาก `DOC_KINDS` ไม่ใช่ prop ต่อชนิด */
   lastNos: Record<DocKind, string>
+  address: string
+  taxId: string
+  signatoryName: string
+  signatoryTitle: string
   phone: string
   email: string
   branchLabel: string
@@ -50,7 +59,11 @@ export function DocSettingsClient({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [nos, setNos] = useState<Record<DocKind, string>>(lastNos)
-  const [f, setF] = useState({ phone, email, branchLabel, bankAccount, docFooter })
+  const [f, setF] = useState({
+    address, taxId, signatoryName, signatoryTitle, phone, email, branchLabel, bankAccount, docFooter,
+  })
+  const taxDigits = f.taxId.replace(/[\s-]/g, '')
+  const taxBad = taxDigits !== '' && !/^\d{13}$/.test(taxDigits)
 
   const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }))
   const setNo = (k: DocKind, v: string) => setNos((p) => ({ ...p, [k]: v }))
@@ -147,8 +160,38 @@ export function DocSettingsClient({
       </section>
 
       <section className="panel p-4">
-        <h2 className="mb-3 text-sm font-semibold text-ink">ข้อมูลผู้ขายบนกระดาษ</h2>
+        <h2 className="mb-1 text-sm font-semibold text-ink">ข้อมูลผู้ขายบนกระดาษ</h2>
+        <p className="mb-3 text-xs text-muted-token">
+          ชื่อบริษัทแก้ที่ ตั้งค่า → แบรนด์ · ข้อมูลชุดนี้ถูกบันทึกลงเอกสารตอนออกเลข
+          ใบที่ออกไปแล้วแต่ยังไม่ได้ส่งให้ลูกค้า กด<span className="font-semibold text-ink-2">แก้ไข → บันทึก</span>
+          {' '}หนึ่งครั้งเพื่อรับข้อมูลใหม่
+        </p>
         <div className="grid gap-3 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <label htmlFor="s-address" className="label-base">ที่อยู่บริษัท</label>
+            <textarea
+              id="s-address"
+              value={f.address}
+              onChange={(e) => set('address', e.target.value)}
+              rows={3}
+              maxLength={300}
+              placeholder="เลขที่ ถนน ตำบล อำเภอ จังหวัด รหัสไปรษณีย์"
+              className="input-base h-auto py-2"
+            />
+          </div>
+          <div>
+            <label htmlFor="s-taxid" className="label-base">เลขประจำตัวผู้เสียภาษี</label>
+            <input
+              id="s-taxid"
+              value={f.taxId}
+              onChange={(e) => set('taxId', e.target.value)}
+              inputMode="numeric"
+              placeholder="13 หลัก"
+              className="input-base tnum"
+              aria-invalid={taxBad}
+            />
+            {taxBad && <p className="mt-1 text-xs text-urgent">ต้องเป็นตัวเลข 13 หลัก</p>}
+          </div>
           <div>
             <label htmlFor="s-phone" className="label-base">โทรศัพท์</label>
             <input id="s-phone" value={f.phone} onChange={(e) => set('phone', e.target.value)} className="input-base" />
@@ -180,6 +223,25 @@ export function DocSettingsClient({
               className="input-base"
             />
           </div>
+          <div>
+            <label htmlFor="s-sign-name" className="label-base">ชื่อผู้ลงนาม (ใต้เส้นลายเซ็น)</label>
+            <input
+              id="s-sign-name"
+              value={f.signatoryName}
+              onChange={(e) => set('signatoryName', e.target.value)}
+              className="input-base"
+            />
+          </div>
+          <div>
+            <label htmlFor="s-sign-title" className="label-base">ตำแหน่งผู้ลงนาม</label>
+            <input
+              id="s-sign-title"
+              value={f.signatoryTitle}
+              onChange={(e) => set('signatoryTitle', e.target.value)}
+              placeholder="หุ้นส่วนผู้จัดการ"
+              className="input-base"
+            />
+          </div>
           <div className="sm:col-span-2">
             <label htmlFor="s-footer" className="label-base">ข้อความท้ายกระดาษ</label>
             <input
@@ -195,7 +257,7 @@ export function DocSettingsClient({
 
       {error && <p className="text-sm text-urgent">{error}</p>}
 
-      <button type="button" onClick={save} disabled={busy} className="btn-primary w-full disabled:opacity-60 sm:w-auto">
+      <button type="button" onClick={save} disabled={busy || taxBad} className="btn-primary w-full disabled:opacity-60 sm:w-auto">
         {busy ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
         บันทึก
       </button>

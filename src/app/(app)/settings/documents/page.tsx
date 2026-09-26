@@ -11,7 +11,7 @@ export default async function DocumentSettingsPage() {
     sb.from('doc_counters').select('kind, prefix, pad, last_no').range(0, 9),
     sb
       .from('app_settings')
-      .select('phone, email, branch_label, bank_account, doc_footer')
+      .select('address, tax_id, phone, email, branch_label, bank_account, doc_footer, signatory_name, signatory_title')
       .maybeSingle(),
   ])
 
@@ -31,6 +31,10 @@ export default async function DocumentSettingsPage() {
   return (
     <DocSettingsClient
       lastNos={lastNos}
+      address={settings?.address ?? ''}
+      taxId={settings?.tax_id ?? ''}
+      signatoryName={settings?.signatory_name ?? ''}
+      signatoryTitle={settings?.signatory_title ?? ''}
       phone={settings?.phone ?? ''}
       email={settings?.email ?? ''}
       branchLabel={settings?.branch_label ?? ''}

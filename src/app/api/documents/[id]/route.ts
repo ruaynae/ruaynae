@@ -4,7 +4,9 @@ import { getSupabaseServer } from '@/lib/supabase/server'
 import { bahtText } from '@/lib/baht-text'
 import { MAX_CUSTOMER_NAME, hasSecondDate, isEditable } from '@/lib/documents'
 import { isUuid } from '@/lib/transactions'
-import { parseLines, parseVatMode, parseVatRate, replaceLines } from '@/lib/doc-server'
+import {
+  parseLines, parseVatMode, parseVatRate, replaceLines, sellerSnapshot,
+} from '@/lib/doc-server'
 import type { Database } from '@/lib/database.types'
 
 export const runtime = 'nodejs'
@@ -75,6 +77,11 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (body.validUntil !== undefined) {
     patch.valid_until = hasSecondDate(doc.kind) && isDate(body.validUntil) ? body.validUntil : null
   }
+
+  // สำเนาผู้ขายถูกแช่แข็งตอนออกเลข — แต่ใบที่ยังไม่ได้ส่งให้ลูกค้า กระดาษยังไม่ออก
+  // ไปไหน · แก้เมื่อไหร่ให้รับที่อยู่/เลขภาษีล่าสุด ไม่งั้นใบที่ออกก่อนเจ้าของ
+  // กรอกตั้งค่าจะพิมพ์ออกมาโดยไม่มีที่อยู่ตลอดไป (ร่างยังไม่มีสำเนา — ได้ตอนออกเลข)
+  if (doc.status === 'issued') patch.seller = await sellerSnapshot()
 
   if (Object.keys(patch).length > 0) {
     const { error } = await sb.from('documents').update(patch).eq('id', id)

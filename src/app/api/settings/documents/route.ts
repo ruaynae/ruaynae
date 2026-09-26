@@ -27,6 +27,16 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'BAD_REQUEST' }, { status: 400 })
   }
 
+  // 🔴 เลขผู้เสียภาษี 13 หลัก — พิมพ์ขีด/เว้นวรรคมาได้ เก็บเฉพาะตัวเลข
+  // ตรวจก่อนเขียนอะไรทั้งนั้น ไม่งั้นเลขเอกสารถูกบันทึกไปครึ่งหนึ่งแล้วค่อยเด้ง
+  // · เลขผิดบนใบกำกับภาษี = ใบที่ลูกค้าเอาไปเครดิตภาษีไม่ได้
+  const taxDigits = body.taxId === undefined
+    ? undefined
+    : String(body.taxId ?? '').replace(/[\s-]/g, '')
+  if (taxDigits && !/^\d{13}$/.test(taxDigits)) {
+    return NextResponse.json({ error: 'TAX_ID_FORMAT' }, { status: 422 })
+  }
+
   const sb = await getSupabaseServer()
 
   for (const kind of DOC_KINDS) {
@@ -71,9 +81,15 @@ export async function PATCH(req: NextRequest) {
   for (const [key, col] of [
     ['phone', 'phone'], ['email', 'email'], ['branchLabel', 'branch_label'],
     ['bankAccount', 'bank_account'], ['docFooter', 'doc_footer'],
+    ['signatoryName', 'signatory_name'], ['signatoryTitle', 'signatory_title'],
   ] as const) {
     if (body[key] !== undefined) patch[col] = String(body[key] ?? '').trim().slice(0, 200) || null
   }
+  // ที่อยู่หลายบรรทัดได้ — ยาวกว่าช่องอื่น
+  if (body.address !== undefined) {
+    patch.address = String(body.address ?? '').trim().slice(0, 300) || null
+  }
+  if (taxDigits !== undefined) patch.tax_id = taxDigits || null
 
   if (Object.keys(patch).length > 0) {
     const { error } = await sb.from('app_settings').update(patch).eq('id', true)
