@@ -2,7 +2,7 @@
 
 import * as Dialog from '@radix-ui/react-dialog'
 import {
-  BadgeCheck, Check, FileCheck, FileText, Loader2, Printer, Receipt, Send, Trash2, Wallet, X,
+  BadgeCheck, Check, FileCheck, FileText, Loader2, Printer, Receipt, Send, Trash2, Undo2, Wallet, X,
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -10,7 +10,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { fmtBaht } from '@/lib/format'
 import {
-  CONVERT_TARGETS, DOC_KIND_SHORT, isEditable, type DocKind, type DocStatus,
+  CONVERT_TARGETS, DOC_KIND_SHORT, canRestore, isEditable, type DocKind, type DocStatus,
 } from '@/lib/documents'
 
 type IncomeCategory = { id: string; name: string }
@@ -35,6 +35,8 @@ const MESSAGES: Record<string, string> = {
   CATEGORY_INVALID: 'หมวดที่เลือกไม่ใช่หมวดรายรับ',
   TXN_ALREADY_LINKED: 'รายการนี้ถูกผูกกับเอกสารอื่นแล้ว',
   VOID_REASON_REQUIRED: 'ระบุเหตุผลที่ยกเลิก',
+  DOC_NOT_VOID: 'เอกสารนี้ไม่ได้ถูกยกเลิก',
+  DOC_RESTORE_SENT: 'ใบนี้เคยส่งให้ลูกค้าหรือผูกรายรับแล้ว ย้อนการยกเลิกไม่ได้ ให้ออกใบใหม่',
   DOC_LOCKED: 'เอกสารนี้ส่งให้ลูกค้าหรือผูกรายรับไปแล้ว แก้ไม่ได้',
 }
 const fail = (code?: string) => MESSAGES[code ?? ''] ?? 'ทำรายการไม่สำเร็จ กรุณาลองใหม่'
@@ -50,6 +52,8 @@ export function DocActions({
   kind,
   status,
   txnId,
+  sentAt,
+  acceptedAt,
   total,
   incomeCategories,
 }: {
@@ -57,12 +61,15 @@ export function DocActions({
   kind: DocKind
   status: DocStatus
   txnId: string | null
+  sentAt: string | null
+  acceptedAt: string | null
   total: number
   incomeCategories: IncomeCategory[]
 }) {
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
   const [voidOpen, setVoidOpen] = useState(false)
+  const [restoreOpen, setRestoreOpen] = useState(false)
   const [reason, setReason] = useState('')
   const [incomeOpen, setIncomeOpen] = useState(false)
   const [categoryId, setCategoryId] = useState(incomeCategories[0]?.id ?? '')
@@ -198,6 +205,18 @@ export function DocActions({
           </button>
         )}
 
+        {canRestore({ status, sentAt, acceptedAt, txnId }) && (
+          <button
+            type="button"
+            onClick={() => { setRestoreOpen(true); setFieldError('') }}
+            disabled={busy !== null}
+            className="btn-primary disabled:opacity-60"
+          >
+            <Undo2 className="size-4" />
+            ย้อนการยกเลิก
+          </button>
+        )}
+
         {status === 'draft' && (
           <button
             type="button"
@@ -271,6 +290,35 @@ export function DocActions({
               >
                 {spin('void') ? <Loader2 className="size-4 animate-spin" /> : <X className="size-4" />}
                 ยืนยันยกเลิก
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      {/* ── ย้อนการยกเลิก ─────────────────────────────────────────── */}
+      <Dialog.Root open={restoreOpen} onOpenChange={(v) => { if (!busy) setRestoreOpen(v) }}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40 animate-fade-in" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line bg-surface p-5 shadow-e3 animate-pop-in">
+            <Dialog.Title className="text-lg font-bold text-ink">ย้อนการยกเลิก</Dialog.Title>
+            <Dialog.Description className="mt-0.5 text-sm text-muted-token">
+              ใบนี้จะกลับมาใช้งานด้วย<span className="font-semibold text-ink">เลขที่เดิม</span>
+              {' '}แล้วกดแก้ไขรายการต่อได้ · ใช้เฉพาะใบที่ยังไม่ได้ให้ลูกค้า
+            </Dialog.Description>
+            <div className="mt-4 flex justify-end gap-2">
+              <Dialog.Close disabled={busy !== null} className="btn-secondary">ปิด</Dialog.Close>
+              <button
+                type="button"
+                onClick={async () => {
+                  const b = await call('restore', `/api/documents/${id}/restore`, undefined, 'ใบนี้กลับมาใช้งานแล้ว — กดแก้ไขได้เลย')
+                  if (b) setRestoreOpen(false)
+                }}
+                disabled={busy !== null}
+                className="btn-primary disabled:opacity-60"
+              >
+                {spin('restore') ? <Loader2 className="size-4 animate-spin" /> : <Undo2 className="size-4" />}
+                ยืนยัน
               </button>
             </div>
           </Dialog.Content>

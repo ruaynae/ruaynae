@@ -100,6 +100,8 @@ export default async function DocumentDetailPage({
           kind={doc.kind}
           status={doc.status}
           txnId={doc.txn_id}
+          sentAt={doc.sent_at}
+          acceptedAt={doc.accepted_at}
           total={Number(doc.total)}
           incomeCategories={categories ?? []}
         />
