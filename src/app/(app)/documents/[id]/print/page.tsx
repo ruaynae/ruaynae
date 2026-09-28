@@ -72,21 +72,21 @@ export default async function PrintDocumentPage({
       )}
 
       {/* ── กระดาษ ─────────────────────────────────────────────────── */}
-      <article className="paper mx-auto w-full max-w-[794px] rounded-lg border border-line bg-white p-8 text-black shadow-e1">
+      <article className="paper mx-auto flex aspect-[210/297] w-full max-w-[794px] flex-col rounded-lg border border-line bg-white p-10 text-black shadow-e1">
         <header className="flex items-start justify-between gap-6 border-b-2 border-black pb-3">
           <div className="min-w-0">
-            <h1 className="text-lg font-bold">{seller?.companyName ?? ''}</h1>
-            {seller?.branchLabel && <p className="text-xs">{seller.branchLabel}</p>}
-            {seller?.address && <p className="whitespace-pre-line text-xs">{seller.address}</p>}
-            <p className="text-xs">
+            <h1 className="text-xl font-bold">{seller?.companyName ?? ''}</h1>
+            {seller?.branchLabel && <p className="text-sm">{seller.branchLabel}</p>}
+            {seller?.address && <p className="whitespace-pre-line text-sm">{seller.address}</p>}
+            <p className="text-sm">
               {seller?.phone ? `โทร ${seller.phone}` : ''}
               {seller?.email ? ` · ${seller.email}` : ''}
             </p>
-            {seller?.taxId && <p className="text-xs">เลขประจำตัวผู้เสียภาษี {seller.taxId}</p>}
+            {seller?.taxId && <p className="text-sm">เลขประจำตัวผู้เสียภาษี {seller.taxId}</p>}
           </div>
           <div className="shrink-0 text-right">
-            <h2 className="text-base font-bold">{DOC_KIND_LABEL[doc.kind]}</h2>
-            <table className="ml-auto mt-1 text-xs">
+            <h2 className="text-xl font-bold">{DOC_KIND_LABEL[doc.kind]}</h2>
+            <table className="ml-auto mt-1 text-sm">
               <tbody>
                 <tr>
                   <td className="pr-2 text-right">เลขที่</td>
@@ -112,7 +112,7 @@ export default async function PrintDocumentPage({
           <p className="mt-2 text-center text-sm font-bold">** ยกเลิก — {doc.void_reason} **</p>
         )}
 
-        <section className="mt-3 text-xs">
+        <section className="mt-3 text-sm">
           <p><span className="font-semibold">ลูกค้า:</span> {doc.customer_name}</p>
           {doc.customer_address && (
             <p className="whitespace-pre-line"><span className="font-semibold">ที่อยู่:</span> {doc.customer_address}</p>
@@ -124,14 +124,14 @@ export default async function PrintDocumentPage({
           </p>
         </section>
 
-        <table className="mt-3 w-full border-collapse text-xs">
+        <table className="mt-3 w-full border-collapse text-sm">
           <thead>
             <tr className="border-y border-black">
-              <th className="w-8 py-1 text-center">ลำดับ</th>
+              <th className="w-14 py-1.5 pr-2 text-center">ลำดับ</th>
               <th className="py-1 text-left">รายการ</th>
-              <th className="w-16 py-1 text-right">จำนวน</th>
-              <th className="w-24 py-1 text-right">ราคา/หน่วย</th>
-              <th className="w-28 py-1 text-right">จำนวนเงิน</th>
+              <th className="w-20 py-1.5 text-right">จำนวน</th>
+              <th className="w-28 py-1.5 text-right">ราคา/หน่วย</th>
+              <th className="w-32 py-1.5 text-right">จำนวนเงิน</th>
             </tr>
           </thead>
           <tbody>
@@ -153,13 +153,13 @@ export default async function PrintDocumentPage({
           </tbody>
         </table>
 
-        <div className="mt-3 flex items-start justify-between gap-6 text-xs">
+        <div className="mt-3 flex items-start justify-between gap-6 text-sm">
           <div className="min-w-0 flex-1">
             <p className="font-semibold">({doc.amount_words})</p>
             {doc.note && <p className="mt-2 whitespace-pre-line">{doc.note}</p>}
             {seller?.bankAccount && <p className="mt-2 whitespace-pre-line">{seller.bankAccount}</p>}
           </div>
-          <table className="w-56 shrink-0 text-xs">
+          <table className="w-64 shrink-0 text-sm">
             <tbody>
               <tr>
                 <td className="py-0.5 text-right">รวมเป็นเงิน</td>
@@ -181,7 +181,7 @@ export default async function PrintDocumentPage({
           </table>
         </div>
 
-        <footer className="mt-10 grid grid-cols-2 gap-8 text-xs">
+        <footer className="mt-auto grid pt-16 grid-cols-2 gap-8 text-sm">
           <div className="text-center">
             <p className="border-b border-black pb-8" />
             {/* "ผู้รับเงิน" เขียนได้เฉพาะใบที่เงินเข้าแล้ว — ใบแจ้งหนี้กับ
@@ -199,7 +199,7 @@ export default async function PrintDocumentPage({
           </div>
         </footer>
 
-        {seller?.footer && <p className="mt-4 text-center text-[10px]">{seller.footer}</p>}
+        {seller?.footer && <p className="mt-4 text-center text-xs">{seller.footer}</p>}
       </article>
     </>
   )

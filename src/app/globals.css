@@ -456,7 +456,16 @@
     box-shadow: none !important;
     background: #fff !important;
     color: #000 !important;
+    /* 🔴 กระดาษเต็มหน้า A4 เสมอ ไม่ใช่สูงเท่าเนื้อหา — ใบรายการเดียวเคยจบ
+       กลางหน้าแล้วลายเซ็นตามขึ้นไปติดตาราง ลูกค้าเห็นเป็น "B5" (28 ก.ย. 2569)
+       · ขอบกระดาษมาจาก `@page` แทน padding · สูง = 297 − 2×15 − เผื่อปัดเศษ 2mm
+       ถ้าพอดีเป๊ะ เบราว์เซอร์บางตัวปัดแล้วดันหน้าเปล่าออกมาอีกแผ่น
+       · เนื้อหายาวกว่านี้ยังไหลต่อหน้าถัดไปได้ปกติ เพราะเป็น min ไม่ใช่ height */
+    aspect-ratio: auto !important;
+    min-height: 265mm !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
   }
 
-  @page { size: A4 portrait; margin: 12mm; }
+  @page { size: A4 portrait; margin: 15mm; }
 }
