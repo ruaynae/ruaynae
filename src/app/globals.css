@@ -442,6 +442,23 @@
 @media print {
   .print-hide { display: none !important; }
 
+  /* 🔴 หน้าที่มีกระดาษ = พิมพ์ **เฉพาะกระดาษ** (opt-in ไม่ใช่ไล่ซ่อนทีละชิ้น)
+     แบนเนอร์ "ติดตั้งแอป" ไม่มี `print-hide` แล้วถูกพิมพ์ติดหัวใบเสร็จ ดันลายเซ็น
+     ตกไปหน้าสอง (28 ก.ย. 2569) · ชิ้นที่มาทีหลัง (toast · แบนเนอร์ใหม่) จะโดนซ่อน
+     เองโดยไม่ต้องมีใครจำ · บรรพบุรุษของกระดาษถูกล้างระยะทิ้ง ไม่งั้น padding
+     ของเปลือกแอปดันกระดาษลงมา */
+  body:has(.paper) :not(.paper):not(.paper *):not(:has(.paper)) { display: none !important; }
+  body:has(.paper) :has(.paper) {
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
   html, body {
     background: #fff !important;
     color: #000 !important;
@@ -458,14 +475,19 @@
     color: #000 !important;
     /* 🔴 กระดาษเต็มหน้า A4 เสมอ ไม่ใช่สูงเท่าเนื้อหา — ใบรายการเดียวเคยจบ
        กลางหน้าแล้วลายเซ็นตามขึ้นไปติดตาราง ลูกค้าเห็นเป็น "B5" (28 ก.ย. 2569)
-       · ขอบกระดาษมาจาก `@page` แทน padding · สูง = 297 − 2×15 − เผื่อปัดเศษ 2mm
-       ถ้าพอดีเป๊ะ เบราว์เซอร์บางตัวปัดแล้วดันหน้าเปล่าออกมาอีกแผ่น
-       · เนื้อหายาวกว่านี้ยังไหลต่อหน้าถัดไปได้ปกติ เพราะเป็น min ไม่ใช่ height */
+       · ขอบกระดาษเป็น padding ของกระดาษเอง และ `@page` ไม่มีขอบ — เบราว์เซอร์
+       พิมพ์วันที่/ชื่อหน้า/URL ลงในขอบของ `@page` · ขอบเป็นศูนย์ = ไม่มีที่ให้พิมพ์
+       ผู้ใช้ไม่ต้องหาช่อง "ส่วนหัวและท้ายกระดาษ" ในหน้าต่างพิมพ์เอง
+       · สูง 295mm ไม่ใช่ 297 — พอดีเป๊ะแล้วเบราว์เซอร์ปัดเศษดันหน้าเปล่าออกมาอีกแผ่น
+       · เนื้อหายาวกว่านี้ยังไหลต่อหน้าถัดไปได้ (min ไม่ใช่ height) แต่หน้าต่อ ๆ ไป
+       จะชิดขอบบน-ล่าง เพราะ padding ไม่ถูกทำซ้ำต่อหน้า — ใบเสร็จเกินหน้าเดียวหายาก */
     aspect-ratio: auto !important;
-    min-height: 265mm !important;
-    padding: 0 !important;
+    min-height: 295mm !important;
+    padding: 12mm 14mm !important;
     border-radius: 0 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 
-  @page { size: A4 portrait; margin: 15mm; }
+  @page { size: A4 portrait; margin: 0; }
 }

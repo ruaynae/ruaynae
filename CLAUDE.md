@@ -411,7 +411,7 @@ src/
     (app)/settings/customers  ทะเบียนลูกค้า — แก้/ลบได้ · มีผลกับใบถัดไปเท่านั้น
     (app)/documents/*        ใบเสนอราคา + ใบเสร็จ/ใบกำกับภาษี (เจ้าของเท่านั้น)
 #                            (list) · new · [id] · [id]/edit · [id]/print
-    components/documents/*   doc-form · doc-actions · doc-row · doc-filters · print-button
+    components/documents/*   doc-form · doc-actions · doc-row · doc-filters · print-button · doc-paper (ผังกระดาษ A4 ตามแบบฟอร์มเดิมของเจ้าของ)
     components/ui/page-header.tsx  **ที่เดียวที่วางปุ่มย้อนกลับ** — ดู §15
     lib/{documents,doc-server,baht-text,date-range}.ts
 #                            documents.ts = สูตรเงิน + ค่าตั้งต้นฟอร์ม (คู่กับ SQL doc_recalc)
