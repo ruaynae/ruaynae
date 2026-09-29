@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { getCurrentUserOrNull } from '@/lib/auth/current-user'
 import { getSupabaseServer } from '@/lib/supabase/server'
 import { todayInBangkok } from '@/lib/format'
-import { canModifyTxn, parseTxnFields, MAX_NOTE } from '@/lib/transactions'
+import { canModifyTxn, parseOwedEmployee, parseTxnFields, MAX_NOTE } from '@/lib/transactions'
 import type { Database } from '@/lib/database.types'
 
 export const runtime = 'nodejs'
@@ -11,6 +11,8 @@ export const runtime = 'nodejs'
 const GUARD_CODES = [
   'APPROVE_FORBIDDEN', 'AMOUNT_LOCKED', 'APPROVED_IMMUTABLE',
   'CATEGORY_KIND_MISMATCH', 'INCOME_FORBIDDEN', 'SITE_REQUIRED',
+  // R15 · รายการที่คืนเงินให้คนงานไปแล้ว / คนงานที่เลือกใช้ไม่ได้
+  'PAYROLL_CLOSED', 'OWED_EMPLOYEE_INVALID', 'OWED_FORBIDDEN',
 ]
 const guardCode = (msg: string) => GUARD_CODES.find((c) => msg.includes(c))
 
@@ -78,6 +80,11 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     const parsed = parseTxnFields(body, todayInBangkok())
     if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 })
     Object.assign(patch, parsed.fields)
+    // R15 · ไม่ส่งมา = ไม่แตะ (ไม่ใช่ล้างเป็น null) — ดู parseOwedEmployee
+    const owed = parseOwedEmployee(body)
+    if (!owed.ok) return NextResponse.json({ error: owed.error }, { status: 400 })
+    if (owed.value !== undefined) patch.owed_employee_id = owed.value
+    if (parsed.fields.kind === 'income') patch.owed_employee_id = null
     // client_ref เป็นของ "ครั้งที่กดบันทึก" ไม่ใช่ของแถว — แก้ทีหลังไม่ต้องแตะ
     delete patch.client_ref
     // 🔴 สถานะไม่อยู่ใน patch โดยตั้งใจ · หัวหน้าโครงการที่แก้ของที่ถูกตีกลับ

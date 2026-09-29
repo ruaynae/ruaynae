@@ -1,4 +1,4 @@
-import { BellRing, Sparkles } from 'lucide-react'
+import { BellRing, HandCoins, Sparkles } from 'lucide-react'
 import { fmtBaht, fmtDate } from '@/lib/format'
 import {
   INCOME_KIND_LABEL, PAY_METHOD_LABEL, TXN_STATUS_LABEL, TXN_STATUS_TONE,
@@ -39,6 +39,10 @@ export type TxnRowData = {
   /** ชื่อคนคีย์ · null เมื่อ RLS ไม่ให้คนดูอ่านโปรไฟล์คนอื่น */
   profiles: { full_name: string } | null
   attachments: { id: string }[]
+  /** R15 · คนงานที่ออกเงินให้ก่อน / ได้โบนัส · ไม่ส่งมา = หน้านั้นไม่ได้ดึง */
+  owed_kind?: 'reimburse' | 'bonus' | null
+  settled_run_id?: string | null
+  owed?: { full_name: string } | null
 }
 
 export function TxnRow({
@@ -120,6 +124,8 @@ export function TxnRow({
               บันทึกผ่าน AI
             </span>
           )}
+          {/* R15 · บริษัทติดเงินคนนี้ — ต้องเห็นว่าคืนแล้วหรือยัง ไม่ต้องเปิดดู */}
+          {t.owed_kind && <OwedChip txn={t} />}
           {/* ไฮไลท์เฉย ๆ ตอบไม่ได้ว่า "ทำไมแถวนี้ถึงเด่น" — ป้ายเป็นคนตอบ */}
           {focused && (
             <span className="chip bg-brand-solid text-white ring-0">
@@ -174,5 +180,33 @@ export function TxnRow({
         <TxnEditButton txn={toEditableTxn(t)} />
       </div>
     </div>
+  )
+}
+
+/**
+ * ป้าย "ใครออกเงินก่อน" (R15) — ใช้ร่วมกับคิวอนุมัติ
+ * 🔴 ป้ายนี้บอกว่า **บริษัทต้องคืนเงินใคร** ไม่ใช่ต้นทุนเพิ่ม — ต้นทุนคือยอดของแถวเอง
+ */
+export function OwedChip({
+  txn: t,
+}: {
+  txn: Pick<TxnRowData, 'owed_kind' | 'settled_run_id' | 'owed'>
+}) {
+  const who = t.owed?.full_name ?? 'คนงาน'
+  const label =
+    t.owed_kind === 'bonus'
+      ? `โบนัส ${who}`
+      : `${who} ออกก่อน · ${t.settled_run_id ? 'คืนแล้ว' : 'ยังไม่คืน'}`
+  return (
+    <span
+      className={`chip max-w-full ${
+        t.settled_run_id || t.owed_kind === 'bonus'
+          ? 'border border-line-strong text-muted-token ring-0'
+          : 'bg-status-progress-bg text-status-progress ring-status-progress-ring'
+      }`}
+    >
+      <HandCoins className="size-3 shrink-0" strokeWidth={2} aria-hidden />
+      <span className="truncate">{label}</span>
+    </span>
   )
 }

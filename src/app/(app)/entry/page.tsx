@@ -20,7 +20,12 @@ export default async function EntryPage({ searchParams }: { searchParams: Promis
   // 🔴 รายชื่อโครงการมาจาก RLS ไม่ใช่จาก where ที่เขียนเอง — หัวหน้าโครงการจึงเห็น
   // เฉพาะโครงการที่ดูแล **ณ วันนี้** โดยอัตโนมัติ · คนที่เพิ่งถูกย้ายออกจะไม่เห็น
   // โครงการเดิมในกล่องเลือกทันที โดยไม่ต้องมีโค้ดตรงนี้รู้เรื่องนั้นเลย
-  const [{ data: sites, error: sErr }, { data: categories, error: cErr }, { data: mine, error: mErr }] =
+  const [
+    { data: sites, error: sErr },
+    { data: categories, error: cErr },
+    { data: mine, error: mErr },
+    { data: employees, error: eErr },
+  ] =
     await Promise.all([
       sb
         .from('sites')
@@ -43,10 +48,17 @@ export default async function EntryPage({ searchParams }: { searchParams: Promis
         .eq('created_by', me.id)
         .order('created_at', { ascending: false })
         .range(0, PAGE_SIZE - 1),
+      // ช่อง "ใครจ่ายเงินไป" (R15) — ชื่ออย่างเดียว · RLS ให้ทุก role เห็นคนที่ยังทำงานอยู่
+      sb
+        .from('employees')
+        .select('id, full_name')
+        .eq('is_active', true)
+        .order('full_name', { ascending: true })
+        .range(0, PAGE_SIZE * 4 - 1),
     ])
 
-  if (sErr || cErr || mErr) {
-    console.error('[entry] โหลดตัวเลือกไม่ได้', sErr?.message ?? cErr?.message ?? mErr?.message)
+  if (sErr || cErr || mErr || eErr) {
+    console.error('[entry] โหลดตัวเลือกไม่ได้', sErr?.message ?? cErr?.message ?? mErr?.message ?? eErr?.message)
     return <DataError message="โหลดหน้าบันทึกไม่สำเร็จ" />
   }
 
@@ -73,6 +85,7 @@ export default async function EntryPage({ searchParams }: { searchParams: Promis
         categories={categories ?? []}
         initialKind={isOwner && sp.kind === 'income' ? 'income' : 'expense'}
         initialSiteId={requestedSite}
+        employees={employees ?? []}
       />
 
       {/* ── ที่คีย์ไปแล้ววันนี้ — จังหวะ "บันทึกต่อเนื่อง" ────────────────

@@ -16,6 +16,8 @@ import {
 
 export type DraftSite = { id: string; name: string }
 export type DraftCategory = { id: string; name: string; kind: TxnKind }
+/** คนงานที่เลือกเป็น "คนออกเงินไปก่อน" ได้ (R15) — ชื่ออย่างเดียว ไม่มีค่าแรง */
+export type DraftEmployee = { id: string; full_name: string }
 
 /** ค่าที่แทน "ส่วนกลาง" ในกล่องเลือก — `null` ตอนส่งขึ้นเซิร์ฟเวอร์ */
 export const CENTRAL = '__central__'
@@ -29,7 +31,7 @@ export const CENTRAL = '__central__'
  * หน้าเต็มมีปุ่มลอยท้ายจอ กล่องมีปุ่มในกล่อง
  */
 export function useTxnDraft({
-  role, today, sites, categories, initialKind = 'expense', initialSiteId,
+  role, today, sites, categories, initialKind = 'expense', initialSiteId, employees = [],
 }: {
   role: Role
   /** วันนี้ตามเวลาไทย คำนวณฝั่งเซิร์ฟเวอร์ — ห้ามใช้ new Date() ที่นี่
@@ -39,6 +41,8 @@ export function useTxnDraft({
   categories: DraftCategory[]
   initialKind?: TxnKind
   initialSiteId?: string
+  /** ว่าง = ไม่มีช่อง "ใครออกเงินไปก่อน" */
+  employees?: DraftEmployee[]
 }) {
   const isOwner = role === 'owner'
   const [kind, setKind] = useState<TxnKind>(initialKind)
@@ -59,6 +63,8 @@ export function useTxnDraft({
     incomeKind: 'installment' as IncomeKind,
     installmentNo: '',
     note: '',
+    /** '' = บริษัทจ่ายเอง · id = คนงานคนนั้นออกเงินไปก่อน (R15) */
+    owedEmployeeId: '',
   })
 
   // หมวดกรองตามชนิดที่เลือกอยู่ — เลือกรายรับแล้วต้องไม่เห็นหมวดของรายจ่าย
@@ -151,6 +157,7 @@ export function useTxnDraft({
           txnDate: form.txnDate,
           payMethod: form.payMethod,
           note: form.note,
+          ...(kind === 'expense' && form.owedEmployeeId ? { owedEmployeeId: form.owedEmployeeId } : {}),
           ...(kind === 'income'
             ? {
                 incomeKind: form.incomeKind,
@@ -175,7 +182,13 @@ export function useTxnDraft({
       else toast.success(isOwner ? 'บันทึกแล้ว' : 'บันทึกแล้ว รอเจ้าของอนุมัติ')
       for (const s of slips) URL.revokeObjectURL(s.preview)
       setSlips([])
-      setForm((f) => ({ ...f, amount: '', note: '', installmentNo: '' }))
+      // "ใครออกเงินก่อน" ล้างทุกครั้ง — บิลใบถัดไปส่วนใหญ่บริษัทจ่ายเอง ค้างไว้แล้ว
+      // เผลอคีย์ต่อ = บริษัทติดเงินคนงานโดยที่ไม่มีใครตั้งใจ
+      setForm((f) => ({ ...f, amount: '', note: '', installmentNo: '', owedEmployeeId: '' }))
+      if (kind === 'expense' && form.owedEmployeeId) {
+        const who = employees.find((e) => e.id === form.owedEmployeeId)?.full_name
+        if (who) toast.message(isOwner ? `บันทึกว่า ${who} ออกเงินไปก่อน · คืนให้ตอนจ่ายค่าแรง` : `${who} ออกเงินไปก่อน · เจ้าของอนุมัติแล้วจะคืนตอนจ่ายค่าแรง`)
+      }
       return true
     } catch {
       toast.error('เชื่อมต่อไม่ได้ ตรวจสอบสัญญาณแล้วลองใหม่')
@@ -195,7 +208,7 @@ export function useTxnDraft({
   return {
     isOwner, kind, switchKind, form, set, slips, addFile, removeSlip,
     uploading, busy, submit, err, amountNumber, amountValid, visibleCategories,
-    cameraRef, galleryRef, amountRef, currentSite, scopeLabel, today, sites,
+    cameraRef, galleryRef, amountRef, currentSite, scopeLabel, today, sites, employees,
   }
 }
 
@@ -251,6 +264,7 @@ export function TxnDraftFields({
   const {
     isOwner, kind, form, set, err, amountNumber, amountValid, visibleCategories,
     slips, addFile, removeSlip, uploading, cameraRef, galleryRef, amountRef, today, sites,
+    employees,
   } = draft
   const id = (n: string) => `${idPrefix}${n}`
 
@@ -379,6 +393,32 @@ export function TxnDraftFields({
             })}
           </div>
         </div>
+
+        {/* ── ใครจ่ายเงินไป (R15) ──────────────────────────────────
+            หัวหน้างานซื้อน้ำแข็ง/จ่ายค่าส่งของด้วยเงินตัวเอง · รายจ่ายยังเข้าต้นทุน
+            ของโครงการตามปกติ **ครั้งเดียว** · ระบบแค่จำไว้ว่าต้องคืนเงินให้ใคร
+            แล้วบวกให้ตอนกดจ่ายค่าแรง (การคืนเงินไม่ใช่ต้นทุนใหม่) */}
+        {kind === 'expense' && employees.length > 0 && (
+          <div>
+            <label htmlFor={id('owed')} className="label-base">ใครจ่ายเงินไป</label>
+            <select
+              id={id('owed')}
+              value={form.owedEmployeeId}
+              onChange={(e) => set('owedEmployeeId', e.target.value)}
+              className="input-base"
+            >
+              <option value="">บริษัทจ่ายเอง</option>
+              {employees.map((e) => (
+                <option key={e.id} value={e.id}>{e.full_name} ออกเงินไปก่อน</option>
+              ))}
+            </select>
+            {form.owedEmployeeId && (
+              <p className="mt-1 text-xs text-muted-token">
+                บวกคืนให้ตอนจ่ายค่าแรง · ไม่นับซ้ำเป็นต้นทุน
+              </p>
+            )}
+          </div>
+        )}
 
         {kind === 'income' && (
           <>

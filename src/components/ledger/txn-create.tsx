@@ -8,7 +8,7 @@ import type { Role } from '@/lib/auth/current-user'
 import { fmtBaht } from '@/lib/format'
 import {
   TxnDraftFields, TxnKindSwitch, useTxnDraft,
-  type DraftCategory, type DraftSite,
+  type DraftCategory, type DraftEmployee, type DraftSite,
 } from '@/components/ledger/txn-draft'
 
 /**
@@ -28,12 +28,15 @@ export function TxnCreateButton({
   categories,
   /** โครงการที่หน้ากำลังกรองอยู่ — เปิดกล่องมาแล้วอยู่ที่โครงการนั้นเลย */
   initialSiteId,
+  employees,
 }: {
   role: Role
   today: string
   sites: DraftSite[]
   categories: DraftCategory[]
   initialSiteId?: string
+  /** คนงานสำหรับช่อง "ใครจ่ายเงินไป" (R15) */
+  employees?: DraftEmployee[]
 }) {
   const [open, setOpen] = useState(false)
   const [seq, setSeq] = useState(0)
@@ -58,6 +61,7 @@ export function TxnCreateButton({
           sites={sites}
           categories={categories}
           initialSiteId={initialSiteId}
+          employees={employees}
           onClose={() => setOpen(false)}
         />
       )}
@@ -66,17 +70,18 @@ export function TxnCreateButton({
 }
 
 function CreateDialog({
-  role, today, sites, categories, initialSiteId, onClose,
+  role, today, sites, categories, initialSiteId, employees, onClose,
 }: {
   role: Role
   today: string
   sites: DraftSite[]
   categories: DraftCategory[]
   initialSiteId?: string
+  employees?: DraftEmployee[]
   onClose: () => void
 }) {
   const router = useRouter()
-  const draft = useTxnDraft({ role, today, sites, categories, initialSiteId })
+  const draft = useTxnDraft({ role, today, sites, categories, initialSiteId, employees })
   const blocked = draft.busy || draft.uploading
 
   const save = async (keepOpen: boolean) => {

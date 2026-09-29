@@ -83,7 +83,8 @@ export default async function LedgerPage({
     .select(`
       id, kind, amount, txn_date, pay_method, status, note, income_kind, installment_no, rejected_reason,
       site_id, created_by, created_at, category_id, mcp_key_id, sites(name), categories(name),
-      profiles!transactions_created_by_fkey(full_name), attachments(id)
+      profiles!transactions_created_by_fkey(full_name), attachments(id),
+      owed_kind, settled_run_id, owed:employees!transactions_owed_employee_id_fkey(full_name)
     `)
   if (status !== 'all') listQuery = listQuery.eq('status', status)
   if (kind !== 'all') listQuery = listQuery.eq('kind', kind)
@@ -118,7 +119,7 @@ export default async function LedgerPage({
   }
 
   const [
-    listResult, siteFilterName, sitesResult, categoriesResult, rejectedTotal,
+    listResult, siteFilterName, sitesResult, categoriesResult, employeesResult, rejectedTotal,
     summary, wageDue, ...counts
   ] = await Promise.all([
     listQuery
@@ -149,6 +150,13 @@ export default async function LedgerPage({
       .select('id, name, kind')
       .eq('is_active', true)
       .order('sort_order', { ascending: true })
+      .range(0, PAGE_SIZE * 4 - 1),
+    // ช่อง "ใครจ่ายเงินไป" ของกล่องบันทึก (R15) — ชื่ออย่างเดียว
+    sb
+      .from('employees')
+      .select('id, full_name')
+      .eq('is_active', true)
+      .order('full_name', { ascending: true })
       .range(0, PAGE_SIZE * 4 - 1),
     // 🔴 ตัวเลขบนเมนู "รายการ" = จำนวนใบที่ถูกตีกลับ **ทั้งหมด** ไม่ผูกกับตัวกรอง
     // ของหน้านี้ (layout เป็นคนนับ) · ถ้าเอาตัวเลขที่ถูกกรองแล้วมาอธิบายป้ายนั้น
@@ -293,6 +301,7 @@ export default async function LedgerPage({
             sites={sitesResult.data ?? []}
             categories={categoriesResult.data ?? []}
             initialSiteId={sp.site && sp.site !== 'central' ? sp.site : undefined}
+            employees={employeesResult.data ?? []}
           />
         }
       />

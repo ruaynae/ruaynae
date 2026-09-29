@@ -934,31 +934,40 @@ export type Database = {
         Row: {
           accrued: number
           advance_deducted: number
+          bonus: number
+          breakdown: Json | null
           created_at: string
           days: number
           employee_id: string
           id: string
           net_paid: number
+          reimbursed: number
           run_id: string
         }
         Insert: {
           accrued?: number
           advance_deducted?: number
+          bonus?: number
+          breakdown?: Json | null
           created_at?: string
           days?: number
           employee_id: string
           id?: string
           net_paid?: number
+          reimbursed?: number
           run_id: string
         }
         Update: {
           accrued?: number
           advance_deducted?: number
+          bonus?: number
+          breakdown?: Json | null
           created_at?: string
           days?: number
           employee_id?: string
           id?: string
           net_paid?: number
+          reimbursed?: number
           run_id?: string
         }
         Relationships: [
@@ -982,6 +991,7 @@ export type Database = {
         Row: {
           closed_at: string | null
           closed_by: string | null
+          covers_work: boolean
           created_at: string
           employee_id: string | null
           id: string
@@ -997,6 +1007,7 @@ export type Database = {
         Insert: {
           closed_at?: string | null
           closed_by?: string | null
+          covers_work?: boolean
           created_at?: string
           employee_id?: string | null
           id?: string
@@ -1012,6 +1023,7 @@ export type Database = {
         Update: {
           closed_at?: string | null
           closed_by?: string | null
+          covers_work?: boolean
           created_at?: string
           employee_id?: string | null
           id?: string
@@ -1416,10 +1428,13 @@ export type Database = {
           kind: Database["public"]["Enums"]["txn_kind"]
           mcp_key_id: string | null
           note: string | null
+          owed_employee_id: string | null
+          owed_kind: Database["public"]["Enums"]["owed_kind"] | null
           pay_method: Database["public"]["Enums"]["pay_method"]
           period_month: string | null
           recurring_id: string | null
           rejected_reason: string | null
+          settled_run_id: string | null
           site_id: string | null
           status: Database["public"]["Enums"]["txn_status"]
           txn_date: string
@@ -1439,10 +1454,13 @@ export type Database = {
           kind: Database["public"]["Enums"]["txn_kind"]
           mcp_key_id?: string | null
           note?: string | null
+          owed_employee_id?: string | null
+          owed_kind?: Database["public"]["Enums"]["owed_kind"] | null
           pay_method?: Database["public"]["Enums"]["pay_method"]
           period_month?: string | null
           recurring_id?: string | null
           rejected_reason?: string | null
+          settled_run_id?: string | null
           site_id?: string | null
           status?: Database["public"]["Enums"]["txn_status"]
           txn_date: string
@@ -1462,10 +1480,13 @@ export type Database = {
           kind?: Database["public"]["Enums"]["txn_kind"]
           mcp_key_id?: string | null
           note?: string | null
+          owed_employee_id?: string | null
+          owed_kind?: Database["public"]["Enums"]["owed_kind"] | null
           pay_method?: Database["public"]["Enums"]["pay_method"]
           period_month?: string | null
           recurring_id?: string | null
           rejected_reason?: string | null
+          settled_run_id?: string | null
           site_id?: string | null
           status?: Database["public"]["Enums"]["txn_status"]
           txn_date?: string
@@ -1501,10 +1522,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "transactions_owed_employee_id_fkey"
+            columns: ["owed_employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "transactions_recurring_id_fkey"
             columns: ["recurring_id"]
             isOneToOne: false
             referencedRelation: "recurring_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_settled_run_id_fkey"
+            columns: ["settled_run_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_runs"
             referencedColumns: ["id"]
           },
           {
@@ -1835,13 +1870,23 @@ export type Database = {
         }[]
       }
       pay_employee_wage: {
-        Args: { p_employee: string }
+        Args: { p_bonus?: number; p_employee: string; p_expected?: number }
         Returns: {
           accrued: number
+          bonus: number
           days: number
           deducted: number
           paid: number
+          reimbursed: number
           run_id: string
+        }[]
+      }
+      pay_employees: {
+        Args: { p_items: Json }
+        Returns: {
+          employee_id: string
+          full_name: string
+          paid: number
         }[]
       }
       payroll_adjustment_days: {
@@ -1868,6 +1913,7 @@ export type Database = {
           extra: number
           full_name: string
           job_title: string
+          owed: number
         }[]
       }
       payroll_outstanding: {
@@ -1915,8 +1961,10 @@ export type Database = {
         Args: { p_from: string; p_site?: string; p_to: string }
         Returns: {
           advance_paid: number
+          bonus_paid: number
           ot_total: number
           payroll_paid: number
+          reimbursed_paid: number
           wage_total: number
           work_days: number
           work_units: number
@@ -2047,6 +2095,7 @@ export type Database = {
         | "advance_pending"
         | "advance_approved"
         | "advance_rejected"
+      owed_kind: "reimburse" | "bonus"
       pay_method: "cash" | "transfer"
       payroll_status: "open" | "closed"
       site_status: "planning" | "active" | "paused" | "done" | "cancelled"
@@ -2197,6 +2246,7 @@ export const Constants = {
         "advance_approved",
         "advance_rejected",
       ],
+      owed_kind: ["reimburse", "bonus"],
       pay_method: ["cash", "transfer"],
       payroll_status: ["open", "closed"],
       site_status: ["planning", "active", "paused", "done", "cancelled"],

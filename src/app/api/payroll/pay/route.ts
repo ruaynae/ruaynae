@@ -2,18 +2,20 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { getCurrentUserOrNull } from '@/lib/auth/current-user'
 import { getSupabaseServer } from '@/lib/supabase/server'
 import { isUuid } from '@/lib/transactions'
+import { payErrorCode } from '@/lib/payroll'
 
 export const runtime = 'nodejs'
 
 /**
- * POST /api/payroll/pay — จ่ายค่าแรงที่ค้างอยู่ของคนคนหนึ่งให้หมด
+ * POST /api/payroll/pay — จ่ายยอดค้างของคนคนหนึ่งให้หมด
+ * body: `{ employeeId, bonus?, expected? }`
  *
  * 🔴 งานทั้งหมดอยู่ใน RPC `pay_employee_wage` = ทรานแซกชันเดียว
  * แยกเป็นหลาย request จากที่นี่แล้ววันหนึ่งจะบันทึกว่าจ่ายแล้วสำเร็จ แต่หัก
  * ยอดเบิกไม่สำเร็จ เหลือใบเบิกที่ยังไม่ถูกหักซึ่งจะถูกหักซ้ำในครั้งถัดไป
  *
- * เจ้าของไม่ต้องเลือกช่วงวัน — RPC ใช้ "วันแรกถึงวันสุดท้ายที่คนนี้ยังไม่ได้รับเงิน"
- * จึงไม่มีทางเลือกช่วงผิดจนจ่ายไม่ครบ หรือเลือกซ้อนกับที่จ่ายไปแล้ว
+ * `expected` = เงินสดที่เจ้าของเห็นบนจอก่อนกด · ฐานข้อมูลคำนวณเองแล้วเทียบ
+ * ไม่ตรง = `BALANCE_CHANGED` (ไม่จ่ายตัวเลขที่เจ้าของไม่ได้ยืนยัน · R15)
  */
 export async function POST(req: NextRequest) {
   const me = await getCurrentUserOrNull()
@@ -31,21 +33,26 @@ export async function POST(req: NextRequest) {
   if (!isUuid(employeeId)) {
     return NextResponse.json({ error: 'EMPLOYEE_REQUIRED' }, { status: 400 })
   }
+  const bonus = body.bonus === undefined || body.bonus === null ? 0 : Number(body.bonus)
+  if (!Number.isFinite(bonus) || bonus < 0) {
+    return NextResponse.json({ error: 'BONUS_INVALID' }, { status: 400 })
+  }
+  const expected = body.expected === undefined || body.expected === null ? undefined : Number(body.expected)
+  if (expected !== undefined && !Number.isFinite(expected)) {
+    return NextResponse.json({ error: 'BAD_REQUEST' }, { status: 400 })
+  }
 
   const sb = await getSupabaseServer()
-  const { data, error } = await sb.rpc('pay_employee_wage', { p_employee: employeeId })
+  const { data, error } = await sb.rpc('pay_employee_wage', {
+    p_employee: employeeId,
+    p_bonus: bonus,
+    ...(expected === undefined ? {} : { p_expected: expected }),
+  })
 
   if (error) {
-    const msg = error.message ?? ''
-    if (/NOT_FOUND/.test(msg)) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
-    if (/NOTHING_TO_PAY/.test(msg)) {
-      return NextResponse.json({ error: 'NOTHING_TO_PAY' }, { status: 409 })
-    }
-    if (/FORBIDDEN|row-level security/i.test(msg)) {
-      return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
-    }
-    console.error('[payroll] จ่ายค่าแรงไม่สำเร็จ', msg)
-    return NextResponse.json({ error: 'PAY_FAILED' }, { status: 500 })
+    const { code, status } = payErrorCode(error.message ?? '')
+    if (status === 500) console.error('[payroll] จ่ายค่าแรงไม่สำเร็จ', error.message)
+    return NextResponse.json({ error: code }, { status })
   }
 
   const row = data?.[0]
@@ -53,6 +60,8 @@ export async function POST(req: NextRequest) {
     ok: true,
     days: Number(row?.days ?? 0),
     accrued: Number(row?.accrued ?? 0),
+    reimbursed: Number(row?.reimbursed ?? 0),
+    bonus: Number(row?.bonus ?? 0),
     deducted: Number(row?.deducted ?? 0),
     paid: Number(row?.paid ?? 0),
   })

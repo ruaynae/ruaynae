@@ -3,7 +3,7 @@ import { getCurrentUserOrNull } from '@/lib/auth/current-user'
 import { getSupabaseServer } from '@/lib/supabase/server'
 import { todayInBangkok } from '@/lib/format'
 import { attachSlips, parseSlips } from '@/lib/attachments'
-import { parseTxnFields } from '@/lib/transactions'
+import { parseOwedEmployee, parseTxnFields } from '@/lib/transactions'
 
 export const runtime = 'nodejs'
 
@@ -30,6 +30,9 @@ export async function POST(req: NextRequest) {
   const parsed = parseTxnFields(body, todayInBangkok())
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 })
 
+  const owed = parseOwedEmployee(body)
+  if (!owed.ok) return NextResponse.json({ error: owed.error }, { status: 400 })
+
   const slipsParsed = parseSlips((body as Record<string, unknown>)?.attachments)
   if (!slipsParsed.ok) return NextResponse.json({ error: slipsParsed.error }, { status: 400 })
   const slips = slipsParsed.slips
@@ -52,6 +55,8 @@ export async function POST(req: NextRequest) {
     .from('transactions')
     .insert({
       ...parsed.fields,
+      // คนงานที่ออกเงินให้ก่อน (R15) · ชนิด `reimburse` ถูกเติมที่ trigger
+      ...(owed.value ? { owed_employee_id: owed.value } : {}),
       // 🔴 สถานะตัดสินฝั่งเซิร์ฟเวอร์จาก role เท่านั้น — ค่าที่ client ส่งมา
       // ถูกทิ้งไปตั้งแต่ `parseTxnFields` แล้ว (ไม่มีฟิลด์ status ในนั้น)
       // เจ้าของคีย์เอง = อนุมัติทันที · หัวหน้าโครงการคีย์ = เข้าคิวรออนุมัติ
@@ -74,7 +79,10 @@ export async function POST(req: NextRequest) {
       }
     }
     const msg = error.message ?? ''
-    for (const code of ['INCOME_FORBIDDEN', 'SITE_REQUIRED', 'APPROVE_FORBIDDEN', 'CATEGORY_KIND_MISMATCH']) {
+    for (const code of [
+      'INCOME_FORBIDDEN', 'SITE_REQUIRED', 'APPROVE_FORBIDDEN', 'CATEGORY_KIND_MISMATCH',
+      'OWED_EMPLOYEE_INVALID', 'OWED_FORBIDDEN',
+    ]) {
       if (msg.includes(code)) return NextResponse.json({ error: code }, { status: 403 })
     }
     if (error.code === '42501') return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })

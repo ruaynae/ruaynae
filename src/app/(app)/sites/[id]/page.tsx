@@ -131,7 +131,8 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
       .select(`
         id, kind, amount, txn_date, pay_method, status, note, income_kind, installment_no,
         rejected_reason, site_id, created_by, created_at, category_id, mcp_key_id, sites(name),
-        categories(name), profiles!transactions_created_by_fkey(full_name), attachments(id)
+        categories(name), profiles!transactions_created_by_fkey(full_name), attachments(id),
+        owed_kind, settled_run_id, owed:employees!transactions_owed_employee_id_fkey(full_name)
       `)
       .eq('site_id', id)
       .order('txn_date', { ascending: false })

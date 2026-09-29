@@ -187,6 +187,26 @@ export function parseTxnFields(b: unknown, today: string): TxnParse {
 }
 
 /**
+ * คนงานที่ออกเงินแทนบริษัท (R15) — **แยกจาก `parseTxnFields` โดยตั้งใจ**
+ *
+ * 🔴 คืน `undefined` เมื่อไม่ได้ส่งมาเลย = "ไม่แตะ" · ถ้ารวมไว้ใน `TxnFields`
+ * การแก้รายการจากหน้าจอที่ไม่รู้จักช่องนี้ (MCP · กล่องแก้เวอร์ชันเก่า) จะเขียน
+ * `null` ทับ แล้วหนี้ที่บริษัทติดคนงานหายเงียบ ๆ
+ * · `null` = บริษัทจ่ายเอง · uuid = คนนั้นออกให้ก่อน
+ */
+export function parseOwedEmployee(
+  b: unknown,
+): { ok: true; value: string | null | undefined } | { ok: false; error: string } {
+  const o = (b ?? {}) as Record<string, unknown>
+  if (!('owedEmployeeId' in o) && !('owed_employee_id' in o)) return { ok: true, value: undefined }
+  const raw = o.owedEmployeeId ?? o.owed_employee_id
+  if (raw === null || raw === undefined || raw === '') return { ok: true, value: null }
+  if (!isUuid(raw)) return { ok: false, error: 'OWED_EMPLOYEE_INVALID' }
+  if (o.kind !== undefined && o.kind !== 'expense') return { ok: false, error: 'OWED_ON_INCOME' }
+  return { ok: true, value: raw }
+}
+
+/**
  * รหัสเหตุผลจาก API และจาก guard trigger → ข้อความภาษาคน
  *
  * อยู่ที่นี่ที่เดียวเพราะมีสองหน้าที่ต้องแปลรหัสชุดเดียวกัน (ฟอร์มบันทึก
@@ -229,6 +249,11 @@ export const TXN_MESSAGES: Record<string, string> = {
   DELETE_FAILED: 'ลบไม่สำเร็จ กรุณาลองใหม่',
   READ_FAILED: 'อ่านข้อมูลไม่สำเร็จ กรุณาลองใหม่',
   ATTACHMENT_INVALID: 'สลิปที่แนบมาไม่ถูกต้อง กรุณาแนบใหม่',
+  // ── คนงานออกเงินให้ก่อน (R15) ──────────────────────────────────
+  OWED_EMPLOYEE_INVALID: 'ไม่พบคนงานที่เลือก หรือปิดใช้งานไปแล้ว',
+  OWED_ON_INCOME: 'รายรับเลือกคนออกเงินก่อนไม่ได้',
+  OWED_FORBIDDEN: 'โบนัสและการคืนเงินเกิดจากปุ่มจ่ายค่าแรงเท่านั้น',
+  PAYROLL_CLOSED: 'รายการนี้คืนเงินให้คนงานไปแล้ว แก้ยอดหรือลบไม่ได้',
 }
 
 export const txnError = (code?: string) =>

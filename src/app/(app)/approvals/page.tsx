@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/ui/states'
 import { DataError } from '@/components/ui/data-error'
 import { ApprovalActions } from './approvals-client'
 import { ApprovalDetailButton } from './approval-detail'
+import { OwedChip } from '@/components/ledger/txn-row'
 import { PageHeader } from '@/components/ui/page-header'
 
 export const metadata = { title: 'รออนุมัติ' }
@@ -36,7 +37,8 @@ export default async function ApprovalsPage({
     .select(`
       id, kind, amount, txn_date, pay_method, note, income_kind, installment_no,
       site_id, created_at, sites(name), categories(name), profiles!transactions_created_by_fkey(full_name),
-      attachments(id)
+      attachments(id),
+      owed_kind, settled_run_id, owed:employees!transactions_owed_employee_id_fkey(full_name)
     `)
     .eq('status', 'pending')
 
@@ -265,6 +267,8 @@ export default async function ApprovalsPage({
                         ส่วนกลาง
                       </span>
                     )}
+                    {/* R15 · อนุมัติแล้ว = บริษัทต้องคืนเงินคนนี้ตอนจ่ายค่าแรง */}
+                    {t.owed_kind && <OwedChip txn={t} />}
                   </div>
                   <div className="mt-0.5 text-sm text-muted-token">
                     {fmtDate(t.txn_date)} · {PAY_METHOD_LABEL[t.pay_method]}

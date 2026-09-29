@@ -95,12 +95,12 @@ create type advance_status as enum ('pending','approved','rejected');
 | `attendance` | `work_date`, `site_id`, `employee_id`, `work_units`, `ot_amount`, **`wage_snapshot`**, `amount` (generated), `mcp_key_id` | supervisor เขียนได้เฉพาะโครงการตัวเองและวันที่ยังไม่ปิดรอบ |
 | `wage_adjustment_presets` | รายการปรับค่าแรงสำเร็จรูป (R10): `name`, `kind` (`add`/`deduct`), `amount` (ยอดเริ่มต้น), `sort_order`, `is_active` · ตั้งที่ `/settings/wage-adjustments` | **owner เท่านั้น** |
 | `attendance_adjustments` | บรรทัดปรับของการลงชื่อแต่ละครั้ง: `attendance_id`, `preset_id` (null = พิมพ์เอง), `name` (สำเนา), `kind`, `amount` (บวกเสมอ ทิศทางอยู่ที่ `kind`) · **trigger `sync_attendance_ot` เขียนยอดสุทธิลง `attendance_wages.ot_amount`** — ห้ามใครเขียน `ot_amount` ตรง ให้เรียก `set_attendance_ot()` | **owner เท่านั้น** |
-| `transactions` | `kind`, `site_id` (NULL = ส่วนกลาง), `category_id`, `amount`, `txn_date`, `pay_method`, `status`, `income_kind`, `installment_no`, **`mcp_key_id`** (NULL = คนคีย์เอง · มีค่า = AI คีย์ผ่านคีย์ใบนั้น) | supervisor เขียน `pending` ของโครงการตัวเอง · **แก้เป็น `approved` ได้เฉพาะ owner** |
+| `transactions` | `kind`, `site_id` (NULL = ส่วนกลาง), `category_id`, `amount`, `txn_date`, `pay_method`, `status`, `income_kind`, `installment_no`, **`mcp_key_id`** (NULL = คนคีย์เอง · มีค่า = AI คีย์ผ่านคีย์ใบนั้น) · **R15:** `owed_employee_id` (คนงานที่ออกเงินแทนบริษัท/ได้โบนัส) · `owed_kind` (`reimburse`/`bonus`) · `settled_run_id` (คืนเงินในรอบไหน · เขียนได้เฉพาะ `close_payroll_run`) | supervisor เขียน `pending` ของโครงการตัวเอง · **แก้เป็น `approved` ได้เฉพาะ owner** |
 | `attachments` | `transaction_id`, `object_key`, `thumb_key`, `byte_size`, `content_type` | ตาม transaction |
 | `upload_intents` | `object_key`, `thumb_key`, `created_by`, `site_id`, `expires_at`, `consumed_at` | ของตัวเองเท่านั้น |
 | `advances` | เบิกล่วงหน้า: `employee_id`, `amount`, `advance_date` (**เลือกวันเองได้ ลงย้อนหลังได้**), `pay_method`, `site_id`, `payroll_run_id` (มีค่า = หักครบทั้งใบแล้ว), **`deducted_amount`** (หักคืนไปแล้วเท่าไหร่ · > 0 แต่ไม่ครบ = ค้างไปหักรอบหน้า), `mcp_key_id`, **`status`** (R14 · `pending` = คำขอของหัวหน้าโครงการ **ยังไม่ใช่เงิน** · `approved` = จ่ายแล้ว · `rejected` + `rejected_reason`), `approved_by/_at` | supervisor ยื่นคำขอ (`pending`) **โดยไม่ต้องผูกโครงการ** (22 ก.ย. 2569 · ค่าแรงเป็นของคน ไม่ใช่ของโครงการ) และเห็นเฉพาะใบที่ตัวเองยื่น · **เปลี่ยนสถานะเองไม่ได้** · ถ้าเลือกโครงการมา ต้องเป็นโครงการที่ตัวเองดูแล |
-| `payroll_runs` | `period_start`, `period_end`, `site_id`, `status`, `total_accrued`, `total_advance_deducted`, `total_paid` | **owner เท่านั้น** |
-| `payroll_lines` | `run_id`, `employee_id`, `days`, `accrued`, `advance_deducted`, `net_paid` | ตาม run |
+| `payroll_runs` | `period_start`, `period_end`, `site_id`, `employee_id`, `status`, `total_accrued`, `total_advance_deducted`, `total_paid`, **`covers_work`** (false = รอบที่จ่ายแค่เงินที่ออกก่อน/โบนัส · ช่วงวันเป็นแค่ป้าย ไม่ปิดวันทำงาน — §17 ข้อ 31) | **owner เท่านั้น** |
+| `payroll_lines` | `run_id`, `employee_id`, `days`, `accrued`, **`reimbursed`**, **`bonus`**, `advance_deducted`, `net_paid` (= เงินสดที่ยื่นให้) · **`breakdown`** jsonb = สำเนารายละเอียด ณ วันจ่าย (base · adjustments · advances · owed) ที่ใบสรุป `/payroll/slip` อ่าน · null = จ่ายก่อน R15 · **แก้ไม่ได้หลังเขียน** (`guard_payroll_line`) | ตาม run |
 | `recurring_expenses` | ค่าใช้จ่ายรายเดือนที่ระบบลงให้เอง: `name`, `amount`, `category_id`, `site_id` (NULL = ส่วนกลาง), `employee_id` (NULL = ไม่ผูกคน), `day_of_month`, `start_month`, `end_month`, `is_active` | **owner เท่านั้น** |
 | `customers` | ทะเบียนลูกค้าสำหรับเติมที่อยู่ให้ฟอร์มเอกสาร (R12): `name` (unique แบบ trim+lower), `tax_id`, `branch`, `address`, `phone`, `email` · แก้/ลบที่ `/settings/customers` · **ลบแล้วเอกสารเก่าไม่หายและไม่เปลี่ยน** เพราะใบถือสำเนาของตัวเอง | **owner เท่านั้น** |
 | `doc_counters` | ตัวนับเลขที่เอกสารต่อชนิด: `kind` (pk), `prefix`, `pad`, **`last_no`** = เลข**ล่าสุดที่ออกไปแล้ว** ไม่ใช่เลขถัดไป (คำสั่งเจ้าของ 20 ก.ย. 2569) · ไม่มีค่าตั้งต้นในโค้ด — ยังไม่ตั้ง = ออกเอกสารไม่ได้ (`DOC_COUNTER_NOT_SET`) | **owner เท่านั้น** |
@@ -162,6 +162,13 @@ create type advance_status as enum ('pending','approved','rejected');
    `20260922090000`) — เจ้าของคีย์เบิกคือเงินสดออกไปแล้ว ไม่ใช่คำขอ · กฎนี้ทำให้
    client เวอร์ชันเก่า (ที่ยังไม่รู้จักคอลัมน์ `status`) ปลอดภัยด้วย ซึ่งสำคัญมาก
    ในช่วงระหว่าง "apply migration" กับ "deploy โค้ด" ที่ทั้งสองอย่างไม่ได้เกิดพร้อมกัน
+1d. 🔴 **เงินที่คนงานออกให้ก่อน = ต้นทุนของรายจ่ายใบนั้น ไม่ใช่ค่าแรง** (R15 · 29 ก.ย. 2569)
+   · รายจ่ายนับเข้าต้นทุนครั้งเดียวตอนอนุมัติ · ตอนจ่ายค่าแรง `close_payroll_run` แค่**คืนเงินสด**
+   (`payroll_lines.reimbursed`) แล้วตีตรา `settled_run_id` · ห้ามสร้างรายจ่ายอีกใบตอนคืน
+   · **ก้อนที่หักเบิกได้ = ค่าแรงค้าง + เงินที่ออกก่อน + โบนัส** (คำตอบเจ้าของ = หักหนี้ก่อน)
+   · `balance` ของ `payroll_balances()`/`employee_balance_raw()` = ค่าแรงค้าง + `owed` − เบิก
+   · นับเฉพาะ `approved` · รายการที่คืนเงินแล้ว **เจ้าของก็แก้ยอด/ลบไม่ได้** (`PAYROLL_CLOSED`)
+   · โบนัสเกิดจากปุ่มจ่ายเท่านั้น (รายจ่ายส่วนกลางหมวด "โบนัสพนักงาน" ซึ่งปิดใช้งานในฟอร์ม)
 1c. 🔴 **ยอดติดลบ (เบิกเกิน) หักจริง "ตอนกดจ่ายค่าแรง" เท่านั้น ไม่ใช่ตอนลงชื่อ**
    (เจ้าของเลือกเอง 22 ก.ย. 2569) — `คงเหลือ = ค่าแรงที่ยังไม่จ่าย − เบิกที่ยังไม่ถูกหัก`
    · ลงชื่อเข้าโครงการทำให้ **ยอดติดลบลดลงทันทีอยู่แล้ว** เพราะค่าแรงใหม่เข้าสูตร
@@ -214,8 +221,18 @@ FK ทุกตัว + คอลัมน์ที่ใช้กรองจ�
 
 ## 6. เชื่อม Supabase
 
-**PAT เฉพาะโปรเจ็คนี้** — ตั้ง `SUPABASE_PROJECT_REF` + `SUPABASE_ACCESS_TOKEN` แล้วรัน `/setup-supabase-mcp`
+**PAT เฉพาะโปรเจ็คนี้** (เลือกแล้ว ไม่ใช่ OAuth) — ค่าอยู่ใน `.env.local` (`SUPABASE_PROJECT_REF` + `SUPABASE_ACCESS_TOKEN`)
 เปิด **read-only** จนกว่าจะสั่งเขียนชัดเจน · Supabase = **Cloud** (PAT ใช้ management API ซึ่งมีเฉพาะฝั่ง cloud)
+
+| ใช้ทำอะไร | ทาง |
+|---|---|
+| MCP (อ่าน) | `.mcp.json` → `node scripts/supabase-mcp.mjs` อ่าน `.env.local` ของ repo เอง · server ชื่อ **`supabase-ruaynae`** |
+| ยืนยันว่าผูกถูกโปรเจ็ค | `npm run db:mcp-smoke` — ต้องได้ `✅ MCP ผูกกับ kdftrlagqovjsgejahwz` |
+| apply migration / types / advisors | `node scripts/db.mjs file\|types\|advisors\|query` (Management API · ตรึง ref กับ URL ก่อนยิงทุกครั้ง) |
+
+🔴 **ห้ามใช้ MCP ของ plugin (`plugin_kp-supabase-nextjs_supabase`)** — มันอ่าน `${SUPABASE_PROJECT_REF}`
+จากเชลล์ที่เปิดโปรแกรม ซึ่งไม่มีค่า · `get_project_url` ตอบ `https://${SUPABASE_PROJECT_REF}.supabase.co`
+**โดยไม่มี error** (เจอ 29 ก.ย. 2569) · MCP ที่เพิ่มกลางเซสชันยังไม่ถูกโหลดจนกว่าจะรีสตาร์ท → ระหว่างนั้นใช้ `db.mjs`
 
 ### คีย์ API — ใช้ชุดใหม่เท่านั้น (ตัดสินใจแล้ว 30 ส.ค. 2569)
 
@@ -418,6 +435,10 @@ src/
 #                            baht-text.ts = แทน BAHTTEXT ของ Excel · date-range.ts ใช้ร่วมกับ /ledger
     (app)/attendance/adjust-dialog.tsx  กล่องปรับค่าแรงของคนหนึ่งคนในหนึ่งวัน — ใช้ทั้ง /attendance และ /payroll
     (app)/payroll/site-wage-edit.tsx    ดินสอแก้ค่าแรงที่จ่ายจริงในแท็บ "ทำงานที่ไหนบ้าง"
+    (app)/payroll/pay-dialogs.tsx       กล่องจ่ายรายคน (+โบนัส) และ "จ่ายทุกคน" (R15) · ส่ง `expected` เสมอ
+    (app)/payroll/slip/                 ใบสรุปวันจ่าย — ตารางรวม / ใบรายคน / พิมพ์ (อ่าน `payroll_lines.breakdown`)
+    lib/payroll.ts                      สูตรโชว์ก่อนกด (`payNet`) · อ่าน breakdown · รหัส error ของการจ่าย
+    api/payroll/pay · api/payroll/pay-all   RPC `pay_employee_wage` / `pay_employees` (ทรานแซกชันเดียว)
     (app)/sites/[id]/bond-return.tsx    ปุ่ม "ได้รับหลักประกันคืนแล้ว" (R11) · api/sites/[id]/bond-return
     components/reports/bond-report.tsx  แท็บหลักประกันสัญญา · components/overview/bond-alert.tsx แถบเตือนหน้าแรก
     lib/bonds.ts                        ค่าคงที่/ตัวตรวจ/สูตรสถานะ (สูตรเดียวกับ RPC bond_status)
@@ -551,6 +572,16 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
       ฐานลูกค้าได้โดยไม่ทิ้งของค้าง และสวมสิทธิ์ด้วย `set local role authenticated` จึง
       ทดสอบ RLS จริง) · ยังเหลือ **ฝั่ง API กับหน้าจอ** ที่ต้องรันบนฐานที่มีบัญชี `SEED_*`
       และไล่แถว 👤 บนเบราว์เซอร์ · ตารางตรวจรับ `docs/test-plan/R14-advance-requests.md`
+- [ ] **R15 · ใบสรุปวันจ่ายค่าแรง + เงินที่คนงานออกให้ก่อน + โบนัส** (29 ก.ย. 2569) —
+      ✅ **apply บนฐานจริงแล้ว** · `verify-payday-db.mjs` **35/35** · R14 ซ้ำ 29/29 · gate เขียว
+      · ยอด/สถานะจ่ายแล้วของทุกแถวก่อน-หลัง apply ตรงกันทุกไบต์ · **เหลือแถว 👤 บนเบราว์เซอร์ด้วยบัญชีเจ้าของ**
+      (ห้ามทดสอบ "จ่ายทุกคน" บนฐานลูกค้า = จ่ายเงินจริง) ·
+      คำตอบเจ้าของ: ใบสรุปทั้งแบบรวมและรายคน · **เงินที่ออกก่อนและโบนัสเอาไปหักหนี้เบิกก่อน**
+      · โบนัสปีละครั้งกรอกตอนกดจ่าย · หัวหน้าโครงการและเจ้าของคีย์เงินที่ออกก่อนได้
+      (ส่วนกลางเจ้าของคีย์เท่านั้น — ไม่แตะ policy เดิม) · ปุ่มจ่ายทุกคนแบบติ๊กออกได้
+      · ก้อน A `payroll_lines.breakdown` + `/payroll/slip` + จ่ายทุกคน → ก้อน B เงินที่ออกก่อน
+      (`transactions.owed_employee_id` — **เป็นต้นทุนของรายจ่ายนั้นครั้งเดียว การคืนเงินไม่ใช่ต้นทุน**)
+      → ก้อน C โบนัส · ตารางตรวจรับ `docs/test-plan/R15-payday-slip.md`
 - [x] **R9 · รอบคำสั่งเจ้าของ 4 ก.ย. 2569** — เรียกหน่วยงานว่า "โครงการ" ทั้งระบบ · ปิดการ์ด
       "งานวันนี้" · ต้นทุนสะสมแยกสามก้อน (ค่าแรง/ค่าวัสดุ/อื่น ๆ) + ธง `categories.is_material`
       · ยอดรวมแยกหมวดในหน้าโครงการ · **จ่ายค่าแรงรายคนปุ่มเดียว** (เลิกใช้คำว่า "รอบจ่าย"
@@ -871,6 +902,22 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
    · 🔴 **ถ้าคำสั่งสำเร็จแทนที่จะโยน exception = แดงทันที** ไม่ใช่เขียว เพราะแปลว่า
    รายงานไม่ถูกส่งกลับ และอาจมีของค้างจริง · ตัวอย่าง: `scripts/verify-advance-db.mjs`
    (R14 · 25 แถว รันบนฐานลูกค้า 22 ก.ย. 2569 · ตรวจของค้างหลังรัน = 0 ทุกตาราง)
+
+31. **รอบจ่ายที่ไม่มีวันทำงาน ถ้ามีช่วงวันที่ = ล็อกวันทำงานที่ยังไม่ได้จ่าย** (เจอตอนออกแบบ R15 · 29 ก.ย. 2569)
+   คนที่มีแต่ "เงินที่ออกให้ก่อน" หรือโบนัสต้องกดจ่ายได้ แต่ `payroll_runs` บังคับมีช่วงวัน ·
+   `attendance_paid()` ถือว่า **ทุกวันในช่วงของรอบที่ปิดแล้ว = จ่ายแล้ว** (มี `payroll_lines` ของคนนั้น)
+   → รอบคืนเงินช่วง "วันนี้" ทำให้ลงชื่อวันนี้ทีหลัง**ไม่ได้** (`PAYROLL_CLOSED`) และถ้าลงไว้ก่อนแล้ว
+   ค่าแรงวันนั้นจะหายจากยอดค้างจ่าย **โดยไม่เคยมีเงินออก** · exclusion constraint ก็จะชนรอบค่าแรงวันเดียวกัน
+   · **แก้:** `payroll_runs.covers_work` — false สำหรับรอบที่ไม่มีวันทำงาน · `attendance_paid()` และ
+   `employee_balance_raw()` กรอง `pr.covers_work` · exclusion constraint มี `where (covers_work)`
+   · แถวตรวจ `R15-B-DB-17` (ลงชื่อหลังรอบคืนเงินต้องได้ และค่าแรงยังค้าง) คู่กับ `R15-B-DB-18` (รอบปกติยังล็อก)
+   · **บทเรียน:** ตารางที่มีคอลัมน์ช่วงวัน ถูกอ่านเป็น "สิทธิ์ครอบครองวันเหล่านั้น" โดยโค้ดที่อื่นเสมอ
+   — ก่อนสร้างแถวแบบใหม่ในตารางนั้น `grep` หาทุกที่ที่อ่าน `period_start`/`period_end`
+
+32. **Windows: `process.exit()` หลัง `fetch` ทำให้ node ล้มด้วย libuv assert (exit 127)** —
+   รหัสออกไม่ได้บอกผลตรวจจริง · สคริปต์ตรวจใหม่ใช้ `process.exitCode = …` แล้วปล่อยให้จบเอง
+   (`verify-payday-db.mjs`) · ข้อความ `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)`
+   ที่โผล่ท้าย `db.mjs` คือตัวเดียวกัน ไม่ใช่ error ของฐานข้อมูล
 
 ## 18. ตัวแปรสภาพแวดล้อม
 

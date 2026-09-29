@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "supabase-ruaynae": {
+      "command": "node",
+      "args": ["scripts/supabase-mcp.mjs"]
+    }
+  }
+}

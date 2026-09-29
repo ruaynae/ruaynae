@@ -7,7 +7,7 @@ import type { Role } from '@/lib/auth/current-user'
 import { fmtBaht } from '@/lib/format'
 import {
   TxnDraftFields, TxnKindSwitch, useTxnDraft,
-  type DraftCategory, type DraftSite,
+  type DraftCategory, type DraftEmployee, type DraftSite,
 } from '@/components/ledger/txn-draft'
 import type { TxnKind } from '@/lib/transactions'
 import { PageHeader } from '@/components/ui/page-header'
@@ -19,7 +19,7 @@ import { PageHeader } from '@/components/ui/page-header'
  * ใช้ชุดเดียวกัน · ที่ต่างกันคือปุ่มบันทึกลอยเหนือแถบเมนู กับหัวเรื่องเท่านั้น
  */
 export function EntryForm({
-  role, today, sites, categories, initialKind = 'expense', initialSiteId,
+  role, today, sites, categories, initialKind = 'expense', initialSiteId, employees,
 }: {
   role: Role
   today: string
@@ -29,9 +29,11 @@ export function EntryForm({
   initialKind?: TxnKind
   /** เปิดหน้าจากปุ่มลัดบนหน้าโครงการด้วย ?site= — หน้า page ตรวจแล้วว่าโครงการนี้เลือกได้จริง */
   initialSiteId?: string
+  /** คนงานสำหรับช่อง "ใครจ่ายเงินไป" (R15) */
+  employees?: DraftEmployee[]
 }) {
   const router = useRouter()
-  const draft = useTxnDraft({ role, today, sites, categories, initialKind, initialSiteId })
+  const draft = useTxnDraft({ role, today, sites, categories, initialKind, initialSiteId, employees })
 
   // ยกเลิกแล้วกลับไปหน้าโครงการที่กำลังคีย์ให้ · ส่วนกลางไม่มีหน้าของตัวเอง
   // จึงกลับหน้าแรก แทนที่จะพาไปหน้าที่ไม่เกี่ยวกับสิ่งที่เพิ่งทำ

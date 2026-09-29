@@ -385,11 +385,22 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
                   icon={HandCoins}
                 />
                 <Cell
-                  label="จ่ายค่าแรงแล้ว"
+                  label="จ่ายวันจ่ายค่าแรง"
                   value={fmtBaht(Number(labor?.payroll_paid ?? 0))}
                   icon={Banknote}
                 />
               </div>
+              {/* R15 · เงินสดวันจ่ายรวมเงินคืนที่คนงานออกให้ก่อนและโบนัสด้วย
+                  ต้องบอกให้เห็น ไม่งั้นยอดนี้อ่านเหมือน "ค่าแรง" ล้วน ๆ */}
+              {(Number(labor?.reimbursed_paid ?? 0) > 0 || Number(labor?.bonus_paid ?? 0) > 0) && (
+                <p className="border-t border-line-soft px-4 py-2 text-xs text-muted-token tnum">
+                  ในยอดจ่ายวันจ่ายค่าแรง รวม
+                  {Number(labor?.reimbursed_paid ?? 0) > 0 &&
+                    ` คืนเงินที่คนงานออกให้ก่อน ${fmtBaht(Number(labor?.reimbursed_paid))}`}
+                  {Number(labor?.bonus_paid ?? 0) > 0 && ` · โบนัส ${fmtBaht(Number(labor?.bonus_paid))}`}
+                  {' '}(ก่อนหักเบิก)
+                </p>
+              )}
               {/* 🔴 กฎที่พังง่ายที่สุดของทั้งระบบ (DESIGN.md §5.4) — ต้องเขียนไว้
                   ตรงที่ตัวเลขอยู่ ไม่ใช่ไปอยู่ในเอกสารที่ไม่มีใครเปิด */}
               <p className="border-t border-line-soft px-4 py-3 text-xs leading-5 text-muted-token">

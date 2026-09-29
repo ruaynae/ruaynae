@@ -104,6 +104,10 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
     if (msg.includes('EMPLOYEE_IN_PAYROLL')) {
       return NextResponse.json({ error: 'EMPLOYEE_IN_PAYROLL' }, { status: 409 })
     }
+    // R15 · คนนี้ออกเงินให้บริษัทไว้ — ลบแล้วหนี้ที่บริษัทติดเขาหายเงียบ
+    if (msg.includes('EMPLOYEE_OWED')) {
+      return NextResponse.json({ error: 'EMPLOYEE_OWED' }, { status: 409 })
+    }
     if (msg.includes('NOT_FOUND')) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
     if (msg.includes('FORBIDDEN')) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
     // 23503 = ยังมีตารางอื่นอ้างถึงคนนี้อยู่ (on delete restrict) — ของที่เพิ่ม

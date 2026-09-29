@@ -1,11 +1,13 @@
 'use client'
 
 import * as Dialog from '@radix-ui/react-dialog'
-import { BadgeCheck, Check, ChevronDown, HandCoins, Loader2, Wallet, X } from 'lucide-react'
+import { BadgeCheck, Check, ChevronDown, FileText, HandCoins, Loader2, Wallet, X } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { fmtBaht, fmtDate } from '@/lib/format'
+import { PayAllButton, PayOneDialog } from './pay-dialogs'
 
 /**
  * เบี้ย/ค่าหักหนึ่งรายการของคนหนึ่งคน — **พร้อมวันที่ที่ได้**
@@ -34,9 +36,22 @@ type Row = {
   extra: number
   deduct: number
   accrued: number
+  /** เงินที่ออกให้บริษัทก่อน อนุมัติแล้วแต่ยังไม่คืน (R15) — คืนตอนกดจ่าย */
+  owed: number
+  owedItems: OwedItem[]
   advanced: number
+  /** ค่าแรงค้าง + owed − เบิก (ฐานข้อมูลคิด) */
   balance: number
   adjustments: Adjustment[]
+}
+/** รายจ่ายหนึ่งใบที่คนงานออกเงินให้ก่อน */
+type OwedItem = {
+  id: string
+  txn_date: string
+  amount: number
+  category: string | null
+  site: string | null
+  note: string | null
 }
 /**
  * ประวัติการจ่ายหนึ่งครั้ง
@@ -55,6 +70,8 @@ type Payment = {
   total_accrued: number
   total_advance_deducted: number
   total_paid: number
+  /** วันที่จ่ายตามเวลาไทย (`YYYY-MM-DD`) — คีย์ของใบสรุปวันนั้น · null = ยังไม่ปิด */
+  paid_on: string | null
 }
 type Advance = {
   id: string
@@ -103,6 +120,8 @@ export function PayrollBoard({
   const [openAdv, setOpenAdv] = useState<string | null>(null)
   /** เบี้ยรายการไหนกางวันที่อยู่ · คีย์เป็น employee_id + ชื่อรายการ */
   const [openDays, setOpenDays] = useState<string | null>(null)
+  /** การ์ดไหนกางรายการ "ออกเงินให้ก่อน" อยู่ */
+  const [openOwed, setOpenOwed] = useState<string | null>(null)
 
   async function send(key: string, url: string, body: unknown, ok: string, method = 'POST') {
     // กันกดซ้ำสองชั้น: ปุ่ม disabled *และ* ธงตรงนี้
@@ -161,6 +180,12 @@ export function PayrollBoard({
           ค่าแรงค้างจ่ายรายคน
           <span className="ml-auto text-xs font-normal tnum text-muted-token">{rows.length} คน</span>
         </div>
+        {/* R15 · วันเงินออกจ่ายทีเดียวทุกคน (คำตอบเจ้าของข้อ 6) */}
+        {rows.some((r) => r.accrued > 0 || r.owed > 0) && (
+          <div className="flex justify-end border-b border-line-soft px-3.5 py-2.5 md:px-4">
+            <PayAllButton rows={rows} today={today} />
+          </div>
+        )}
         {rows.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-muted-token">
             ยังไม่มีใครมียอดค้างจ่าย — ค่าแรงจะขึ้นที่นี่เมื่อติ๊กคนเข้าโครงการ
@@ -223,6 +248,47 @@ export function PayrollBoard({
                     <dt className="text-ink-2">ค่าแรงรวม</dt>
                     <dd className="tnum font-semibold text-ink">{fmtBaht(r.accrued)}</dd>
                   </div>
+
+                  {/* R15 · เงินที่คนนี้ออกให้บริษัทก่อน — บวกคืนตอนจ่าย
+                      🔴 ป้าย "ไม่นับซ้ำเป็นต้นทุน" ต้องเห็นโดยไม่ต้องกาง (เหตุผลเดียวกับแถวเบิก):
+                      ต้นทุนคือรายจ่ายใบนั้นซึ่งนับไปแล้ว การคืนเงินคือเงินสดออกเฉย ๆ */}
+                  {r.owed > 0 && (
+                    <div className="flex items-baseline justify-between gap-3">
+                      <dt className="min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => setOpenOwed(openOwed === r.employee_id ? null : r.employee_id)}
+                          aria-expanded={openOwed === r.employee_id}
+                          className="inline-flex items-center gap-1 text-ink-2 underline-offset-2 hover:underline"
+                        >
+                          ออกเงินให้ก่อน
+                          <span className="tnum text-muted-token">×{r.owedItems.length}</span>
+                          <ChevronDown
+                            className={'size-3.5 transition-transform ' + (openOwed === r.employee_id ? 'rotate-180' : '')}
+                            aria-hidden="true"
+                          />
+                        </button>
+                        <span className="mt-0.5 block text-[11px] text-muted-token">
+                          คืนเงิน · ไม่นับซ้ำเป็นต้นทุน
+                        </span>
+                      </dt>
+                      <dd className="shrink-0 tnum text-income">+ {fmtBaht(r.owed)}</dd>
+                    </div>
+                  )}
+                  {openOwed === r.employee_id && r.owedItems.length > 0 && (
+                    <ul className="space-y-1 rounded-sm bg-surface-2 p-2">
+                      {r.owedItems.map((o) => (
+                        <li key={o.id} className="flex items-baseline justify-between gap-2 text-xs">
+                          <span className="min-w-0 truncate text-muted-token">
+                            {fmtDate(o.txn_date)} · {o.category ?? 'ไม่มีหมวด'}
+                            {o.site ? ` · ${o.site}` : ' · ส่วนกลาง'}
+                            {o.note ? ` · ${o.note}` : ''}
+                          </span>
+                          <span className="shrink-0 tnum text-ink-2">{fmtBaht(o.amount)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
 
                   {r.advanced !== 0 && (
                     <>
@@ -335,7 +401,9 @@ export function PayrollBoard({
                       setPayFor(r)
                       setFieldError('')
                     }}
-                    disabled={busy !== null || r.accrued <= 0}
+                    // เปิดได้เสมอ — คนที่ติดลบอย่างเดียวก็ได้โบนัสมาหักหนี้ได้ (R15-C-05)
+                    // กล่องเป็นคนปิดปุ่มยืนยันเองถ้าไม่มีอะไรให้จ่ายจริง
+                    disabled={busy !== null}
                     className="btn-primary flex-1 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <Wallet className="size-4" />
@@ -385,6 +453,15 @@ export function PayrollBoard({
                 <span className="shrink-0 text-sm font-bold tnum text-ink">
                   {fmtBaht(p.total_paid)}
                 </span>
+                {p.paid_on && (
+                  <Link
+                    href={`/payroll/slip?date=${p.paid_on}`}
+                    className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-brand hover:underline"
+                  >
+                    <FileText className="size-3.5" aria-hidden />
+                    ใบสรุป
+                  </Link>
+                )}
               </li>
             ))}
           </ul>
@@ -494,75 +571,8 @@ export function PayrollBoard({
         </Dialog.Portal>
       </Dialog.Root>
 
-      {/* ── กล่องยืนยันจ่ายค่าแรง ──────────────────────────────────────
-          🔴 ต้องเห็นยอดสามบรรทัดก่อนกด — จ่ายแล้ว **ย้อนกลับไม่ได้** เพราะวัน
-          ที่จ่ายแล้วจะถูกล็อกไม่ให้แก้ค่าแรงย้อนหลังอีก */}
-      <Dialog.Root
-        open={payFor !== null}
-        onOpenChange={(v) => {
-          if (busy) return
-          if (!v) {
-            setPayFor(null)
-            setFieldError('')
-          }
-        }}
-      >
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40 animate-fade-in" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line bg-surface p-5 shadow-e3 animate-pop-in">
-            <Dialog.Title className="text-lg font-bold text-ink">
-              จ่ายค่าแรง — {payFor?.full_name}
-            </Dialog.Title>
-            <Dialog.Description className="mt-0.5 text-sm text-muted-token">
-              ปิดยอดค้างจ่ายของคนนี้ทั้งหมด {payFor?.days} วัน
-            </Dialog.Description>
-
-            <dl className="mt-4 space-y-1.5 rounded-lg border border-line-soft bg-surface-2 px-3.5 py-3 text-sm">
-              <div className="flex items-baseline justify-between gap-2">
-                <dt className="text-muted-token">ค่าแรงที่เกิดขึ้น</dt>
-                <dd className="tnum font-semibold text-ink">{fmtBaht(payFor?.accrued ?? 0)}</dd>
-              </div>
-              <div className="flex items-baseline justify-between gap-2">
-                <dt className="text-muted-token">หักเบิกล่วงหน้า</dt>
-                <dd className="tnum text-muted-token">− {fmtBaht(payFor?.advanced ?? 0)}</dd>
-              </div>
-              <div className="flex items-baseline justify-between gap-2 border-t border-line-soft pt-1.5">
-                <dt className="font-medium text-ink-2">จ่ายจริงวันนี้</dt>
-                <dd className="tnum text-base font-bold text-income">
-                  {fmtBaht(payFor?.balance ?? 0)}
-                </dd>
-              </div>
-            </dl>
-
-            <p className="mt-2 text-xs text-muted-token">
-              จ่ายแล้ววันทำงานเหล่านี้จะถูกล็อก แก้ค่าแรงย้อนหลังไม่ได้อีก
-              · ยอดนี้ไม่ทำให้ต้นทุนโครงการเพิ่ม เพราะนับไปตั้งแต่ตอนลงชื่อแล้ว
-            </p>
-            {fieldError && <p className="mt-2 text-sm text-urgent">{fieldError}</p>}
-
-            <div className="mt-4 flex justify-end gap-2">
-              <Dialog.Close disabled={busy !== null} className="btn-secondary">ยกเลิก</Dialog.Close>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (!payFor) return
-                  const done = await send(
-                    `pay-${payFor.employee_id}`, '/api/payroll/pay',
-                    { employeeId: payFor.employee_id },
-                    `จ่ายค่าแรงให้ ${payFor.full_name} แล้ว`,
-                  )
-                  if (done) setPayFor(null)
-                }}
-                disabled={busy !== null}
-                className="btn-primary disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {busy !== null ? <Loader2 className="size-4 animate-spin" /> : <Wallet className="size-4" />}
-                ยืนยันจ่าย
-              </button>
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+      {/* ── กล่องยืนยันจ่าย (รายคน) — แยกไฟล์ `pay-dialogs.tsx` พร้อมโบนัส (R15) */}
+      <PayOneDialog row={payFor} today={today} onClose={() => setPayFor(null)} />
     </div>
   )
 }

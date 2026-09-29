@@ -15,6 +15,7 @@ import { type WageDay } from './site-wage-edit'
 import { wageRowKey } from '@/lib/wage-row-key'
 import type { AdjustLine } from '@/lib/wage-adjustments'
 import { WorkGrid } from './work-grid'
+import { bangkokDateOf } from '@/lib/payroll'
 import { PageHeader } from '@/components/ui/page-header'
 import { DataError } from '@/components/ui/data-error'
 
@@ -44,6 +45,7 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
     { data: payments, error: rErr },
     { data: sites },
     { data: openAdvances },
+    { data: owedRows, error: oErr },
   ] =
     await Promise.all([
       // 🔴 RPC ตัวเดียวคืนยอดของทุกคน — ไม่ใช่ยิง employee_balance ทีละคน (N+1)
@@ -57,7 +59,7 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
       // และไม่มีทางเกิดใหม่แล้ว (ปุ่มจ่ายสร้างแล้วปิดในทรานแซกชันเดียว)
       sb
         .from('payroll_runs')
-        .select('id, period_start, period_end, total_accrued, total_advance_deducted, total_paid, employees(full_name)')
+        .select('id, period_start, period_end, closed_at, total_accrued, total_advance_deducted, total_paid, employees(full_name)')
         .eq('status', 'closed')
         .order('closed_at', { ascending: false })
         .range(0, PAGE_SIZE - 1),
@@ -71,6 +73,20 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
         .eq('status', 'approved')
         .order('advance_date', { ascending: false })
         .range(0, PAGE_SIZE - 1),
+      // R15 · รายจ่ายที่คนงานออกเงินให้ก่อน อนุมัติแล้วยังไม่คืน — รายการย่อยบนการ์ด
+      // ยอดรวมต่อคนมาจาก payroll_balances().owed (ฐานข้อมูลบวก) ไม่ใช่บวกแถวพวกนี้
+      tab === 'balances'
+        ? sb
+            .from('transactions')
+            .select('id, owed_employee_id, txn_date, amount, note, categories(name), sites(name)')
+            .not('owed_employee_id', 'is', null)
+            .is('settled_run_id', null)
+            .eq('status', 'approved')
+            .eq('owed_kind', 'reimburse')
+            .order('txn_date', { ascending: true })
+            .order('id', { ascending: true })
+            .range(0, PAGE_SIZE * 4 - 1)
+        : Promise.resolve({ data: null, error: null }),
     ])
 
   // ── ข้อมูลของแท็บ "ทำงานที่ไหนบ้าง" — สรุปในฐานข้อมูล ไม่ใช่ group ใน JS ──
@@ -135,10 +151,10 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
           { data: null, error: null },
         ]
 
-  if (bErr || adErr || rErr || gErr || pErr || wErr || sdErr || slErr || spErr) {
+  if (bErr || adErr || rErr || oErr || gErr || pErr || wErr || sdErr || slErr || spErr) {
     console.error(
       '[payroll] โหลดข้อมูลไม่ได้',
-      bErr?.message ?? adErr?.message ?? rErr?.message ?? gErr?.message ?? pErr?.message ?? wErr?.message
+      bErr?.message ?? adErr?.message ?? rErr?.message ?? oErr?.message ?? gErr?.message ?? pErr?.message ?? wErr?.message
         ?? sdErr?.message ?? slErr?.message ?? spErr?.message,
     )
     return (
@@ -157,6 +173,17 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
     extra: Number(b.extra),
     deduct: Number(b.deduct),
     accrued: Number(b.accrued),
+    owed: Number(b.owed),
+    owedItems: (owedRows ?? [])
+      .filter((o) => o.owed_employee_id === b.employee_id)
+      .map((o) => ({
+        id: o.id,
+        txn_date: o.txn_date,
+        amount: Number(o.amount),
+        category: o.categories?.name ?? null,
+        site: o.sites?.name ?? null,
+        note: o.note,
+      })),
     advanced: Number(b.advanced),
     balance: Number(b.balance),
     adjustments: (adjustDays ?? [])
@@ -194,6 +221,7 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
 
   const totalAccrued = rows.reduce((s, r) => s + r.accrued, 0)
   const totalAdvanced = rows.reduce((s, r) => s + r.advanced, 0)
+  const totalOwed = rows.reduce((s, r) => s + r.owed, 0)
   // 🔴 คนที่ **เบิกเกินค่าแรงที่ทำมาแล้ว** — เจ้าของอนุญาตให้เบิกเกินได้ (20 ก.ย. 2569)
   // ยอดก้อนนี้จึงไม่ใช่ความผิดพลาด แต่เป็นเงินที่บริษัทจ่ายล่วงหน้าไปแล้วและยังไม่ได้คืน
   // · มันลดลงเองทุกครั้งที่คนนั้นมาทำงาน และถูกหักจริงตอนกดจ่ายค่าแรง
@@ -220,12 +248,15 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
           icon={Wallet}
           hint="ยังไม่ได้จ่าย"
         />
+        {totalOwed > 0 && (
+          <Metric label="คนงานออกเงินให้ก่อน" value={fmtBaht(totalOwed)} hint="คืนตอนจ่าย · ไม่ใช่ต้นทุนใหม่" />
+        )}
         <Metric label="เบิกไปแล้ว" value={fmtBaht(totalAdvanced)} hint="ยังไม่ถูกหัก" />
         <Metric
           label="คงเหลือต้องจ่าย"
-          value={fmtBaht(totalAccrued - totalAdvanced)}
-          tone={totalAccrued - totalAdvanced > 0 ? 'progress' : 'default'}
-          hint="ค่าแรงค้างจ่าย − เบิกไปแล้ว"
+          value={fmtBaht(totalAccrued + totalOwed - totalAdvanced)}
+          tone={totalAccrued + totalOwed - totalAdvanced > 0 ? 'progress' : 'default'}
+          hint={totalOwed > 0 ? 'ค่าแรงค้าง + ออกเงินก่อน − เบิก' : 'ค่าแรงค้างจ่าย − เบิกไปแล้ว'}
         />
         <Metric label="คนที่มียอดค้าง" value={rows.length} unit="คน" />
         {overdrawnRows.length > 0 && (
@@ -371,6 +402,7 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
             total_accrued: Number(r.total_accrued),
             total_advance_deducted: Number(r.total_advance_deducted),
             total_paid: Number(r.total_paid),
+            paid_on: r.closed_at ? bangkokDateOf(r.closed_at) : null,
           }))}
           advances={(openAdvances ?? []).map((a) => ({
             id: a.id,
