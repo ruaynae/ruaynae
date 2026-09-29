@@ -1,4 +1,4 @@
-import { BellRing, HandCoins, Sparkles } from 'lucide-react'
+import { BellRing, HandCoins, MessageCircle, Sparkles } from 'lucide-react'
 import { fmtBaht, fmtDate } from '@/lib/format'
 import {
   INCOME_KIND_LABEL, PAY_METHOD_LABEL, TXN_STATUS_LABEL, TXN_STATUS_TONE,
@@ -31,6 +31,8 @@ export type TxnRowData = {
   created_by: string | null
   /** มีค่า = คีย์ MCP ใบนั้นเป็นคนบันทึกผ่าน AI · null = คนคีย์เองในแอป */
   mcp_key_id: string | null
+  /** true = เจ้าของคีย์ผ่านบอท LINE · ไม่ส่งมา = หน้านั้นไม่ได้ดึง */
+  via_line?: boolean | null
   category_id: string
   /** เวลาที่บันทึกเข้าระบบ — คนละเรื่องกับ `txn_date` ซึ่งคือวันที่ของรายการ */
   created_at: string
@@ -122,6 +124,12 @@ export function TxnRow({
             <span className="chip border border-dashed border-line-strong text-muted-token ring-0">
               <Sparkles className="size-3" strokeWidth={2} aria-hidden />
               บันทึกผ่าน AI
+            </span>
+          )}
+          {t.via_line && (
+            <span className="chip border border-dashed border-line-strong text-muted-token ring-0">
+              <MessageCircle className="size-3" strokeWidth={2} aria-hidden />
+              บันทึกผ่าน LINE
             </span>
           )}
           {/* R15 · บริษัทติดเงินคนนี้ — ต้องเห็นว่าคืนแล้วหรือยัง ไม่ต้องเปิดดู */}

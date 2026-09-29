@@ -106,9 +106,11 @@ create type advance_status as enum ('pending','approved','rejected');
 | `doc_counters` | ตัวนับเลขที่เอกสารต่อชนิด: `kind` (pk), `prefix`, `pad`, **`last_no`** = เลข**ล่าสุดที่ออกไปแล้ว** ไม่ใช่เลขถัดไป (คำสั่งเจ้าของ 20 ก.ย. 2569) · ไม่มีค่าตั้งต้นในโค้ด — ยังไม่ตั้ง = ออกเอกสารไม่ได้ (`DOC_COUNTER_NOT_SET`) | **owner เท่านั้น** |
 | `documents` | ใบเสนอราคา/**ใบแจ้งหนี้**/ใบเสร็จ (R12): `kind` (3 ค่า เรียงตามลำดับงาน), `doc_no` (null จนกว่าจะออกเลข), `status`, `site_id` (null = ไม่ผูกโครงการ), **สำเนาผู้ซื้อ+`seller` jsonb แช่แข็งตอนออกเอกสาร**, `vat_mode`, `vat_rate`, `subtotal`/`vat_amount`/`total` (trigger คิดจากบรรทัด ไม่รับจากหน้าจอ), `amount_words`, `txn_id`, `source_document_id` · ออกเลขผ่าน `issue_document()` ที่ `for update` ก่อนอ่านสถานะ | **owner เท่านั้น** |
 | `document_lines` | บรรทัดรายการ: `seq`, `description`, `qty`, `unit`, `unit_price` (**ตัวเลขที่เจ้าของพิมพ์** — โหมด inclusive คือรวม VAT แล้ว), `line_total` (ยอดก่อน VAT ที่ปัดแล้ว · Σ = `subtotal` เป๊ะ) | **owner เท่านั้น** |
-| `audit_log` | `table_name`, `row_id`, `action`, `actor`, `before` jsonb, `after` jsonb, `at`, **`mcp_key_id`** (มีค่า = AI ทำแทนเจ้าของ · **ไม่มี FK** โดยตั้งใจ ดู §17 ข้อ 19) | **อ่านได้เฉพาะ owner · ไม่มี policy ให้ UPDATE/DELETE กับใครทั้งนั้น** |
+| `audit_log` | `table_name`, `row_id`, `action`, `actor`, `before` jsonb, `after` jsonb, `at`, **`mcp_key_id`** (มีค่า = AI ทำแทนเจ้าของ · **ไม่มี FK** โดยตั้งใจ ดู §17 ข้อ 19) · **`via_line`** (R16 · มาจาก GUC `app.via_line`) | **อ่านได้เฉพาะ owner · ไม่มี policy ให้ UPDATE/DELETE กับใครทั้งนั้น** |
 | `notifications` | `user_id`, `kind`, `title`, `body`, `link`, `read_at` | ของตัวเอง |
 | `push_subscriptions` | `user_id`, `endpoint` (unique), `p256dh`, `auth`, `last_ok_at` | ของตัวเอง |
+| `line_accounts` | LINE userId ↔ `profile_id` ของเจ้าของ (R16) | เจ้าของอ่านได้ · เขียนผ่าน `bot_link()` / `unlink_line_account()` เท่านั้น |
+| `line_link_codes` · `line_link_failures` · `line_events` · `line_sessions` · `line_outbox_test` | รหัสผูก 6 หลัก (หมดอายุ 10 นาที · ล็อก 5 ครั้ง) · กัน webhook ซ้ำ · สถานะเมนูในแชท · กล่องขาออกของโหมดปลอม | **ปิดทั้งหมด** — service role ผ่านฟังก์ชัน `bot_*` เท่านั้น |
 
 ### "คน" กับ "ผู้ใช้ระบบ" เป็นคนละเรื่อง — อย่ายุบเป็นตารางเดียว
 
@@ -325,6 +327,16 @@ client บีบรูป (WebP 1600px + thumb 320px)
 - เก็บถาวรไม่ลบ · หน้า `/settings` ต้องโชว์พื้นที่ที่ใช้ไปแล้ว
 - ตอนลงมือ ให้เช็คราคาและ storage class ปัจจุบันจากเอกสาร R2 อีกรอบ อย่าอ้างจากในนี้
 
+### ข้อยกเว้น: รูปบิลจาก LINE bot **ผ่าน Vercel ได้** (ตัดสินใจแล้ว 29 ก.ย. 2569)
+
+รูปที่ส่งในแชทอยู่บนเซิร์ฟเวอร์ของ LINE และดึงได้ด้วย channel token เท่านั้น → webhook
+(Vercel) ดึงจาก content API แล้วบีบด้วย `sharp` (WebP 1600 + thumb 320 เหมือนฝั่งเว็บ) ก่อน PUT เข้า R2
+· เหตุผลที่กฎ "ไบต์ไม่ผ่าน Vercel" ไม่ใช้กับกรณีนี้: (1) ไม่ใช่คำขอที่อัปโหลดเข้ามา จึงไม่ชนเพดาน body
+(2) ปริมาณต่ำ (ราววันละ 20 บิล × ~300 KB) · ทางเลือกที่ตัดทิ้ง: Cloudflare Worker (ไม่มี CPU พอย่อรูป
+= เสีย `thumb_key` + ระบบที่สองต้องดูแล) · LIFF/หน้าเว็บ (ส่งรูปในแชทตรง ๆ ไม่ได้) · ทิ้งไว้ที่ LINE
+(LINE ลบไฟล์เอง ขัดกับ "เก็บถาวร")
+· **ทบทวนเมื่อ** เกินราววันละ 200 รูป → ย้ายตัวดึงรูปไป Worker ได้โดยไม่แตะส่วนอื่นของบอท
+
 ### Storage class = **Standard** (ตัดสินใจแล้ว 30 ส.ค. 2569)
 
 ห้ามใช้ Infrequent Access กับ bucket นี้ตอนนี้ เพราะ:
@@ -451,6 +463,10 @@ src/
     api/transactions/[id]/attachments/route.ts · api/attachments/[id]/route.ts
     api/uploads/sign/route.ts · api/uploads/[id]/route.ts
     api/cron/sweep-orphans/route.ts · api/cron/daily-digest/route.ts
+    (app)/settings/line       คีย์ LINE (เก็บใน Vault) · ผูกบัญชี · โควตาข้อความเดือนนี้ · สร้างเมนูล่าง (R16)
+    api/line/webhook          ตรวจลายเซ็นก่อน JSON.parse · ตอบ 200 แล้วทำงานใน after()
+    api/settings/line/{keys,link-code,unlink,rich-menu}
+  lib/line/{config,signature,client,fonts,push-batch}.ts · lib/line/bot/* · bot/flows/{attendance,approvals,allowance,expense}.ts
     api/push/subscribe/route.ts
     globals.css · layout.tsx · loading.tsx · error.tsx
   components/ui/*          ← จาก thai-admin-page-kit
@@ -582,6 +598,16 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
       · ก้อน A `payroll_lines.breakdown` + `/payroll/slip` + จ่ายทุกคน → ก้อน B เงินที่ออกก่อน
       (`transactions.owed_employee_id` — **เป็นต้นทุนของรายจ่ายนั้นครั้งเดียว การคืนเงินไม่ใช่ต้นทุน**)
       → ก้อน C โบนัส · ตารางตรวจรับ `docs/test-plan/R15-payday-slip.md`
+- [ ] **R16 · สั่งงานผ่าน LINE bot** (29 ก.ย. 2569) — แบบอ้างอิง `C:\projects\huay`
+      · คำตอบเจ้าของ: **ใช้ได้เฉพาะเจ้าของ** · เมนู 1 คีย์รายจ่าย **+ รูปบิล (ผ่าน Vercel — §9)** ·
+      เมนู 2 ดูคนเข้างานรายโครงการ · เมนู 3 คิวรออนุมัติ **เบิก + รายจ่าย** อนุมัติ/ตีกลับในแชท ·
+      เมนู 4 เบี้ยเลี้ยง **เลือกทีละคน** · **แจ้งเตือน push แบบรวบต่อรอบ cron** · มี LINE OA แล้ว
+      · ทุกการเขียนผ่านการ์ดยืนยัน + สวมสิทธิ์เจ้าของเรียกกติกาเดิม + ป้าย "บันทึกผ่าน LINE"
+      · เฟส L0 ฐาน → L1 อ่าน → L2 อนุมัติ → L3 เบี้ยเลี้ยง → L4 รายจ่าย+รูป → L5 push
+      · ตารางตรวจรับ `docs/test-plan/R16-line-bot.md`
+      · ✅ **เขียนครบ L0–L5 + apply migration 3 ไฟล์บนฐานจริงแล้ว** · `verify-line-db.mjs` **80/80**
+      (rollback ทั้งก้อน · ตรวจของค้างหลังรัน = 0) · 🔴 **คีย์ LINE เจ้าของกรอกที่ `/settings/line`
+      เก็บใน Supabase Vault ไม่ใช่ env ของ Vercel** · หน้าจอโชว์แค่ 4 ตัวท้าย · เหลือแถว 👤 บน LINE จริง
 - [x] **R9 · รอบคำสั่งเจ้าของ 4 ก.ย. 2569** — เรียกหน่วยงานว่า "โครงการ" ทั้งระบบ · ปิดการ์ด
       "งานวันนี้" · ต้นทุนสะสมแยกสามก้อน (ค่าแรง/ค่าวัสดุ/อื่น ๆ) + ธง `categories.is_material`
       · ยอดรวมแยกหมวดในหน้าโครงการ · **จ่ายค่าแรงรายคนปุ่มเดียว** (เลิกใช้คำว่า "รอบจ่าย"
@@ -919,6 +945,17 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
    (`verify-payday-db.mjs`) · ข้อความ `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)`
    ที่โผล่ท้าย `db.mjs` คือตัวเดียวกัน ไม่ใช่ error ของฐานข้อมูล
 
+33. **`text[] || 'literal'` ใน PL/pgSQL = อ่าน literal เป็น array → `22P02 malformed array literal`**
+   `set_line_keys` ล้มทุกครั้งที่กดบันทึกคีย์ · migration apply ผ่าน เพราะ body ไม่ถูกตรวจจนกว่าจะรัน
+   · ใช้ `array_append(arr, 'x')` เสมอ · เจอเพราะตัวตรวจ**เรียกฟังก์ชันจริง** ไม่ใช่เช็คว่ามันมีอยู่
+34. **guard ของ `profiles` ห้ามเปิดบัญชีเจ้าของกลับ ถ้า JWT claims ยังเป็นเจ้าของที่เพิ่งถูกปิด** —
+   fixture ที่ปิดใช้งานเจ้าของเพื่อทดสอบ ต้องล้าง `request.jwt.claims` ก่อน update กลับ
+   (`is_owner()` เป็นเท็จไปแล้ว → `ACTIVE_CHANGE_FORBIDDEN`)
+35. **LINE: รูปหลายรูปมาพร้อมกันเป็นหลาย webhook event ขนานกัน** — อ่านเซสชัน→ต่อรูป→เขียนกลับ
+   ใน JS = รูปทับกันหาย · ต่อรูปด้วย `bot_session_photo()` คำสั่งเดียวในฐานข้อมูล
+   · push ที่ได้ **429 (โควตาเดือนหมด) ห้ามมาร์ค `line_pushed_at`** ไม่งั้นเตือนหายถาวร
+   · `_bot_as` ต้อง**รวม** claims เดิม ไม่ใช่ทับ ไม่งั้น `role` หายแล้ว RLS ไม่ถูกตรวจ
+
 ## 18. ตัวแปรสภาพแวดล้อม
 
 `.env.local` (gitignored) — ค่าที่สร้างเองได้ต้องสร้างให้ตอน scaffold ค่าที่เหลือเว้นว่างให้ผู้ใช้กรอก
@@ -950,6 +987,9 @@ SEED_SUPERVISOR1_NAME=                   # PIN ต้องไม่ซ้ำก
 SEED_SUPERVISOR1_PIN=
 SEED_SUPERVISOR2_NAME=
 SEED_SUPERVISOR2_PIN=
+
+# LINE (R16): channel secret + access token **ไม่ใช่ env** — กรอกที่ /settings/line เก็บใน Vault
+# LINE_API_FAKE=1 · LINE_FAKE_CHANNEL_SECRET=   # โหมดปลอม (ไม่มีผลบน production) · ไม่บังคับ
 
 ENABLE_DEMO_LOGIN=1                      # opt-in เท่านั้น · ไม่ตั้ง = route ตอบ 404 + ปุ่มไม่เรนเดอร์
 #                                          ห้ามมีฝาแฝด NEXT_PUBLIC_ (จะ drift จาก route ได้)

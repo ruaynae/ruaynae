@@ -5,6 +5,7 @@ import {
   FileText,
   HardHat,
   Lock,
+  MessageCircle,
   SlidersHorizontal,
   Tags,
   Users,
@@ -175,6 +176,22 @@ export default async function SettingsPage() {
             <span className="block text-sm font-semibold text-ink">ทะเบียนลูกค้า</span>
             <span className="block text-xs text-muted-token">
               ชื่อ ที่อยู่ และเลขผู้เสียภาษีที่ฟอร์มเอกสารเติมให้อัตโนมัติ
+            </span>
+          </span>
+          <ChevronRight className="size-4 shrink-0 text-muted-token" />
+        </Link>
+      )}
+
+      {isOwner && (
+        <Link
+          href="/settings/line"
+          className="flex items-center gap-3 rounded-lg border border-line bg-surface px-4 py-3.5 transition-colors hover:border-brand"
+        >
+          <MessageCircle className="size-5 shrink-0 text-brand" strokeWidth={1.8} />
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-ink">LINE บอท</span>
+            <span className="block text-xs text-muted-token">
+              คีย์รายจ่าย ดูคนเข้างาน อนุมัติ และแจ้งเตือนจากแชท LINE — ตั้งคีย์และผูกบัญชีที่นี่
             </span>
           </span>
           <ChevronRight className="size-4 shrink-0 text-muted-token" />

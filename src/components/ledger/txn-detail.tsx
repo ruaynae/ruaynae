@@ -1,7 +1,7 @@
 'use client'
 
 import * as Dialog from '@radix-ui/react-dialog'
-import { Pencil, Sparkles, X } from 'lucide-react'
+import { MessageCircle, Pencil, Sparkles, X } from 'lucide-react'
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import { fmtBaht, fmtDateLong, fmtDateTime } from '@/lib/format'
 import {
@@ -114,6 +114,12 @@ function TxnDetailDialog({ txn: t, onClose }: { txn: TxnRowData; onClose: () => 
                 <span className="chip border border-dashed border-line-strong text-muted-token ring-0">
                   <Sparkles className="size-3" strokeWidth={2} aria-hidden />
                   บันทึกผ่าน AI
+                </span>
+              )}
+              {t.via_line && (
+                <span className="chip border border-dashed border-line-strong text-muted-token ring-0">
+                  <MessageCircle className="size-3" strokeWidth={2} aria-hidden />
+                  บันทึกผ่าน LINE
                 </span>
               )}
             </div>

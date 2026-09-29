@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import webpush from 'web-push'
+import { dispatchLinePush, type LinePushResult } from '@/lib/line/push-batch'
 import { getSupabaseAdmin } from '@/lib/supabase/admin'
 
 export const runtime = 'nodejs'
@@ -37,16 +38,26 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'UNAUTHENTICATED' }, { status: 401 })
   }
 
+  const admin = getSupabaseAdmin()
+
+  // LINE ไปก่อนและเป็นอิสระจาก web push — ไม่มี VAPID หรือไม่มี push ค้าง ก็ยังต้องส่ง LINE
+  // ล้มเหลวต้องไม่ลากงาน web push ล้มตาม
+  let line: LinePushResult
+  try {
+    line = await dispatchLinePush(admin)
+  } catch (e) {
+    console.error('[cron] ส่ง LINE ไม่สำเร็จ', (e as Error).message)
+    line = { pushed: 0, marked: 0, error: 'LINE_FAILED' }
+  }
+
   const pub = process.env.VAPID_PUBLIC_KEY
   const priv = process.env.VAPID_PRIVATE_KEY
   const subject = process.env.VAPID_SUBJECT
   if (!pub || !priv || !subject || subject === 'mailto:') {
     // ยังไม่ได้ตั้ง VAPID = ยังส่งไม่ได้ · ตอบให้ชัดดีกว่าเงียบแล้วดูเหมือนสำเร็จ
-    return NextResponse.json({ error: 'VAPID_NOT_CONFIGURED' }, { status: 503 })
+    return NextResponse.json({ error: 'VAPID_NOT_CONFIGURED', line }, { status: 503 })
   }
   webpush.setVapidDetails(subject, pub, priv)
-
-  const admin = getSupabaseAdmin()
 
   const { data: pending, error: nErr } = await admin
     .from('notifications')
@@ -60,7 +71,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'READ_FAILED' }, { status: 500 })
   }
   if (!pending || pending.length === 0) {
-    return NextResponse.json({ ok: true, sent: 0, removed: 0, marked: 0 })
+    return NextResponse.json({ ok: true, sent: 0, removed: 0, marked: 0, line })
   }
 
   const userIds = [...new Set(pending.map((n) => n.user_id))]
@@ -137,5 +148,5 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'MARK_FAILED' }, { status: 500 })
   }
 
-  return NextResponse.json({ ok: true, sent, removed: dead.length, marked: ids.length })
+  return NextResponse.json({ ok: true, sent, removed: dead.length, marked: ids.length, line })
 }

@@ -42,7 +42,7 @@ export default async function AuditPage({
 
   let q = sb
     .from('audit_log')
-    .select('id, table_name, row_id, action, actor, before, after, at, mcp_key_id')
+    .select('id, table_name, row_id, action, actor, before, after, at, mcp_key_id, via_line')
   if (action !== 'all') q = q.eq('action', action)
   if (table !== 'all') q = q.eq('table_name', table)
 
@@ -180,6 +180,7 @@ export default async function AuditPage({
                         เพราะฟังก์ชัน MCP สวมสิทธิ์เจ้าของก่อนเขียน — ถ้าไม่บอกตรงนี้
                         ประวัติจะอ่านว่าเจ้าของนั่งกดเองทั้งที่สั่งผ่านแชท */}
                     {r.mcp_key_id && <span className="text-ink-2"> · ผ่านการเชื่อมต่อ AI</span>}
+                    {r.via_line && <span className="text-ink-2"> · ผ่านบอท LINE</span>}
                   </div>
 
                   {changes.length > 0 && (

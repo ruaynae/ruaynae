@@ -359,6 +359,7 @@ export type Database = {
           mcp_key_id: string | null
           row_id: string | null
           table_name: string
+          via_line: boolean
         }
         Insert: {
           action: string
@@ -370,6 +371,7 @@ export type Database = {
           mcp_key_id?: string | null
           row_id?: string | null
           table_name: string
+          via_line?: boolean
         }
         Update: {
           action?: string
@@ -381,6 +383,7 @@ export type Database = {
           mcp_key_id?: string | null
           row_id?: string | null
           table_name?: string
+          via_line?: boolean
         }
         Relationships: []
       }
@@ -767,6 +770,154 @@ export type Database = {
           },
         ]
       }
+      line_accounts: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          id: string
+          line_user_id: string
+          profile_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          line_user_id: string
+          profile_id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          line_user_id?: string
+          profile_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "line_accounts_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      line_events: {
+        Row: {
+          received_at: string
+          webhook_event_id: string
+        }
+        Insert: {
+          received_at?: string
+          webhook_event_id: string
+        }
+        Update: {
+          received_at?: string
+          webhook_event_id?: string
+        }
+        Relationships: []
+      }
+      line_link_codes: {
+        Row: {
+          code_hash: string
+          created_at: string
+          expires_at: string
+          id: string
+          profile_id: string
+          used_at: string | null
+        }
+        Insert: {
+          code_hash: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          profile_id: string
+          used_at?: string | null
+        }
+        Update: {
+          code_hash?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          profile_id?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "line_link_codes_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      line_link_failures: {
+        Row: {
+          at: string
+          id: number
+          line_user_id: string
+        }
+        Insert: {
+          at?: string
+          id?: never
+          line_user_id: string
+        }
+        Update: {
+          at?: string
+          id?: never
+          line_user_id?: string
+        }
+        Relationships: []
+      }
+      line_outbox_test: {
+        Row: {
+          body: Json
+          created_at: string
+          id: number
+          kind: string
+          to_user: string | null
+        }
+        Insert: {
+          body: Json
+          created_at?: string
+          id?: never
+          kind: string
+          to_user?: string | null
+        }
+        Update: {
+          body?: Json
+          created_at?: string
+          id?: never
+          kind?: string
+          to_user?: string | null
+        }
+        Relationships: []
+      }
+      line_sessions: {
+        Row: {
+          expires_at: string
+          line_user_id: string
+          payload: Json
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          expires_at: string
+          line_user_id: string
+          payload?: Json
+          state: string
+          updated_at?: string
+        }
+        Update: {
+          expires_at?: string
+          line_user_id?: string
+          payload?: Json
+          state?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       login_attempts: {
         Row: {
           at: string
@@ -880,6 +1031,7 @@ export type Database = {
           digest_date: string | null
           id: string
           kind: Database["public"]["Enums"]["notification_kind"]
+          line_pushed_at: string | null
           link: string | null
           pushed_at: string | null
           read_at: string | null
@@ -893,6 +1045,7 @@ export type Database = {
           digest_date?: string | null
           id?: string
           kind: Database["public"]["Enums"]["notification_kind"]
+          line_pushed_at?: string | null
           link?: string | null
           pushed_at?: string | null
           read_at?: string | null
@@ -906,6 +1059,7 @@ export type Database = {
           digest_date?: string | null
           id?: string
           kind?: Database["public"]["Enums"]["notification_kind"]
+          line_pushed_at?: string | null
           link?: string | null
           pushed_at?: string | null
           read_at?: string | null
@@ -1439,6 +1593,7 @@ export type Database = {
           status: Database["public"]["Enums"]["txn_status"]
           txn_date: string
           updated_at: string
+          via_line: boolean
         }
         Insert: {
           amount: number
@@ -1465,6 +1620,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["txn_status"]
           txn_date: string
           updated_at?: string
+          via_line?: boolean
         }
         Update: {
           amount?: number
@@ -1491,6 +1647,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["txn_status"]
           txn_date?: string
           updated_at?: string
+          via_line?: boolean
         }
         Relationships: [
           {
@@ -1637,6 +1794,8 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _bot_as: { Args: { p_line_user: string }; Returns: string }
+      _line_key: { Args: { p_name: string }; Returns: string }
       attendance_by_site: {
         Args: { p_from: string; p_to: string }
         Returns: {
@@ -1702,6 +1861,84 @@ export type Database = {
           overdue_count: number
         }[]
       }
+      bot_allowance_give: {
+        Args: {
+          p_employee_ids: string[]
+          p_line_user: string
+          p_on: string
+          p_preset: string
+        }
+        Returns: Json
+      }
+      bot_allowance_people: {
+        Args: { p_line_user: string; p_on: string; p_preset: string }
+        Returns: Json
+      }
+      bot_allowance_presets: { Args: { p_line_user: string }; Returns: Json }
+      bot_approve: {
+        Args: {
+          p_action: string
+          p_id: string
+          p_kind: string
+          p_line_user: string
+          p_reason?: string
+        }
+        Returns: Json
+      }
+      bot_attendance_today: {
+        Args: { p_line_user: string; p_on: string }
+        Returns: Json
+      }
+      bot_create_expense: {
+        Args: {
+          p_amount: number
+          p_category: string
+          p_client_ref?: string
+          p_date: string
+          p_line_user: string
+          p_note?: string
+          p_pay_method?: string
+          p_site?: string
+        }
+        Returns: Json
+      }
+      bot_event_seen: { Args: { p_event_id: string }; Returns: boolean }
+      bot_expense_options: { Args: { p_line_user: string }; Returns: Json }
+      bot_link: {
+        Args: { p_code: string; p_display: string; p_line_user: string }
+        Returns: Json
+      }
+      bot_queue: { Args: { p_line_user: string }; Returns: Json }
+      bot_session_append: {
+        Args: {
+          p_item: Json
+          p_key: string
+          p_line_user: string
+          p_max?: number
+          p_state: string
+        }
+        Returns: Json
+      }
+      bot_session_get: { Args: { p_line_user: string }; Returns: Json }
+      bot_session_photo: {
+        Args: {
+          p_line_user: string
+          p_max?: number
+          p_slip: Json
+          p_ttl_sec?: number
+        }
+        Returns: Json
+      }
+      bot_session_set: {
+        Args: {
+          p_line_user: string
+          p_payload?: Json
+          p_state: string
+          p_ttl_sec?: number
+        }
+        Returns: undefined
+      }
+      bot_whoami: { Args: { p_line_user: string }; Returns: Json }
       close_payroll_run: {
         Args: { p_run: string }
         Returns: {
@@ -1711,6 +1948,7 @@ export type Database = {
           paid: number
         }[]
       }
+      create_line_link_code: { Args: never; Returns: string }
       cron_call: { Args: { p_path: string }; Returns: number }
       delete_employee: { Args: { p_id: string }; Returns: Json }
       doc_recalc: { Args: { p_doc: string }; Returns: undefined }
@@ -1750,6 +1988,7 @@ export type Database = {
         Args: { p_id: string; p_seller: Json }
         Returns: string
       }
+      line_key_status: { Args: never; Returns: Json }
       mcp_assume_owner: { Args: { p_actor: string }; Returns: undefined }
       mcp_begin_write: {
         Args: { p_actor: string; p_key: string }
@@ -2045,6 +2284,10 @@ export type Database = {
         Args: { p_att: string; p_ot: number }
         Returns: undefined
       }
+      set_line_keys: {
+        Args: { p_secret: string; p_token: string }
+        Returns: undefined
+      }
       site_day_wage: { Args: { p_on: string; p_site: string }; Returns: number }
       site_money: {
         Args: { p_site?: string }
@@ -2079,6 +2322,7 @@ export type Database = {
         Args: { p_on?: string; p_site: string }
         Returns: boolean
       }
+      unlink_line_account: { Args: never; Returns: undefined }
     }
     Enums: {
       adjust_kind: "add" | "deduct"

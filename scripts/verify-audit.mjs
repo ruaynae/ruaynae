@@ -116,7 +116,13 @@ try {
         --     ที่ลบไม่ได้ตลอดกาล เพื่อให้ใครสักคนได้อ่านว่า "มีแถวถูก insert ลงบันทึก"
         --     · ตารางคีย์ mcp_keys ยังต้องมี trigger เพราะตารางที่เก็บของยืนยันตัวตน
         --     จำเป็นต้องมีประวัติว่าใครออกและเพิกถอนใบไหนเมื่อไหร่
-        and t.tablename not in ('audit_log', 'login_attempts', 'mcp_call_log')
+        --   line_link_codes · line_link_failures · line_events · line_sessions ·
+        --     line_outbox_test (R16) — รหัสผูกบัญชีอายุ 10 นาที · ตัวจำกัดอัตรา ·
+        --     ตัวกันประมวลผล event ซ้ำ · สถานะบทสนทนาชั่วคราว · กล่องขาออกของโหมดทดสอบ
+        --     ทั้งหมดถูกล้างเป็นประจำ ไม่ใช่ข้อมูลธุรกิจ · ร่องรอยจริงอยู่ที่
+        --     line_accounts (ติด trigger) และ audit_log ของรายการที่บอทคีย์ (via_line)
+        and t.tablename not in ('audit_log', 'login_attempts', 'mcp_call_log',
+          'line_link_codes', 'line_link_failures', 'line_events', 'line_sessions', 'line_outbox_test')
         and not exists (
           select 1 from pg_trigger g
           join pg_class c on c.oid = g.tgrelid
