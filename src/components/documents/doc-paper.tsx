@@ -273,7 +273,9 @@ export function DocPaper({
         <Box className="-ml-px flex h-28 flex-col px-2 py-1 text-center">
           <p className="font-semibold">ในนาม {company}</p>
           <p className="mt-auto border-t border-dotted border-black pt-0.5">
-            {seller?.signatoryName ? `(${seller.signatoryName}) ` : ''}ผู้มีอำนาจลงนาม
+            {/* ไม่มีคำว่า "ผู้มีอำนาจลงนาม" ต่อท้ายชื่อ (คำสั่งเจ้าของ 29 ก.ย. 2569)
+                · ไม่มีชื่อ = เว้นว่าง แต่ยังคงบรรทัดไว้ ไม่งั้นเส้นลายเซ็นลอยขึ้นไป */}
+            {seller?.signatoryName ? `(${seller.signatoryName})` : ' '}
           </p>
           {seller?.signatoryTitle && <p>{seller.signatoryTitle}</p>}
         </Box>
