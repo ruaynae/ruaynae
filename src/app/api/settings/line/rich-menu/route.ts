@@ -7,15 +7,19 @@ import { richMenuDefinition, richMenuImage } from '@/lib/line/bot/rich-menu'
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
-/** POST /api/settings/line/rich-menu — สร้างเมนูล่างของแชท 4 ช่อง แล้วตั้งเป็นเมนูเริ่มต้น */
-export async function POST() {
+/** POST /api/settings/line/rich-menu — สร้างเมนูล่างของแชท 6 ช่อง แล้วตั้งเป็นเมนูเริ่มต้น */
+export async function POST(req: Request) {
   const denied = await denyUnlessLineOwner()
   if (denied) return denied
 
   if (!(await lineToken())) return NextResponse.json({ error: 'NO_TOKEN' }, { status: 409 })
 
+  // ช่อง "เปิดเว็บ" ชี้กลับมาโดเมนที่เจ้าของกดปุ่มนี้ · LINE รับเฉพาะ https
+  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? ''
+  const origin = `https://${host}`
+
   try {
-    const id = await createDefaultRichMenu(richMenuDefinition, {
+    const id = await createDefaultRichMenu(richMenuDefinition(origin), {
       bytes: await richMenuImage(),
       type: 'image/png',
     })

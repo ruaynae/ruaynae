@@ -10,6 +10,7 @@ import * as allowance from './flows/allowance'
 import * as approvals from './flows/approvals'
 import { showAttendance } from './flows/attendance'
 import * as expense from './flows/expense'
+import * as wages from './flows/wages'
 
 // ตัวจัดการ webhook — เจ้าของคนเดียว · แชทหนึ่งต่อหนึ่งเท่านั้น (กลุ่ม/ห้องข้ามไป)
 
@@ -50,6 +51,8 @@ async function openMenu(turn: Turn, menu: string) {
       return approvals.showQueue(turn)
     case 'allow':
       return allowance.showAllowance(turn)
+    case 'wage':
+      return wages.showWageList(turn)
     default:
       return send(turn, [text(copy.help, menuItems())])
   }
@@ -90,6 +93,12 @@ async function onPostback(turn: Turn, ev: NonNullable<LineEvent['postback']>) {
       return expense.save(turn)
     case 'xcx':
       return expense.cancel(turn)
+    case 'xw':
+      return expense.askWho(turn)
+    case 'xe':
+      return expense.setWho(turn, d.e ?? '')
+    case 'wg':
+      return wages.showWageSlip(turn, d.e ?? '')
     default:
       return send(turn, [text(copy.expired, menuItems())])
   }
@@ -109,6 +118,8 @@ async function onText(turn: Turn, raw: string) {
     case 'exp_site':
     case 'exp_confirm':
       return expense.onText(turn, body)
+    case 'wage_pick':
+      return wages.onText(turn, body)
     default:
       return send(turn, [text(copy.help, menuItems())])
   }

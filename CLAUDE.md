@@ -466,7 +466,8 @@ src/
     (app)/settings/line       คีย์ LINE (เก็บใน Vault) · ผูกบัญชี · โควตาข้อความเดือนนี้ · สร้างเมนูล่าง (R16)
     api/line/webhook          ตรวจลายเซ็นก่อน JSON.parse · ตอบ 200 แล้วทำงานใน after()
     api/settings/line/{keys,link-code,unlink,rich-menu}
-  lib/line/{config,signature,client,fonts,push-batch}.ts · lib/line/bot/* · bot/flows/{attendance,approvals,allowance,expense}.ts
+  lib/line/{config,signature,client,render,push-batch}.ts · lib/line/bot/* · bot/flows/{attendance,approvals,allowance,expense,wages}.ts
+#                            render.ts = วาดรูปด้วย sharp+Pango (เมนูล่าง · ใบสรุปค่าแรง bot/wage-slip.ts) — ไม่ใช้ next/og (§17 ข้อ 36)
     api/push/subscribe/route.ts
     globals.css · layout.tsx · loading.tsx · error.tsx
   components/ui/*          ← จาก thai-admin-page-kit
@@ -608,6 +609,10 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
       · ✅ **เขียนครบ L0–L5 + apply migration 3 ไฟล์บนฐานจริงแล้ว** · `verify-line-db.mjs` **80/80**
       (rollback ทั้งก้อน · ตรวจของค้างหลังรัน = 0) · 🔴 **คีย์ LINE เจ้าของกรอกที่ `/settings/line`
       เก็บใน Supabase Vault ไม่ใช่ env ของ Vercel** · หน้าจอโชว์แค่ 4 ตัวท้าย · เหลือแถว 👤 บน LINE จริง
+      · **30 ก.ย. 2569 (หลังเจ้าของลองจริง):** ผูกได้หลาย LINE · พิมพ์ยอดพร้อมหมายเหตุ · วิธีจ่ายเริ่มต้น = โอน ·
+      ปุ่ม "ใครจ่ายเงินไป" บนการ์ดยืนยัน (R15) · **เมนู 5 ค่าแรงคงค้าง** = รูปใบสรุปรายคน (sharp+Pango) ·
+      เมนูล่าง 6 ช่อง (+ เปิดเว็บ) · `node scripts/line-rich-menu.mjs --confirm` สร้างเมนูแทนการกดปุ่มได้
+      · `verify-line-db.mjs` **94/94**
 - [x] **R9 · รอบคำสั่งเจ้าของ 4 ก.ย. 2569** — เรียกหน่วยงานว่า "โครงการ" ทั้งระบบ · ปิดการ์ด
       "งานวันนี้" · ต้นทุนสะสมแยกสามก้อน (ค่าแรง/ค่าวัสดุ/อื่น ๆ) + ธง `categories.is_material`
       · ยอดรวมแยกหมวดในหน้าโครงการ · **จ่ายค่าแรงรายคนปุ่มเดียว** (เลิกใช้คำว่า "รอบจ่าย"
@@ -955,6 +960,22 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
    ใน JS = รูปทับกันหาย · ต่อรูปด้วย `bot_session_photo()` คำสั่งเดียวในฐานข้อมูล
    · push ที่ได้ **429 (โควตาเดือนหมด) ห้ามมาร์ค `line_pushed_at`** ไม่งั้นเตือนหายถาวร
    · `_bot_as` ต้อง**รวม** claims เดิม ไม่ใช่ทับ ไม่งั้น `role` หายแล้ว RLS ไม่ถูกตรวจ
+
+36. **`next/og` (satori) วาดภาษาไทยที่มีสระบน+วรรณยุกต์ซ้อนผิด** — "เบี้ยเลี้ยง" ออกมาเป็นไม้โททับสระอี
+   · มันไม่มีตัวจัดตำแหน่งเครื่องหมาย (GPOS) · เมนูล่างรุ่นแรกส่งออกไปแบบนั้นแล้ว (ระบบหวยใช้ตัวเดียวกันก็เป็น)
+   · **แก้:** วาดด้วย `sharp` + Pango (HarfBuzz จัดไทยถูก) ใน `src/lib/line/render.ts` · รูปที่ Pango คืนมา
+   ถูกตัดพอดีหมึก ข้อความสองฝั่งของแถวจึงสูงไม่เท่ากัน → ใส่ตัวค้ำโปร่งใส `ปั้ฏุ` ทุกก้อน
+   · บน Vercel ต้องมี `public/fonts/fonts.conf` (`FONTCONFIG_FILE`) + `outputFileTracingIncludes` ใน `next.config.ts`
+   · **ตรวจด้วยตาเสมอ** — tsc/build เขียวหมดทั้งที่รูปอ่านผิด
+37. **Map ที่ key ด้วย "คน|วัน" เก็บได้แถวเดียว — วันที่ลงสองโครงการจึงโชว์ "½" ทั้งที่ทำครบ 1 แรง** (เจ้าของแจ้ง 30 ก.ย. 2569)
+   · ยอดรวมท้ายแถวถูก (บวกจาก cells ทุกแถว) ช่องในตารางผิด = ตัวเลขขัดกันเองบนหน้าเดียว
+   · และแย่กว่านั้น: แตะช่องนั้นแล้วบันทึก → `save_attendance_day` **ลบอีกโครงการทิ้งเงียบ ๆ** (ออกแบบไว้ "ย้ายโครงการ")
+   ดินสอในแท็บ "ทำงานที่ไหนบ้าง" ก็เรียกตัวเดียวกัน · แก้: ลบเฉพาะตอนวันนั้นมีแถวเดียว · หลายแถว = `MULTI_SITE_DAY`
+   · ตารางโชว์ "½+½" + กล่องรายโครงการแบบอ่านอย่างเดียว (`R16-ATT-01..05`)
+38. **`insert … on conflict do update` ยิง trigger ก่อน insert ก่อนตรวจชน** — `guard_attendance` นับแถวเดิม
+   ของโครงการเดียวกันรวมกับแถวใหม่ (`id is distinct from new.id` ไม่ช่วย เพราะ new.id เป็น uuid ใหม่)
+   → แก้วันที่ลงเต็มวันไว้แล้วโดน `WORK_UNITS_EXCEEDED` ทุกครั้ง · แก้แถวที่มีอยู่ด้วย `update` ตรง ๆ (`R16-ATT-04`)
+   · **บทเรียน:** upsert กับตารางที่มี guard ก่อน insert = guard เห็นทั้งแถวเก่าและแถวใหม่พร้อมกัน
 
 ## 18. ตัวแปรสภาพแวดล้อม
 

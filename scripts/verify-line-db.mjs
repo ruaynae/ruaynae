@@ -622,13 +622,115 @@ const BLOCK_C = `${HEAD('R16-L1..L4 · พฤติกรรมของบอ�
   ${chk('R16-DB-43', `v_j->>'code' = 'PRESET_NOT_FOUND' and v_j2->>'code' = 'PRESET_NOT_FOUND'`, 'รายการปรับที่ไม่มี/ปิดอยู่ → PRESET_NOT_FOUND ทั้ง give และ people', 'v_j::text || v_j2::text')}
 ${TAIL}`
 
+// ═══ ก้อน D · ใครจ่ายเงินไป · เมนูค่าแรงคงค้าง · วันลงชื่อสองโครงการ (30 ก.ย. 2569) ═══
+const BLOCK_D = `${HEAD('R16-L4/L6 · ใครจ่ายเงินไป · ค่าแรงคงค้าง · ครึ่ง+ครึ่ง').replace('v_j2     jsonb;', `v_j2     jsonb;
+  v_line   text := 'U' || md5('r16-main');
+  v_s1 uuid; v_s2 uuid; v_s3 uuid;
+  v_e1 uuid; v_e2 uuid; v_e3 uuid;
+  v_cat  uuid;
+  v_txn  uuid;
+  v_bool boolean;
+  v_num  numeric;`)}
+  delete from public.line_accounts where profile_id = v_owner;
+  insert into public.line_accounts(line_user_id, profile_id) values (v_line, v_owner);
+  insert into public.sites(name, status) values ('R16 ตรวจ ก', 'active') returning id into v_s1;
+  insert into public.sites(name, status) values ('R16 ตรวจ ข', 'active') returning id into v_s2;
+  insert into public.sites(name, status) values ('R16 ตรวจ ค', 'active') returning id into v_s3;
+  insert into public.employees(full_name, job_title) values ('R16 ครึ่งครึ่ง', 'ช่าง') returning id into v_e1;
+  insert into public.employees(full_name, job_title, is_active) values ('R16 ปิดแล้ว', 'ช่าง', false) returning id into v_e2;
+  insert into public.employees(full_name, job_title) values ('R16 ย้ายโครงการ', 'ช่าง') returning id into v_e3;
+  insert into public.employee_wages(employee_id, wage_type, daily_rate)
+    select id, 'daily', 600 from public.employees where id in (v_e1, v_e2, v_e3);
+  insert into public.attendance(work_date, site_id, employee_id, work_units) values (v_today, v_s1, v_e1, 0.5);
+  insert into public.attendance(work_date, site_id, employee_id, work_units) values (v_today, v_s2, v_e1, 0.5);
+  insert into public.attendance(work_date, site_id, employee_id, work_units) values (v_today, v_s1, v_e3, 1);
+  select id into v_cat from public.categories where kind = 'expense' and is_active order by sort_order, name limit 1;
+  if v_cat is null then
+    insert into public.categories(name, kind) values ('R16 หมวดตรวจ', 'expense') returning id into v_cat;
+  end if;
+  ${asAuth('v_owner')}
+  insert into public.advances(employee_id, amount, advance_date, note) values (v_e1, 200, v_today, 'R16 เบิก');
+  reset role;
+
+  -- ── เมนู 1 · ใครจ่ายเงินไป ──────────────────────────────────────────
+  ${asService}
+  v_j := public.bot_create_expense(v_line, v_cat, 150, v_today, v_s1, 'transfer', 'น้ำแข็ง', gen_random_uuid(), v_e1);
+  reset role;
+  v_txn := (v_j->>'transaction_id')::uuid;
+  select (owed_employee_id = v_e1 and owed_kind::text = 'reimburse' and status::text = 'approved'
+          and pay_method::text = 'transfer' and settled_run_id is null)
+    into v_bool from public.transactions where id = v_txn;
+  ${chk('R16-L4-08', `(v_j->>'ok')::boolean and v_j->>'employee' = 'R16 ครึ่งครึ่ง' and v_bool`,
+    'คีย์รายจ่ายพร้อม "ใครจ่ายเงินไป" = คนงาน → owed_employee_id · owed_kind=reimburse · approved · โอน', 'v_j::text')}
+  ${asService}
+  v_j := public.bot_create_expense(v_line, v_cat, 10, v_today, v_s1, 'transfer', null, gen_random_uuid(), v_e2);
+  v_j2 := public.bot_expense_options(v_line);
+  reset role;
+  ${chk('R16-DB-46', `v_j->>'code' = 'EMPLOYEE_INVALID'`, 'คนงานที่ปิดใช้งานแล้ว → EMPLOYEE_INVALID (ไม่เขียน)', 'v_j::text')}
+  ${chk('R16-L4-11', `exists (select 1 from jsonb_array_elements(v_j2->'employees') e where e->>'id' = v_e1::text)
+       and not exists (select 1 from jsonb_array_elements(v_j2->'employees') e where e->>'id' = v_e2::text)`,
+    'bot_expense_options: รายชื่อคนงานมีเฉพาะคนที่ยังใช้งาน', 'left(v_j2::text, 200)')}
+
+  -- ── เมนู 5 · ค่าแรงคงค้าง ────────────────────────────────────────────
+  ${asService}
+  v_j := public.bot_wage_list(v_line);
+  v_j2 := public.bot_wage_detail(v_line, v_e1);
+  reset role;
+  select (x->>'balance')::numeric into v_num from jsonb_array_elements(v_j) x where x->>'id' = v_e1::text;
+  ${chk('R16-L6-01', `v_num = 550`, 'รายชื่อค่าแรงคงค้าง: ค่าแรง 600 + ออกเงินให้ก่อน 150 − เบิก 200 = 550', "coalesce(v_num::text, 'ไม่พบ')")}
+  ${asAuth('v_owner')}
+  select b.balance into v_num from public.payroll_balances() b where b.employee_id = v_e1;
+  reset role;
+  ${chk('R16-L6-02', `(v_j2->>'ok')::boolean and (v_j2->>'balance')::numeric = v_num
+       and jsonb_array_length(v_j2->'sites') = 2
+       and (select bool_and((s->>'units')::numeric = 0.5 and (s->>'amount')::numeric = 300) from jsonb_array_elements(v_j2->'sites') s)
+       and jsonb_array_length(v_j2->'owed_items') = 1 and (v_j2->>'owed')::numeric = 150
+       and jsonb_array_length(v_j2->'advances') = 1 and (v_j2->'advances'->0->>'open')::numeric = 200
+       and (v_j2->>'days')::numeric = 1`,
+    'ใบสรุป: ยอดตรงกับ payroll_balances() · ครึ่งวันสองโครงการ (300+300) · รายการออกก่อน 1 · ใบเบิก 1 · รวม 1 แรง', 'left(v_j2::text, 300)')}
+  ${asService}
+  v_j := public.bot_wage_detail(v_line, v_e3);
+  v_j2 := public.bot_wage_detail(v_line, gen_random_uuid());
+  reset role;
+  ${chk('R16-L6-03', `(v_j->>'ok')::boolean and v_j2->>'code' = 'NOTHING'`, 'คนที่ไม่มียอดค้าง → NOTHING (ไม่ใช่ใบที่เป็นศูนย์)', 'v_j2::text')}
+  ${asService}
+  ${expectErr('R16-L6-04', `perform public.bot_wage_list('U' || md5('nobody'));`, '%line_not_owner%', 'LINE ที่ไม่ใช่เจ้าของดูค่าแรงคงค้างไม่ได้ → line_not_owner')}
+  reset role;
+  ${chk('R16-L6-05', `not has_function_privilege('authenticated', 'public.bot_wage_detail(text, uuid)', 'execute')
+       and not has_function_privilege('anon', 'public.bot_wage_list(text)', 'execute')
+       and not has_function_privilege('authenticated', 'public.bot_create_expense(text, uuid, numeric, date, uuid, text, text, uuid, uuid)', 'execute')
+       and has_function_privilege('service_role', 'public.bot_wage_detail(text, uuid)', 'execute')`,
+    'ฟังก์ชันใหม่ของบอทเรียกได้เฉพาะ service_role (ยอดค่าแรงรายคนไม่หลุดถึงหัวหน้าโครงการ)', `'สิทธิ์ผิด'`)}
+
+  -- ── วันลงชื่อสองโครงการ · ตารางการทำงานต้องไม่ลบอีกครึ่ง ─────────────
+  ${asAuth('v_owner')}
+  perform public.save_attendance_day(v_e1, v_s1, v_today, 0.5, 650);
+  reset role;
+  select count(*) into v_n from public.attendance where employee_id = v_e1 and work_date = v_today;
+  select aw.wage_snapshot into v_num from public.attendance a join public.attendance_wages aw on aw.attendance_id = a.id
+   where a.employee_id = v_e1 and a.site_id = v_s1 and a.work_date = v_today;
+  ${chk('R16-ATT-01', `v_n = 2 and v_num = 650`, 'แก้ค่าแรงของโครงการหนึ่งในวันที่ลงสองโครงการ → อีกโครงการยังอยู่ (เดิมถูกลบเงียบ ๆ)', `format('%s แถว · %s', v_n, v_num)`)}
+  ${asAuth('v_owner')}
+  ${expectErr('R16-ATT-02', `perform public.save_attendance_day(v_e1, v_s3, v_today, 0.5, 600);`, '%MULTI_SITE_DAY%', 'บันทึกโครงการที่สามทับวันที่มีสองโครงการ → MULTI_SITE_DAY (ไม่ลบของเดิม)')}
+  perform public.save_attendance_day(v_e3, v_s2, v_today, 1, 600);
+  reset role;
+  select count(*) filter (where site_id = v_s2), count(*) into v_n, v_n2 from public.attendance where employee_id = v_e3 and work_date = v_today;
+  ${chk('R16-ATT-03', `v_n = 1 and v_n2 = 1`, 'วันที่มีโครงการเดียว → ย้ายไปโครงการใหม่ได้เหมือนเดิม', `format('%s / %s', v_n, v_n2)`)}
+  ${asAuth('v_owner')}
+  perform public.save_attendance_day(v_e3, v_s2, v_today, 1, 720);
+  reset role;
+  select aw.wage_snapshot into v_num from public.attendance a join public.attendance_wages aw on aw.attendance_id = a.id
+   where a.employee_id = v_e3 and a.site_id = v_s2 and a.work_date = v_today;
+  ${chk('R16-ATT-04', `v_num = 720`, 'แก้ค่าแรงของวันที่ลงเต็มวันไว้แล้ว → บันทึกได้ (เดิมโดน WORK_UNITS_EXCEEDED ทุกครั้ง)', "coalesce(v_num::text, 'ไม่พบ')")}
+${TAIL}`
+
 // ── รัน ─────────────────────────────────────────────────────────────────
 console.log('\n── R16 · LINE bot (ฐานข้อมูล) ────────────────────────────────')
 
 let passN = 0
 let failN = 0
 
-for (const [i, sql] of [BLOCK_A, BLOCK_B, BLOCK_C].entries()) {
+for (const [i, sql] of [BLOCK_A, BLOCK_B, BLOCK_C, BLOCK_D].entries()) {
   const { rolledBack, message } = await run(sql)
   if (!rolledBack) {
     failN += 1

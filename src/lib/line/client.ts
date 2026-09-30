@@ -88,7 +88,9 @@ export async function getContent(messageId: string): Promise<Uint8Array> {
 
 export type RichMenuArea = {
   bounds: { x: number; y: number; width: number; height: number }
-  action: { type: 'postback'; label: string; data: string; displayText?: string }
+  action:
+    | { type: 'postback'; label: string; data: string; displayText?: string }
+    | { type: 'uri'; label: string; uri: string }
 }
 
 export async function createDefaultRichMenu(

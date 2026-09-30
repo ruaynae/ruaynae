@@ -3,7 +3,7 @@ import type { Slip } from '@/lib/attachments'
 import { MAX_ATTACHMENTS } from '@/lib/constants'
 import { rpc, send, sessionGet, setState } from '../api'
 import { copy, dbErrorText } from '../copy'
-import { bubble, carousel, data, menuItems, text, type QuickItem } from '../messages'
+import { bubble, carousel, choices, data, matchByName, menuItems, text, type QuickItem } from '../messages'
 import { attachToTransaction, storeLineImage } from '../photo'
 import type { Turn } from '../types'
 import { addDays, baht, isDate, parseAmountNote, today, thaiDate } from '../util'
@@ -11,8 +11,8 @@ import { addDays, baht, isDate, parseAmountNote, today, thaiDate } from '../util
 // เมนู 1 · คีย์รายจ่าย: (รูปบิล) → ยอด → หมวด → โครงการ → ยืนยัน · รายการเข้าเป็น "อนุมัติแล้ว" ทันที
 // เพราะเจ้าของเป็นคนคีย์เอง (เหมือนคีย์ในเว็บ)
 
-type Options = { categories: { id: string; name: string }[]; sites: { id: string; name: string }[] }
 type Choice = { id: string; name: string }
+type Options = { categories: Choice[]; sites: Choice[]; employees: Choice[] }
 
 type Payload = {
   slips: Slip[]
@@ -25,6 +25,11 @@ type Payload = {
   method?: 'cash' | 'transfer'
   note?: string
   ref?: string
+  /** คนงานที่ออกเงินให้ก่อน (R15) · null = บริษัทจ่ายเอง */
+  owed?: string | null
+  owedName?: string | null
+  /** กำลังเลือก "ใครจ่ายเงินไป" — ข้อความที่พิมพ์คือชื่อคน ไม่ใช่หมายเหตุ */
+  picking?: boolean
 }
 
 const payloadOf = (turn: Turn): Payload => {
@@ -35,30 +40,6 @@ const payloadOf = (turn: Turn): Payload => {
 const options = (turn: Turn) => rpc<Options>('bot_expense_options', { p_line_user: turn.lineUserId })
 
 const cancelItem: QuickItem = { label: copy.exp.cancel, text: 'ยกเลิก' }
-
-/** ตัวเลือกยาว ๆ: ใบละ 4 ปุ่ม เลื่อนซ้าย-ขวา (LINE จำกัด 12 ใบ) */
-function choices(alt: string, title: string, items: { label: string; data: string }[]) {
-  const groups: (typeof items)[] = []
-  for (let i = 0; i < items.length; i += 4) groups.push(items.slice(i, i + 4))
-  return carousel(
-    alt,
-    groups.slice(0, 12).map((g, i) =>
-      bubble({ title: groups.length > 1 ? `${title} (${i + 1}/${groups.length})` : title, lines: [], buttons: g }),
-    ),
-  )
-}
-
-const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, '')
-
-/** พิมพ์ชื่อมา: ตรงเป๊ะก่อน · ไม่งั้นต้องมีตัวเดียวที่มีคำนั้น */
-function matchByName(list: Choice[], typed: string): Choice | null {
-  const t = norm(typed)
-  if (!t) return null
-  const exact = list.filter((x) => norm(x.name) === t)
-  if (exact.length === 1) return exact[0]
-  const part = list.filter((x) => norm(x.name).includes(t))
-  return part.length === 1 ? part[0] : null
-}
 
 /** กดเมนู "คีย์รายจ่าย" · ถ้าส่งรูปมาก่อนแล้วให้เก็บรูปไว้ */
 export async function startExpense(turn: Turn) {
@@ -108,6 +89,11 @@ export async function onText(turn: Turn, raw: string) {
       return hit ? pickSite(turn, hit.id) : askSite(turn)
     }
     case 'exp_confirm': {
+      if (payloadOf(turn).picking) {
+        const { employees } = await options(turn)
+        const hit = matchByName(employees, raw)
+        return hit ? setWho(turn, hit.id) : askWho(turn)
+      }
       const note = raw.trim().slice(0, 200)
       await setState(turn, 'exp_confirm', { ...payloadOf(turn), note })
       return showConfirm(turn)
@@ -190,6 +176,7 @@ async function showConfirm(turn: Turn, prefix?: string) {
     p.siteName ? `โครงการ ${p.siteName}` : copy.exp.central,
     `วันที่ ${thaiDate(p.date)}`,
     `จ่ายด้วย ${method}`,
+    p.owedName ? copy.exp.owedLine(p.owedName) : copy.exp.companyPaid,
     ...(p.slips.length ? [`แนบรูปบิล ${p.slips.length} รูป`] : []),
     ...(p.note ? [`หมายเหตุ ${p.note}`] : [copy.exp.noteHint]),
   ]
@@ -210,6 +197,7 @@ async function showConfirm(turn: Turn, prefix?: string) {
           buttons: [
             { label: copy.exp.save, style: 'primary', data: data({ a: 'xok' }) },
             { label: copy.exp.changeMethod, data: data({ a: 'xm' }) },
+            { label: copy.exp.whoPaid, data: data({ a: 'xw' }) },
             { label: copy.exp.cancel, data: data({ a: 'xcx' }) },
           ],
         }),
@@ -225,6 +213,34 @@ export async function setDate(turn: Turn, date: string | undefined) {
   if (!isDate(date)) return showConfirm(turn)
   if (date > today()) return send(turn, [text(copy.exp.future)])
   await setState(turn, 'exp_confirm', { ...payloadOf(turn), date })
+  return showConfirm(turn)
+}
+
+/** "ใครจ่ายเงินไป" — บริษัท หรือคนงานที่ออกเงินให้ก่อน (คืนตอนจ่ายค่าแรง · R15) */
+export async function askWho(turn: Turn) {
+  if (turn.session.state !== 'exp_confirm') return send(turn, [text(copy.expired, menuItems())])
+  const { employees } = await options(turn)
+  await setState(turn, 'exp_confirm', { ...payloadOf(turn), picking: true })
+  return send(turn, [
+    text(copy.exp.askWho, [cancelItem]),
+    choices(copy.exp.whoPaid, copy.exp.whoPaid, [
+      { label: copy.exp.companySelf, data: data({ a: 'xe', e: 'none' }) },
+      ...employees.map((e) => ({ label: e.name, data: data({ a: 'xe', e: e.id }) })),
+    ]),
+  ])
+}
+
+export async function setWho(turn: Turn, employeeId: string) {
+  if (turn.session.state !== 'exp_confirm') return send(turn, [text(copy.expired, menuItems())])
+  const p = payloadOf(turn)
+  if (employeeId === 'none') {
+    await setState(turn, 'exp_confirm', { ...p, owed: null, owedName: null, picking: false })
+    return showConfirm(turn)
+  }
+  const { employees } = await options(turn)
+  const e = employees.find((x) => x.id === employeeId)
+  if (!e) return askWho(turn)
+  await setState(turn, 'exp_confirm', { ...p, owed: e.id, owedName: e.name, picking: false })
   return showConfirm(turn)
 }
 
@@ -247,6 +263,13 @@ type Created = {
   transaction_id?: string
   category?: string
   site?: string | null
+  employee?: string | null
+}
+
+const GONE: Record<string, string> = {
+  SITE_INVALID: copy.exp.siteGone,
+  CATEGORY_INVALID: copy.exp.categoryGone,
+  EMPLOYEE_INVALID: copy.exp.employeeGone,
 }
 
 export async function save(turn: Turn) {
@@ -266,13 +289,14 @@ export async function save(turn: Turn) {
       p_pay_method: p.method ?? 'transfer',
       p_note: p.note ?? null,
       p_client_ref: p.ref ?? null,
+      p_owed_employee: p.owed ?? null,
     })
   } catch (e) {
     return send(turn, [text(dbErrorText((e as Error).message), [cancelItem])])
   }
   if (!r.ok) {
     await setState(turn, 'idle')
-    return send(turn, [text(r.code === 'SITE_INVALID' ? copy.exp.siteGone : copy.exp.categoryGone, menuItems())])
+    return send(turn, [text(GONE[r.code ?? ''] ?? copy.exp.categoryGone, menuItems())])
   }
 
   await setState(turn, 'idle')
@@ -281,7 +305,7 @@ export async function save(turn: Turn) {
   const attached = r.transaction_id ? await attachToTransaction(r.transaction_id, p.slips) : true
   const where = r.site ? `โครงการ ${r.site}` : copy.exp.central
   return send(turn, [
-    text(copy.exp.saved(r.category ?? p.categoryName ?? '', baht(p.amount), where, attached ? p.slips.length : 0), [
+    text(copy.exp.saved(r.category ?? p.categoryName ?? '', baht(p.amount), where, attached ? p.slips.length : 0, r.employee ?? null), [
       { label: 'คีย์รายการต่อ', data: 'm=exp' },
       ...menuItems().slice(1),
     ]),

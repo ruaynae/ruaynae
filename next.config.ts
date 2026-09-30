@@ -6,6 +6,13 @@ const nextConfig: NextConfig = {
   // ให้เห็นในคอนโซล (nextjs-gotchas §1)
   allowedDevOrigins: ['localhost', '127.0.0.1', '*.localhost'],
 
+  // ฟอนต์ที่บอท LINE ใช้วาดรูป (src/lib/line/render.ts) อ่านจากดิสก์ตอนรัน
+  // ตัวไล่ไฟล์ของ Next มองไม่เห็น path ที่ประกอบจาก process.cwd() → ต้องบอกเอง
+  outputFileTracingIncludes: {
+    '/api/line/webhook': ['./public/fonts/**/*'],
+    '/api/settings/line/rich-menu': ['./public/fonts/**/*'],
+  },
+
   async headers() {
     return [
       {

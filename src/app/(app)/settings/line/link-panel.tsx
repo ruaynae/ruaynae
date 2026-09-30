@@ -153,7 +153,7 @@ export function LinkPanel({
         <div className="border-b border-line-soft px-4 py-3">
           <h2 className="text-sm font-semibold text-ink">เมนูล่างของแชท</h2>
           <p className="mt-0.5 text-xs text-muted-token">
-            ปุ่ม 4 ช่อง: คีย์รายจ่าย · คนเข้างาน · รออนุมัติ · เบี้ยเลี้ยง · กดสร้างครั้งเดียว
+            ปุ่ม 6 ช่อง: คีย์รายจ่าย · คนเข้างาน · รออนุมัติ · เบี้ยเลี้ยง · ค่าแรงคงค้าง · เปิดเว็บ · กดสร้างครั้งเดียว
             (กดซ้ำจะสร้างเมนูใหม่มาแทนของเดิม)
           </p>
         </div>

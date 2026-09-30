@@ -1897,6 +1897,7 @@ export type Database = {
           p_date: string
           p_line_user: string
           p_note?: string
+          p_owed_employee?: string
           p_pay_method?: string
           p_site?: string
         }
@@ -1938,6 +1939,11 @@ export type Database = {
         }
         Returns: undefined
       }
+      bot_wage_detail: {
+        Args: { p_employee: string; p_line_user: string }
+        Returns: Json
+      }
+      bot_wage_list: { Args: { p_line_user: string }; Returns: Json }
       bot_whoami: { Args: { p_line_user: string }; Returns: Json }
       close_payroll_run: {
         Args: { p_run: string }
