@@ -6,7 +6,7 @@ import { copy, dbErrorText } from '../copy'
 import { bubble, carousel, data, menuItems, text, type QuickItem } from '../messages'
 import { attachToTransaction, storeLineImage } from '../photo'
 import type { Turn } from '../types'
-import { addDays, baht, isDate, parseAmount, today, thaiDate } from '../util'
+import { addDays, baht, isDate, parseAmountNote, today, thaiDate } from '../util'
 
 // เมนู 1 · คีย์รายจ่าย: (รูปบิล) → ยอด → หมวด → โครงการ → ยืนยัน · รายการเข้าเป็น "อนุมัติแล้ว" ทันที
 // เพราะเจ้าของเป็นคนคีย์เอง (เหมือนคีย์ในเว็บ)
@@ -118,9 +118,9 @@ export async function onText(turn: Turn, raw: string) {
 }
 
 async function onAmount(turn: Turn, raw: string) {
-  const amount = parseAmount(raw)
-  if (amount === null) return send(turn, [text(copy.exp.badAmount, [cancelItem])])
-  await setState(turn, 'exp_cat', { ...payloadOf(turn), amount })
+  const hit = parseAmountNote(raw)
+  if (!hit) return send(turn, [text(copy.exp.badAmount, [cancelItem])])
+  await setState(turn, 'exp_cat', { ...payloadOf(turn), amount: hit.amount, ...(hit.note ? { note: hit.note } : {}) })
   return askCategory(turn)
 }
 
@@ -173,7 +173,7 @@ async function enterConfirm(turn: Turn, site: string | null, siteName: string | 
     site,
     siteName,
     date: today(),
-    method: 'cash',
+    method: 'transfer',
     ref: randomUUID(),
   })
   return showConfirm(turn)
@@ -263,7 +263,7 @@ export async function save(turn: Turn) {
       p_amount: p.amount,
       p_date: p.date,
       p_site: p.site ?? null,
-      p_pay_method: p.method ?? 'cash',
+      p_pay_method: p.method ?? 'transfer',
       p_note: p.note ?? null,
       p_client_ref: p.ref ?? null,
     })

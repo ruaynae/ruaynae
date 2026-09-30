@@ -23,5 +23,14 @@ export function parseAmount(raw: string): number | null {
   return n > 0 && n <= 99_999_999 ? n : null
 }
 
+/** "20000 ค่าแรงช่างฝ้า" → ยอด + หมายเหตุ · ข้อความที่ไม่ขึ้นต้นด้วยตัวเลข → null */
+export function parseAmountNote(raw: string): { amount: number; note: string } | null {
+  const m = raw.trim().match(/^฿?\s*([\d,]+(?:\.\d{1,2})?)\s*(?:บาท)?\s*([^\d.,\s][\s\S]*)?$/)
+  if (!m) return null
+  const amount = parseAmount(m[1])
+  if (amount === null) return null
+  return { amount, note: (m[2] ?? '').trim().slice(0, 200) }
+}
+
 export const isDate = (v: unknown): v is string =>
   typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)
