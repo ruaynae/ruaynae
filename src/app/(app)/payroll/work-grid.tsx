@@ -2,6 +2,7 @@
 
 import * as Dialog from '@radix-ui/react-dialog'
 import { Check, Loader2, Trash2 } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { toast } from 'sonner'
@@ -47,6 +48,7 @@ const MESSAGES: Record<string, string> = {
   PAYROLL_CLOSED: 'วันนี้ถูกจ่ายไปแล้ว แก้ไม่ได้',
   EMPLOYEE_INACTIVE: 'คนงานคนนี้ถูกปิดใช้งานแล้ว',
   NOT_FOUND: 'ไม่พบรายการนี้ — อาจถูกลบไปแล้ว',
+  MULTI_SITE_DAY: 'วันนี้ลงชื่อไว้หลายโครงการ แก้ที่หน้าลงชื่อเข้างานแทน',
 }
 const fail = (code?: string) => MESSAGES[code ?? ''] ?? 'ทำรายการไม่สำเร็จ กรุณาลองใหม่'
 
@@ -57,6 +59,11 @@ const isWeekend = (iso: string) => {
 }
 const DOW = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
 const dowOf = (iso: string) => DOW[new Date(`${iso}T00:00:00Z`).getUTCDay()]
+
+/** สัญลักษณ์ของหนึ่งแถว · วันที่ลงหลายโครงการต่อกันด้วย + เช่น ½+½ = รวม 1 แรง */
+const unitMark = (u: number) => (u === 0.5 ? '½' : u === 1 ? '1' : String(u))
+const dayMark = (list: GridCell[]) =>
+  list.length === 1 ? (list[0].work_units === 0.5 ? '½' : '✓') : list.map((c) => unitMark(c.work_units)).join('+')
 
 /**
  * ตารางการทำงานของเดือนที่เลือก — แถวเป็นคน คอลัมน์เป็นวัน
@@ -87,16 +94,26 @@ export function WorkGrid({
 }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
-  const [open, setOpen] = useState<{ employee: GridEmployee; date: string; cell?: GridCell } | null>(
-    null,
-  )
+  const [open, setOpen] = useState<{
+    employee: GridEmployee
+    date: string
+    cell?: GridCell
+    /** วันที่ลงชื่อหลายโครงการ — กล่องแสดงอย่างเดียว ไม่ให้บันทึกทับ */
+    split?: GridCell[]
+  } | null>(null)
   const [siteId, setSiteId] = useState('')
   const [wage, setWage] = useState('')
   const [half, setHalf] = useState(false)
   const [ot, setOt] = useState('')
 
-  const byKey = new Map(cells.map((c) => [`${c.employee_id}|${c.work_date}`, c]))
-  const cellOf = (employeeId: string, date: string) => byKey.get(`${employeeId}|${date}`)
+  // 🔴 หนึ่งวันมีได้หลายแถว (ครึ่งวันสองโครงการ) — Map ของแถวเดียวจะเก็บแค่ตัวสุดท้าย
+  // แล้วช่องโชว์ "½" ทั้งที่วันนั้นทำครบ 1 แรง
+  const byKey = new Map<string, GridCell[]>()
+  for (const c of cells) {
+    const k = `${c.employee_id}|${c.work_date}`
+    byKey.set(k, [...(byKey.get(k) ?? []), c])
+  }
+  const cellsOf = (employeeId: string, date: string) => byKey.get(`${employeeId}|${date}`) ?? []
 
   const totalOf = (employeeId: string) =>
     cells.filter((c) => c.employee_id === employeeId).reduce((s, c) => s + c.amount, 0)
@@ -104,9 +121,14 @@ export function WorkGrid({
     cells.filter((c) => c.employee_id === employeeId).reduce((s, c) => s + c.work_units, 0)
 
   function openCell(employee: GridEmployee, date: string) {
-    const cell = cellOf(employee.id, date)
-    if (cell?.paid) return // จ่ายแล้ว = อ่านอย่างเดียว
+    const list = cellsOf(employee.id, date)
+    if (list.length > 0 && list.every((c) => c.paid)) return // จ่ายแล้ว = อ่านอย่างเดียว
     if (date > today) return // วันในอนาคตยังไม่มีต้นทุน
+    if (list.length > 1) {
+      setOpen({ employee, date, split: list })
+      return
+    }
+    const cell = list[0]
     setOpen({ employee, date, cell })
     setSiteId(cell?.site_id ?? employee.default_site_id ?? sites[0]?.id ?? '')
     // ค่าเริ่มต้นของช่องเงิน: ของเดิมในวันนั้น → เรตของคนนั้น → ว่าง
@@ -204,6 +226,15 @@ export function WorkGrid({
           </span>
           จ่ายแล้ว (แก้ไม่ได้)
         </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            aria-hidden
+            className="flex h-4 items-center rounded-xs bg-brand-tint px-0.5 text-[9px] font-semibold text-brand-on-tint ring-1 ring-inset ring-brand"
+          >
+            ½+½
+          </span>
+          ลงชื่อ 2 โครงการในวันเดียว (รวม 1 แรง)
+        </span>
       </div>
 
       <div className="panel overflow-hidden">
@@ -258,9 +289,11 @@ export function WorkGrid({
                   </th>
 
                   {days.map((d) => {
-                    const cell = cellOf(e.id, d)
+                    const list = cellsOf(e.id, d)
+                    const cell = list[0]
+                    const split = list.length > 1
                     const future = d > today
-                    const locked = cell?.paid === true
+                    const locked = list.length > 0 && list.every((c) => c.paid)
                     return (
                       <td key={d} className="border-b border-line-soft p-0.5 text-center">
                         <button
@@ -268,24 +301,28 @@ export function WorkGrid({
                           onClick={() => openCell(e, d)}
                           disabled={locked || future || busy}
                           aria-label={`${e.full_name} · ${fmtDateLong(d)}${
-                            cell
-                              ? ` · ${cell.site_name} ${fmtBaht(cell.amount)}${cell.paid ? ' (จ่ายแล้ว)' : ' (ค้างจ่าย)'}`
+                            list.length
+                              ? list
+                                  .map((c) => ` · ${c.site_name} ${c.work_units} แรง ${fmtBaht(c.amount)}${c.paid ? ' (จ่ายแล้ว)' : ' (ค้างจ่าย)'}`)
+                                  .join('')
                               : ' · ยังไม่ได้ลง'
                           }`}
                           className={`flex h-9 w-10 items-center justify-center rounded-sm text-[11px] font-semibold tnum transition-colors duration-100 ${
                             locked
                               ? 'cursor-not-allowed bg-surface-3 text-muted-token'
-                              : cell
+                              : split
+                                ? 'bg-brand-tint text-brand-on-tint ring-1 ring-inset ring-brand hover:brightness-95'
+                                : cell
                                 ? 'bg-status-progress-bg text-status-progress ring-1 ring-inset ring-status-progress-ring hover:brightness-95'
                                 : future
                                   ? 'cursor-not-allowed text-muted-token opacity-30'
                                   : 'text-muted-token hover:bg-brand-tint hover:text-brand-on-tint'
                           }`}
                         >
-                          {locked ? (
+                          {locked && !split ? (
                             <Check className="size-4" strokeWidth={3} />
                           ) : cell ? (
-                            <span>{cell.work_units === 0.5 ? '½' : '✓'}</span>
+                            <span className={split ? 'text-[10px] tracking-tight' : undefined}>{dayMark(list)}</span>
                           ) : (
                             <span aria-hidden>+</span>
                           )}
@@ -324,9 +361,53 @@ export function WorkGrid({
             </Dialog.Title>
             <Dialog.Description className="mt-0.5 text-sm text-muted-token">
               {open ? fmtDateLong(open.date) : ''}
-              {open?.cell ? ' · แก้ไขวันที่บันทึกไว้แล้ว' : ' · เพิ่มวันทำงาน'}
+              {open?.split
+                ? ` · ลงชื่อ ${open.split.length} โครงการ`
+                : open?.cell
+                  ? ' · แก้ไขวันที่บันทึกไว้แล้ว'
+                  : ' · เพิ่มวันทำงาน'}
             </Dialog.Description>
 
+            {open?.split ? (
+              <>
+                <ul className="mt-4 divide-y divide-line-soft rounded-md border border-line">
+                  {open.split.map((c) => (
+                    <li key={c.attendance_id} className="flex items-baseline justify-between gap-3 px-3 py-2.5">
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium text-ink">{c.site_name}</span>
+                        <span className="block text-xs text-muted-token">
+                          {c.work_units === 0.5 ? 'ครึ่งวัน' : 'เต็มวัน'}
+                          {c.paid ? ' · จ่ายแล้ว' : ' · ค้างจ่าย'}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-sm font-semibold tnum text-ink">{fmtBaht(c.amount)}</span>
+                    </li>
+                  ))}
+                  <li className="flex items-baseline justify-between gap-3 bg-surface-2 px-3 py-2.5">
+                    <span className="text-sm font-semibold text-ink-2">
+                      รวม {open.split.reduce((s, c) => s + c.work_units, 0)} แรง
+                    </span>
+                    <span className="text-base font-bold tnum text-ink">
+                      {fmtBaht(open.split.reduce((s, c) => s + c.amount, 0))}
+                    </span>
+                  </li>
+                </ul>
+                <p className="mt-3 text-xs text-muted-token">
+                  วันที่ลงชื่อหลายโครงการ แก้หรือเอาออกทีละโครงการที่หน้าลงชื่อเข้างาน
+                  (ตารางนี้แก้ได้ครั้งละโครงการเดียว ถ้าบันทึกจากตรงนี้อีกโครงการจะหายไป)
+                </p>
+                <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+                  <Dialog.Close className="btn-secondary">ปิด</Dialog.Close>
+                  <Link
+                    href={`/attendance?date=${open.date}&site=${open.split[0].site_id}`}
+                    className="btn-primary"
+                  >
+                    ไปหน้าลงชื่อเข้างาน
+                  </Link>
+                </div>
+              </>
+            ) : (
+            <>
             <div className="mt-4 space-y-4">
               <div>
                 <label htmlFor="grid-site" className="label-base">
@@ -441,6 +522,8 @@ export function WorkGrid({
                 บันทึก
               </button>
             </div>
+            </>
+            )}
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
