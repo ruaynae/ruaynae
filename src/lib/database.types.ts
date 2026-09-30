@@ -796,7 +796,7 @@ export type Database = {
           {
             foreignKeyName: "line_accounts_profile_id_fkey"
             columns: ["profile_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
@@ -2322,7 +2322,7 @@ export type Database = {
         Args: { p_on?: string; p_site: string }
         Returns: boolean
       }
-      unlink_line_account: { Args: never; Returns: undefined }
+      unlink_line_account: { Args: { p_id: string }; Returns: undefined }
     }
     Enums: {
       adjust_kind: "add" | "deduct"

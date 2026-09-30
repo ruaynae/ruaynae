@@ -122,7 +122,7 @@ const BLOCK_A = `${HEAD('R16-DB · สิทธิ์ · คีย์ใน Vaul
 
   -- R16-DB-01 · ฟังก์ชันของหน้าตั้งค่า: anon เรียกไม่ได้ · authenticated เรียกได้ (แล้วเช็ค is_owner เอง)
   v_bad := '';
-  for r in select unnest(array['set_line_keys(text,text)', 'line_key_status()', 'create_line_link_code()', 'unlink_line_account()']) as sig loop
+  for r in select unnest(array['set_line_keys(text,text)', 'line_key_status()', 'create_line_link_code()', 'unlink_line_account(uuid)']) as sig loop
     if has_function_privilege('anon', 'public.' || r.sig, 'execute')
        or not has_function_privilege('authenticated', 'public.' || r.sig, 'execute') then
       v_bad := v_bad || r.sig || ' ';
@@ -156,7 +156,7 @@ const BLOCK_A = `${HEAD('R16-DB · สิทธิ์ · คีย์ใน Vaul
   ${expectErr('R16-DB-04', `perform public.set_line_keys('${'a'.repeat(30)}', '${'b'.repeat(50)}');`, '%FORBIDDEN%', 'หัวหน้าโครงการตั้งคีย์ไม่ได้ → FORBIDDEN')}
   ${expectErr('R16-DB-05', `perform public.line_key_status();`, '%FORBIDDEN%', 'หัวหน้าโครงการดูสถานะคีย์ไม่ได้ → FORBIDDEN')}
   ${expectErr('R16-L0-07', `perform public.create_line_link_code();`, '%FORBIDDEN%', 'หัวหน้าโครงการสร้างรหัสผูก LINE ไม่ได้ → FORBIDDEN')}
-  ${expectErr('R16-DB-06', `perform public.unlink_line_account();`, '%FORBIDDEN%', 'หัวหน้าโครงการยกเลิกการผูกของเจ้าของไม่ได้ → FORBIDDEN')}
+  ${expectErr('R16-DB-06', `perform public.unlink_line_account(gen_random_uuid());`, '%FORBIDDEN%', 'หัวหน้าโครงการยกเลิกการผูกของเจ้าของไม่ได้ → FORBIDDEN')}
   ${expectErr('R16-DB-07', `perform count(*) from public.line_link_codes;`, '%permission denied%', 'authenticated อ่านตารางรหัสผูกตรง ๆ ไม่ได้')}
 
   -- ── สวมสิทธิ์เจ้าของ ─────────────────────────────────────────────────
@@ -176,7 +176,7 @@ const BLOCK_A = `${HEAD('R16-DB · สิทธิ์ · คีย์ใน Vaul
 
   reset role;
   select count(*) into v_n2 from public.audit_log
-   where table_name = 'line_keys' and actor = v_owner
+   where table_name = 'line_keys' and actor = v_owner and at = now()  -- เฉพาะแถวในทรานแซกชันนี้ · เจ้าของตั้งคีย์จริงไปแล้ว
      and after->'changed' = '["secret","token"]'::jsonb
      and position('xxxx' in after::text) = 0 and position('yyyy' in after::text) = 0;
   ${chk('R16-DB-12', `v_n2 = 1`, 'audit_log บันทึกว่าใครเปลี่ยนคีย์ (ชื่อช่องเท่านั้น · ไม่มีค่าคีย์)', 'v_n2::text')}
@@ -209,6 +209,8 @@ const BLOCK_B = `${HEAD('R16-L0 · ผูกบัญชี · เซสชั�
   v_line3  text := 'U' || md5('r16-sup');
   v_code   text;
   v_code2  text;
+  v_code3  text;
+  v_acc    uuid;
   v_name   text;`)}
   select full_name into v_name from public.profiles where id = v_owner;
   delete from public.line_accounts where profile_id in (v_owner, v_sup);
@@ -288,15 +290,34 @@ const BLOCK_B = `${HEAD('R16-L0 · ผูกบัญชี · เซสชั�
   ${expectErr('R16-DB-25', `perform public.bot_queue('U' || md5('nobody'));`, '%line_not_owner%', 'LINE ที่ไม่เคยผูกเรียก bot_queue → line_not_owner')}
   reset role;
 
-  -- R16-L0-11 · เจ้าของกดยกเลิกการผูก
+  -- R16-DB-44 · เจ้าของผูก LINE ได้หลายบัญชี (คำขอเจ้าของ 30 ก.ย. 2569)
   ${asAuth('v_owner')}
-  perform public.unlink_line_account();
+  v_code3 := public.create_line_link_code();
   reset role;
-  select count(*) into v_n from public.line_accounts where profile_id = v_owner;
+  ${asService}
+  v_j := public.bot_link(v_line2, v_code3, 'เครื่องที่สอง');
+  v_j2 := public.bot_whoami(v_line);
+  reset role;
+  select count(*) into v_n from public.line_accounts where profile_id = v_owner and line_user_id in (v_line, v_line2);
+  ${chk('R16-DB-44', `(v_j->>'ok')::boolean and (v_j2->>'linked')::boolean and v_n = 2`,
+    'ผูก LINE บัญชีที่สองได้ · บัญชีแรกยังผูกอยู่ (ไม่ถูกแทนที่)', `format('%s %s %s', v_j, v_j2, v_n)`)}
+
+  -- R16-L0-11 · เจ้าของกดยกเลิกการผูกทีละบัญชี
+  select id into v_acc from public.line_accounts where line_user_id = v_line;
+  ${asAuth('v_owner')}
+  perform public.unlink_line_account(v_acc);
+  reset role;
+  select count(*) into v_n from public.line_accounts where line_user_id = v_line;
   ${asService}
   v_j := public.bot_whoami(v_line);
+  v_j2 := public.bot_whoami(v_line2);
   reset role;
-  ${chk('R16-L0-11', `v_n = 0 and not (v_j->>'linked')::boolean`, 'ยกเลิกการผูก → ไม่มีแถว · บอทถือว่ายังไม่ผูก', `format('%s %s', v_n, v_j)`)}
+  ${chk('R16-L0-11', `v_n = 0 and not (v_j->>'linked')::boolean and (v_j2->>'linked')::boolean`,
+    'เลิกผูกบัญชีหนึ่ง → บัญชีนั้นหาย · บัญชีอื่นของเจ้าของยังใช้ได้', `format('%s %s %s', v_n, v_j, v_j2)`)}
+  ${asAuth('v_owner')}
+  ${expectErr('R16-DB-45', `perform public.unlink_line_account(v_acc);`, '%NOT_FOUND%', 'เลิกผูกบัญชีที่ไม่มีแล้ว → NOT_FOUND (ไม่ใช่สำเร็จเงียบ ๆ)')}
+  reset role;
+  delete from public.line_accounts where line_user_id = v_line2;
 
   -- R16-L0-11b · เจ้าของถูกปิดใช้งาน → บอทหยุดรับ
   insert into public.line_accounts(line_user_id, profile_id) values (v_line, v_owner);

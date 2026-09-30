@@ -35,11 +35,14 @@ export function LinkPanel({
   const [busy, setBusy] = useState<string | null>(null)
   const [code, setCode] = useState<string | null>(null)
 
-  async function call(key: string, url: string, ok: (b: Record<string, unknown>) => void, fail: string) {
+  async function call(key: string, url: string, ok: (b: Record<string, unknown>) => void, fail: string, body?: unknown) {
     if (busy) return
     setBusy(key)
     try {
-      const r = await fetch(url, { method: 'POST' })
+      const r = await fetch(url, {
+        method: 'POST',
+        ...(body === undefined ? {} : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
+      })
       const b = await r.json().catch(() => ({}))
       if (!r.ok) return toast.error(fail)
       ok(b)
@@ -91,7 +94,7 @@ export function LinkPanel({
         <div className="border-b border-line-soft px-4 py-3">
           <h2 className="text-sm font-semibold text-ink">ผูกบัญชี LINE ของเจ้าของ</h2>
           <p className="mt-0.5 text-xs text-muted-token">
-            บอทตอบเฉพาะบัญชีที่ผูกไว้ · ผูกได้ทีละบัญชี (ผูกใหม่ = แทนของเดิม)
+            บอทตอบเฉพาะบัญชีที่ผูกไว้ · ผูกได้หลายบัญชี (ขอรหัสใหม่ทุกครั้งที่ผูกเพิ่ม) · แจ้งเตือนส่งเข้าทุกบัญชี
           </p>
         </div>
         <div className="space-y-3 px-4 py-4">
@@ -108,15 +111,14 @@ export function LinkPanel({
                   type="button"
                   disabled={busy !== null}
                   onClick={() =>
-                    call('unlink', '/api/settings/line/unlink', () => {
+                    call(`unlink:${a.id}`, '/api/settings/line/unlink', () => {
                       toast.success('เลิกผูกแล้ว')
-                      setCode(null)
                       router.refresh()
-                    }, 'เลิกผูกไม่สำเร็จ')
+                    }, 'เลิกผูกไม่สำเร็จ', { id: a.id })
                   }
                   className="btn-secondary shrink-0"
                 >
-                  {busy === 'unlink' ? <Loader2 className="size-4 animate-spin" /> : <Unlink className="size-4" />}
+                  {busy === `unlink:${a.id}` ? <Loader2 className="size-4 animate-spin" /> : <Unlink className="size-4" />}
                   เลิกผูก
                 </button>
               </div>
@@ -141,7 +143,7 @@ export function LinkPanel({
             className="btn-primary"
           >
             {busy === 'code' ? <Loader2 className="size-4 animate-spin" /> : <Link2 className="size-4" />}
-            {accounts.length === 0 ? 'ขอรหัสผูกบัญชี' : 'ขอรหัสผูกบัญชีใหม่'}
+            {accounts.length === 0 ? 'ขอรหัสผูกบัญชี' : 'ขอรหัสผูกบัญชีเพิ่ม'}
           </button>
         </div>
       </section>

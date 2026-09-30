@@ -109,7 +109,7 @@ create type advance_status as enum ('pending','approved','rejected');
 | `audit_log` | `table_name`, `row_id`, `action`, `actor`, `before` jsonb, `after` jsonb, `at`, **`mcp_key_id`** (มีค่า = AI ทำแทนเจ้าของ · **ไม่มี FK** โดยตั้งใจ ดู §17 ข้อ 19) · **`via_line`** (R16 · มาจาก GUC `app.via_line`) | **อ่านได้เฉพาะ owner · ไม่มี policy ให้ UPDATE/DELETE กับใครทั้งนั้น** |
 | `notifications` | `user_id`, `kind`, `title`, `body`, `link`, `read_at` | ของตัวเอง |
 | `push_subscriptions` | `user_id`, `endpoint` (unique), `p256dh`, `auth`, `last_ok_at` | ของตัวเอง |
-| `line_accounts` | LINE userId ↔ `profile_id` ของเจ้าของ (R16) | เจ้าของอ่านได้ · เขียนผ่าน `bot_link()` / `unlink_line_account()` เท่านั้น |
+| `line_accounts` | LINE userId ↔ `profile_id` ของเจ้าของ (R16) · **เจ้าของหนึ่งคนผูกได้หลาย LINE** (30 ก.ย. 2569 · `line_user_id` unique อย่างเดียว) · push ส่งเข้าทุกบัญชี = กินโควตาต่อบัญชี | เจ้าของอ่านได้ · เขียนผ่าน `bot_link()` / `unlink_line_account()` เท่านั้น |
 | `line_link_codes` · `line_link_failures` · `line_events` · `line_sessions` · `line_outbox_test` | รหัสผูก 6 หลัก (หมดอายุ 10 นาที · ล็อก 5 ครั้ง) · กัน webhook ซ้ำ · สถานะเมนูในแชท · กล่องขาออกของโหมดปลอม | **ปิดทั้งหมด** — service role ผ่านฟังก์ชัน `bot_*` เท่านั้น |
 
 ### "คน" กับ "ผู้ใช้ระบบ" เป็นคนละเรื่อง — อย่ายุบเป็นตารางเดียว
