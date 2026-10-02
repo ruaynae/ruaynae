@@ -99,7 +99,7 @@ create type advance_status as enum ('pending','approved','rejected');
 | `attachments` | `transaction_id`, `object_key`, `thumb_key`, `byte_size`, `content_type` | ตาม transaction |
 | `upload_intents` | `object_key`, `thumb_key`, `created_by`, `site_id`, `expires_at`, `consumed_at` | ของตัวเองเท่านั้น |
 | `advances` | เบิกล่วงหน้า: `employee_id`, `amount`, `advance_date` (**เลือกวันเองได้ ลงย้อนหลังได้**), `pay_method`, `site_id`, `payroll_run_id` (มีค่า = หักครบทั้งใบแล้ว), **`deducted_amount`** (หักคืนไปแล้วเท่าไหร่ · > 0 แต่ไม่ครบ = ค้างไปหักรอบหน้า), `mcp_key_id`, **`status`** (R14 · `pending` = คำขอของหัวหน้าโครงการ **ยังไม่ใช่เงิน** · `approved` = จ่ายแล้ว · `rejected` + `rejected_reason`), `approved_by/_at` | supervisor ยื่นคำขอ (`pending`) **โดยไม่ต้องผูกโครงการ** (22 ก.ย. 2569 · ค่าแรงเป็นของคน ไม่ใช่ของโครงการ) และเห็นเฉพาะใบที่ตัวเองยื่น · **เปลี่ยนสถานะเองไม่ได้** · ถ้าเลือกโครงการมา ต้องเป็นโครงการที่ตัวเองดูแล |
-| `payroll_runs` | `period_start`, `period_end`, `site_id`, `employee_id`, `status`, `total_accrued`, `total_advance_deducted`, `total_paid`, **`covers_work`** (false = รอบที่จ่ายแค่เงินที่ออกก่อน/โบนัส · ช่วงวันเป็นแค่ป้าย ไม่ปิดวันทำงาน — §17 ข้อ 31) | **owner เท่านั้น** |
+| `payroll_runs` | `period_start`, `period_end`, `site_id`, `employee_id`, `status`, `total_accrued`, `total_advance_deducted`, `total_paid`, **`covers_work`** (false = รอบที่จ่ายแค่เงินที่ออกก่อน/โบนัส · ช่วงวันเป็นแค่ป้าย ไม่ปิดวันทำงาน — §17 ข้อ 31) · **`through_date`** (R17 · วันตัด "จ่ายถึงสิ้นเดือน" — เงินที่ออกก่อน/ใบเบิกที่ลงวันหลังวันนี้ไม่ถูกคืน/หัก · null = รอบเก่าไม่มีวันตัด) | **owner เท่านั้น** |
 | `payroll_lines` | `run_id`, `employee_id`, `days`, `accrued`, **`reimbursed`**, **`bonus`**, `advance_deducted`, `net_paid` (= เงินสดที่ยื่นให้) · **`breakdown`** jsonb = สำเนารายละเอียด ณ วันจ่าย (base · adjustments · advances · owed) ที่ใบสรุป `/payroll/slip` อ่าน · null = จ่ายก่อน R15 · **แก้ไม่ได้หลังเขียน** (`guard_payroll_line`) | ตาม run |
 | `recurring_expenses` | ค่าใช้จ่ายรายเดือนที่ระบบลงให้เอง: `name`, `amount`, `category_id`, `site_id` (NULL = ส่วนกลาง), `employee_id` (NULL = ไม่ผูกคน), `day_of_month`, `start_month`, `end_month`, `is_active` | **owner เท่านั้น** |
 | `customers` | ทะเบียนลูกค้าสำหรับเติมที่อยู่ให้ฟอร์มเอกสาร (R12): `name` (unique แบบ trim+lower), `tax_id`, `branch`, `address`, `phone`, `email` · แก้/ลบที่ `/settings/customers` · **ลบแล้วเอกสารเก่าไม่หายและไม่เปลี่ยน** เพราะใบถือสำเนาของตัวเอง | **owner เท่านั้น** |
@@ -198,6 +198,9 @@ employee_balance(p_employee uuid)      -- ประตูของ authenticated
 employee_balance_raw(p_employee uuid)  -- สูตรเปล่า ไม่มีด่าน · เฉพาะ definer/superuser
 overdrawn_employees()                  -- ใครติดลบอยู่เท่าไหร่ (invoker · ห่อ payroll_balances)
 overdrawn_summary()                    -- กี่คน รวมเท่าไหร่ — แถบเตือนหน้าแรก
+payroll_balances_through(p_through)    -- R17 · payroll_balances() ที่มีวันตัด (ตัวเดิมห่อตัวนี้ด้วย null)
+payroll_month_balances(p_month)        -- R17 · ยอดของเดือนเดียว + carry_in (เบิกเกินยกมา) + earlier_unpaid
+payroll_open_months()                  -- R17 · เดือนที่มีของค้าง (ตัวเลือกในบอทและกล่องจ่าย)
 ```
 ⚠️ **ยอดค่าแรงเป็นความลับจากหัวหน้าโครงการ (P4.5)** — ตั้งแต่ R14 หัวหน้าโครงการ
 ยุ่งกับใบเบิกได้แล้ว `employee_balance()` จึงต้องมีด่าน `is_owner()` ไม่งั้นเขายิง
@@ -613,6 +616,14 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
       ปุ่ม "ใครจ่ายเงินไป" บนการ์ดยืนยัน (R15) · **เมนู 5 ค่าแรงคงค้าง** = รูปใบสรุปรายคน (sharp+Pango) ·
       เมนูล่าง 6 ช่อง (+ เปิดเว็บ) · `node scripts/line-rich-menu.mjs --confirm` สร้างเมนูแทนการกดปุ่มได้
       · `verify-line-db.mjs` **94/94**
+- [ ] **R17 · ค่าแรงรายเดือน** (2 ต.ค. 2569) — เจ้าของจ่ายค่าแรงวันที่ 5 ของเดือนถัดไป
+      · ใบสรุปเมนู 5 ของบอท **"เดือนใครเดือนมันคับ"** (เลือกเดือน → คน → ใบ) · เบิกเกินของเดือน =
+      **"เบิกล่วงหน้าของเดือนถัดไป"** แนบท้ายใบ แล้วยกไปหักเดือนถัดไป (`carry_in`)
+      · ปุ่มจ่ายบน `/payroll` **"จ่ายถึงสิ้นเดือน"** (ค่าเริ่มต้นเดือนล่าสุดที่จบแล้ว) → `pay_employee_wage(…, p_through)`
+      + `payroll_runs.through_date` · 🔴 **ใบสรุปเดือน M = ยอดที่ปุ่มจ่ายถึงสิ้นเดือน M จ่ายจริงทุกบาท** (สูตรเดียว
+      `payroll_balances_through`) · ไม่ส่งวันตัด = แบบเดิม · โบนัสไม่ติดวันตัด · ปฏิทินอยู่ที่ `lib/wage-month.ts`
+      · ✅ **apply บนฐานจริงแล้ว 2 ต.ค. 2569** · `verify-monthly-wages-db` 19/19 · line 94/94 · payday 35/35 · advance 29/29
+      · ยอดของคนงาน 18 คนก่อน/หลัง apply ตรงกันทุกตัว · เหลือแถว 👤 บน LINE/เบราว์เซอร์ · ตารางตรวจรับ `docs/test-plan/R17-monthly-wages.md`
 - [x] **R9 · รอบคำสั่งเจ้าของ 4 ก.ย. 2569** — เรียกหน่วยงานว่า "โครงการ" ทั้งระบบ · ปิดการ์ด
       "งานวันนี้" · ต้นทุนสะสมแยกสามก้อน (ค่าแรง/ค่าวัสดุ/อื่น ๆ) + ธง `categories.is_material`
       · ยอดรวมแยกหมวดในหน้าโครงการ · **จ่ายค่าแรงรายคนปุ่มเดียว** (เลิกใช้คำว่า "รอบจ่าย"

@@ -16,12 +16,13 @@ import { wageRowKey } from '@/lib/wage-row-key'
 import type { AdjustLine } from '@/lib/wage-adjustments'
 import { WorkGrid } from './work-grid'
 import { bangkokDateOf } from '@/lib/payroll'
+import { cleanMonths, defaultMonth, monthEnd, parseMonth } from '@/lib/wage-month'
 import { PageHeader } from '@/components/ui/page-header'
 import { DataError } from '@/components/ui/data-error'
 
 export const metadata = { title: 'ค่าแรงและการจ่าย' }
 
-type Search = { tab?: string; p?: string; view?: string }
+type Search = { tab?: string; p?: string; view?: string; pay?: string }
 
 export default async function PayrollPage({ searchParams }: { searchParams: Promise<Search> }) {
   const [me, sp] = await Promise.all([getCurrentUser(), searchParams])
@@ -89,6 +90,19 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
         : Promise.resolve({ data: null, error: null }),
     ])
 
+  // ── ปุ่มจ่าย: จ่ายถึงสิ้นเดือน (คำขอเจ้าของ 2 ต.ค. 2569) ─────────────────
+  // ค่าเริ่มต้น = เดือนล่าสุดที่จบแล้วและมีของค้าง · ยอดในกล่องจ่ายมาจาก
+  // payroll_balances_through(สิ้นเดือน) ซึ่งเป็นสูตรเดียวกับที่ RPC จ่ายใช้ตรวจ `expected`
+  const { data: monthRows, error: mErr } =
+    tab === 'balances' ? await sb.rpc('payroll_open_months') : { data: null, error: null }
+  const payMonths = cleanMonths(monthRows)
+  const asked = parseMonth(sp.pay)
+  const payMonth = asked && payMonths.includes(asked) ? asked : defaultMonth(payMonths, today)
+  const { data: payBalances, error: pbErr } =
+    tab === 'balances'
+      ? await sb.rpc('payroll_balances_through', { p_through: monthEnd(payMonth) })
+      : { data: null, error: null }
+
   // ── ข้อมูลของแท็บ "ทำงานที่ไหนบ้าง" — สรุปในฐานข้อมูล ไม่ใช่ group ใน JS ──
   // + รายวันของเดือน (ตารางเดียวกับแท็บตาราง) · บรรทัดปรับ · รายการสำเร็จรูป
   //   สำหรับกล่อง "แก้ค่าแรง" ต่อแถว (R10) — ดึงเฉพาะตอนเปิดแท็บนี้จริง
@@ -151,11 +165,11 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
           { data: null, error: null },
         ]
 
-  if (bErr || adErr || rErr || oErr || gErr || pErr || wErr || sdErr || slErr || spErr) {
+  if (bErr || adErr || rErr || oErr || mErr || pbErr || gErr || pErr || wErr || sdErr || slErr || spErr) {
     console.error(
       '[payroll] โหลดข้อมูลไม่ได้',
-      bErr?.message ?? adErr?.message ?? rErr?.message ?? oErr?.message ?? gErr?.message ?? pErr?.message ?? wErr?.message
-        ?? sdErr?.message ?? slErr?.message ?? spErr?.message,
+      bErr?.message ?? adErr?.message ?? rErr?.message ?? oErr?.message ?? mErr?.message ?? pbErr?.message
+        ?? gErr?.message ?? pErr?.message ?? wErr?.message ?? sdErr?.message ?? slErr?.message ?? spErr?.message,
     )
     return (
       <DataError message="โหลดข้อมูลค่าแรงไม่สำเร็จ" />
@@ -394,6 +408,16 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
         <PayrollBoard
           today={today}
           rows={rows}
+          payMonth={payMonth}
+          payMonths={payMonths}
+          payRows={(payBalances ?? []).map((b) => ({
+            employee_id: b.employee_id,
+            full_name: b.full_name,
+            days: Number(b.days),
+            accrued: Number(b.accrued),
+            owed: Number(b.owed),
+            advanced: Number(b.advanced),
+          }))}
           payments={(payments ?? []).map((r) => ({
             id: r.id,
             period_start: r.period_start,

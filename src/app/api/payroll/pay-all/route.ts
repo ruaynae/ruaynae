@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { getCurrentUserOrNull } from '@/lib/auth/current-user'
 import { getSupabaseServer } from '@/lib/supabase/server'
 import { isUuid } from '@/lib/transactions'
+import { monthEnd, parseMonth } from '@/lib/wage-month'
 import { failedName, payErrorCode } from '@/lib/payroll'
 
 export const runtime = 'nodejs'
@@ -11,7 +12,7 @@ const MAX_PEOPLE = 300
 
 /**
  * POST /api/payroll/pay-all — จ่ายหลายคนในทรานแซกชันเดียว (ปุ่ม "จ่ายทุกคน")
- * body: `{ items: [{ employeeId, bonus?, expected }] }`
+ * body: `{ items: [{ employeeId, bonus?, expected }], month? }` · `month` = จ่ายถึงสิ้นเดือนนั้น (ทุกคน)
  *
  * 🔴 คนหนึ่งล้ม = ไม่มีใครถูกจ่ายเลย (RPC `pay_employees`) · ตอบชื่อคนที่ติดกลับไป
  * ให้เจ้าของรู้ว่าต้องดูใคร — ครึ่ง ๆ กลาง ๆ คือสภาพที่เจ้าของไล่ไม่ได้ว่าใครได้เงินแล้ว
@@ -49,8 +50,16 @@ export async function POST(req: NextRequest) {
     items.push({ employee_id: id, bonus, expected })
   }
 
+  // จ่ายถึงสิ้นเดือน (คำขอเจ้าของ 2 ต.ค. 2569) · ไม่ส่ง = ทุกอย่างที่ค้าง (แบบเดิม)
+  const month = body.month === undefined || body.month === null ? undefined : parseMonth(body.month)
+  if (month === null) return NextResponse.json({ error: 'MONTH_INVALID' }, { status: 400 })
+  const through = month === undefined ? undefined : monthEnd(month)
+
   const sb = await getSupabaseServer()
-  const { data, error } = await sb.rpc('pay_employees', { p_items: items })
+  const { data, error } = await sb.rpc('pay_employees', {
+    p_items: items,
+    ...(through === undefined ? {} : { p_through: through }),
+  })
 
   if (error) {
     const msg = error.message ?? ''

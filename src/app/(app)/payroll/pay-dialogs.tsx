@@ -7,8 +7,9 @@ import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { fmtBaht } from '@/lib/format'
 import { parseBonus, payError, payNet } from '@/lib/payroll'
+import { monthKey, monthShort, nextMonth } from '@/lib/wage-month'
 
-/** ยอดของคนหนึ่งคนที่กล่องจ่ายต้องใช้ — ตัวเลขทั้งหมดมาจาก `payroll_balances()` */
+/** ยอดของคนหนึ่งคนที่กล่องจ่ายต้องใช้ — ตัวเลขทั้งหมดมาจาก `payroll_balances_through(สิ้นเดือนที่จ่าย)` */
 export type PayRow = {
   employee_id: string
   full_name: string
@@ -37,14 +38,17 @@ async function post(url: string, body: unknown) {
  * 🔴 ต้องเห็นทุกบรรทัดก่อนกด — จ่ายแล้ว **ย้อนกลับไม่ได้** (วันที่จ่ายแล้วถูกล็อก
  * แก้ค่าแรงย้อนหลังไม่ได้อีก) · ยอด "จ่ายจริง" ที่เห็นถูกส่งไปเป็น `expected`
  * ถ้าระหว่างนั้นมีคนลงชื่อ/อนุมัติแทรก ฐานข้อมูลจะปฏิเสธ ไม่จ่ายตัวเลขอื่น
+ * · `month` = จ่ายถึงสิ้นเดือนนั้น — งาน/เบิกของเดือนถัดไปไม่ถูกนับ (คำขอเจ้าของ 2 ต.ค. 2569)
  */
 export function PayOneDialog({
   row,
   today,
+  month,
   onClose,
 }: {
   row: PayRow | null
   today: string
+  month: string
   onClose: () => void
 }) {
   const router = useRouter()
@@ -72,6 +76,7 @@ export function PayOneDialog({
         employeeId: row.employee_id,
         bonus,
         expected: calc.net,
+        month: monthKey(month),
       })
       if (!ok) {
         const msg = payError(body.error as string)
@@ -108,7 +113,9 @@ export function PayOneDialog({
         <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[90svh] w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-line bg-surface p-5 shadow-e3 animate-pop-in">
           <Dialog.Title className="text-lg font-bold text-ink">จ่ายเงิน — {row?.full_name}</Dialog.Title>
           <Dialog.Description className="mt-0.5 text-sm text-muted-token">
-            {row && row.days > 0 ? `ปิดยอดค้างจ่ายทั้งหมด ${row.days} วัน` : 'ไม่มีวันทำงานค้าง — จ่ายเฉพาะยอดอื่น'}
+            {row && row.days > 0
+              ? `ค่าแรงถึงสิ้นเดือน ${monthShort(month)} · ${row.days} วัน`
+              : `ไม่มีวันทำงานค้างถึงสิ้นเดือน ${monthShort(month)} — จ่ายเฉพาะยอดอื่น`}
           </Dialog.Description>
 
           {row && calc && (
@@ -124,7 +131,9 @@ export function PayOneDialog({
                 <dd className="tnum text-base font-bold text-income">{fmtBaht(calc.net)}</dd>
               </div>
               {leftOver > 0 && (
-                <p className="text-xs text-urgent">ยังเบิกเกินค้าง {fmtBaht(leftOver)} · ไปหักรอบหน้า</p>
+                <p className="text-xs text-urgent">
+                  ยังเบิกเกินค้าง {fmtBaht(leftOver)} · เป็นเบิกล่วงหน้าของเดือน {monthShort(nextMonth(month))}
+                </p>
               )}
             </dl>
           )}
@@ -182,7 +191,7 @@ export function PayOneDialog({
  * ติ๊กไว้ทุกคนที่มีอะไรต้องจ่าย · เอาบางคนออกได้ก่อนยืนยัน
  * 🔴 ทรานแซกชันเดียว — ใครคนหนึ่งล้ม ไม่มีใครถูกจ่ายเลย และบอกชื่อคนที่ติด
  */
-export function PayAllButton({ rows, today }: { rows: PayRow[]; today: string }) {
+export function PayAllButton({ rows, today, month }: { rows: PayRow[]; today: string; month: string }) {
   const router = useRouter()
   const payable = useMemo(() => rows.filter((r) => r.accrued > 0 || r.owed > 0), [rows])
   const [open, setOpen] = useState(false)
@@ -215,6 +224,7 @@ export function PayAllButton({ rows, today }: { rows: PayRow[]; today: string })
     try {
       const { ok, body } = await post('/api/payroll/pay-all', {
         items: chosen.map((l) => ({ employeeId: l.row.employee_id, bonus: l.bonus ?? 0, expected: l.calc.net })),
+        month: monthKey(month),
       })
       if (!ok) {
         const who = typeof body.name === 'string' ? `${body.name}: ` : ''
@@ -258,9 +268,9 @@ export function PayAllButton({ rows, today }: { rows: PayRow[]; today: string })
         <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40 animate-fade-in" />
         <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[90svh] w-[min(32rem,calc(100vw-1.5rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-e3 animate-pop-in">
           <div className="border-b border-line-soft px-4 py-3">
-            <Dialog.Title className="text-lg font-bold text-ink">จ่ายทุกคน</Dialog.Title>
+            <Dialog.Title className="text-lg font-bold text-ink">จ่ายทุกคน — ถึงสิ้นเดือน {monthShort(month)}</Dialog.Title>
             <Dialog.Description className="mt-0.5 text-sm text-muted-token">
-              เอาติ๊กออกสำหรับคนที่ยังไม่จ่ายวันนี้ · ยอดคือเงินสดหลังหักเบิกแล้ว
+              เอาติ๊กออกสำหรับคนที่ยังไม่จ่ายวันนี้ · ยอดคือเงินสดหลังหักเบิกของเดือนนั้นแล้ว
             </Dialog.Description>
           </div>
 

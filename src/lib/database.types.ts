@@ -1153,6 +1153,7 @@ export type Database = {
           period_start: string
           site_id: string | null
           status: Database["public"]["Enums"]["payroll_status"]
+          through_date: string | null
           total_accrued: number
           total_advance_deducted: number
           total_paid: number
@@ -1169,6 +1170,7 @@ export type Database = {
           period_start: string
           site_id?: string | null
           status?: Database["public"]["Enums"]["payroll_status"]
+          through_date?: string | null
           total_accrued?: number
           total_advance_deducted?: number
           total_paid?: number
@@ -1185,6 +1187,7 @@ export type Database = {
           period_start?: string
           site_id?: string | null
           status?: Database["public"]["Enums"]["payroll_status"]
+          through_date?: string | null
           total_accrued?: number
           total_advance_deducted?: number
           total_paid?: number
@@ -1940,10 +1943,14 @@ export type Database = {
         Returns: undefined
       }
       bot_wage_detail: {
-        Args: { p_employee: string; p_line_user: string }
+        Args: { p_employee: string; p_line_user: string; p_month?: string }
         Returns: Json
       }
-      bot_wage_list: { Args: { p_line_user: string }; Returns: Json }
+      bot_wage_list: {
+        Args: { p_line_user: string; p_month?: string }
+        Returns: Json
+      }
+      bot_wage_months: { Args: { p_line_user: string }; Returns: Json }
       bot_whoami: { Args: { p_line_user: string }; Returns: Json }
       close_payroll_run: {
         Args: { p_run: string }
@@ -2115,7 +2122,12 @@ export type Database = {
         }[]
       }
       pay_employee_wage: {
-        Args: { p_bonus?: number; p_employee: string; p_expected?: number }
+        Args: {
+          p_bonus?: number
+          p_employee: string
+          p_expected?: number
+          p_through?: string
+        }
         Returns: {
           accrued: number
           bonus: number
@@ -2127,7 +2139,7 @@ export type Database = {
         }[]
       }
       pay_employees: {
-        Args: { p_items: Json }
+        Args: { p_items: Json; p_through?: string }
         Returns: {
           employee_id: string
           full_name: string
@@ -2161,6 +2173,41 @@ export type Database = {
           owed: number
         }[]
       }
+      payroll_balances_through: {
+        Args: { p_through: string }
+        Returns: {
+          accrued: number
+          advanced: number
+          balance: number
+          base: number
+          days: number
+          deduct: number
+          employee_id: string
+          extra: number
+          full_name: string
+          job_title: string
+          owed: number
+        }[]
+      }
+      payroll_month_balances: {
+        Args: { p_month: string }
+        Returns: {
+          accrued: number
+          advanced: number
+          balance: number
+          base: number
+          carry_in: number
+          days: number
+          deduct: number
+          earlier_unpaid: number
+          employee_id: string
+          extra: number
+          full_name: string
+          job_title: string
+          owed: number
+        }[]
+      }
+      payroll_open_months: { Args: never; Returns: string[] }
       payroll_outstanding: {
         Args: never
         Returns: {

@@ -673,8 +673,8 @@ const BLOCK_D = `${HEAD('R16-L4/L6 · ใครจ่ายเงินไป ·
 
   -- ── เมนู 5 · ค่าแรงคงค้าง ────────────────────────────────────────────
   ${asService}
-  v_j := public.bot_wage_list(v_line);
-  v_j2 := public.bot_wage_detail(v_line, v_e1);
+  v_j := public.bot_wage_list(v_line, v_today);
+  v_j2 := public.bot_wage_detail(v_line, v_e1, v_today);
   reset role;
   select (x->>'balance')::numeric into v_num from jsonb_array_elements(v_j) x where x->>'id' = v_e1::text;
   ${chk('R16-L6-01', `v_num = 550`, 'รายชื่อค่าแรงคงค้าง: ค่าแรง 600 + ออกเงินให้ก่อน 150 − เบิก 200 = 550', "coalesce(v_num::text, 'ไม่พบ')")}
@@ -689,17 +689,18 @@ const BLOCK_D = `${HEAD('R16-L4/L6 · ใครจ่ายเงินไป ·
        and (v_j2->>'days')::numeric = 1`,
     'ใบสรุป: ยอดตรงกับ payroll_balances() · ครึ่งวันสองโครงการ (300+300) · รายการออกก่อน 1 · ใบเบิก 1 · รวม 1 แรง', 'left(v_j2::text, 300)')}
   ${asService}
-  v_j := public.bot_wage_detail(v_line, v_e3);
-  v_j2 := public.bot_wage_detail(v_line, gen_random_uuid());
+  v_j := public.bot_wage_detail(v_line, v_e3, v_today);
+  v_j2 := public.bot_wage_detail(v_line, gen_random_uuid(), v_today);
   reset role;
   ${chk('R16-L6-03', `(v_j->>'ok')::boolean and v_j2->>'code' = 'NOTHING'`, 'คนที่ไม่มียอดค้าง → NOTHING (ไม่ใช่ใบที่เป็นศูนย์)', 'v_j2::text')}
   ${asService}
-  ${expectErr('R16-L6-04', `perform public.bot_wage_list('U' || md5('nobody'));`, '%line_not_owner%', 'LINE ที่ไม่ใช่เจ้าของดูค่าแรงคงค้างไม่ได้ → line_not_owner')}
+  ${expectErr('R16-L6-04', `perform public.bot_wage_list('U' || md5('nobody'), v_today);`, '%line_not_owner%', 'LINE ที่ไม่ใช่เจ้าของดูค่าแรงคงค้างไม่ได้ → line_not_owner')}
   reset role;
-  ${chk('R16-L6-05', `not has_function_privilege('authenticated', 'public.bot_wage_detail(text, uuid)', 'execute')
-       and not has_function_privilege('anon', 'public.bot_wage_list(text)', 'execute')
+  ${chk('R16-L6-05', `not has_function_privilege('authenticated', 'public.bot_wage_detail(text, uuid, date)', 'execute')
+       and not has_function_privilege('anon', 'public.bot_wage_list(text, date)', 'execute')
+       and not has_function_privilege('authenticated', 'public.bot_wage_months(text)', 'execute')
        and not has_function_privilege('authenticated', 'public.bot_create_expense(text, uuid, numeric, date, uuid, text, text, uuid, uuid)', 'execute')
-       and has_function_privilege('service_role', 'public.bot_wage_detail(text, uuid)', 'execute')`,
+       and has_function_privilege('service_role', 'public.bot_wage_detail(text, uuid, date)', 'execute')`,
     'ฟังก์ชันใหม่ของบอทเรียกได้เฉพาะ service_role (ยอดค่าแรงรายคนไม่หลุดถึงหัวหน้าโครงการ)', `'สิทธิ์ผิด'`)}
 
   -- ── วันลงชื่อสองโครงการ · ตารางการทำงานต้องไม่ลบอีกครึ่ง ─────────────

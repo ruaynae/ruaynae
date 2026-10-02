@@ -94,6 +94,8 @@ export const PAY_MESSAGES: Record<string, string> = {
   NOTHING_TO_PAY: 'คนนี้ไม่มียอดค้างจ่าย',
   NOT_FOUND: 'ไม่พบคนงานคนนี้',
   BONUS_INVALID: 'ยอดโบนัสไม่ถูกต้อง',
+  MONTH_INVALID: 'เดือนที่จะจ่ายไม่ถูกต้อง เปิดหน้าใหม่แล้วลองอีกครั้ง',
+  OLDER_DAY_UNPAID: 'มีวันทำงานเก่าที่ลงทีหลังและยังไม่จ่าย (อยู่ก่อนเดือนที่จ่ายไปแล้ว) — เลือกจ่ายถึงสิ้นเดือนของวันนั้นก่อน',
   BALANCE_CHANGED: 'ยอดเปลี่ยนระหว่างที่เปิดหน้าจอ (มีคนลงชื่อหรืออนุมัติแทรกเข้ามา) — ปิดกล่องแล้วเปิดใหม่เพื่อดูยอดล่าสุด',
   PAY_FAILED: 'จ่ายไม่สำเร็จ กรุณาลองใหม่',
 }
@@ -102,7 +104,7 @@ export const payError = (code?: string) => PAY_MESSAGES[code ?? ''] ?? 'ทำ�
 /** รหัสที่ RPC จ่ายเงินโยนมา → รหัสของ API + HTTP status */
 export function payErrorCode(msg: string): { code: string; status: number } {
   for (const [code, status] of [
-    ['BALANCE_CHANGED', 409], ['NOTHING_TO_PAY', 409], ['BONUS_INVALID', 400],
+    ['BALANCE_CHANGED', 409], ['NOTHING_TO_PAY', 409], ['OLDER_DAY_UNPAID', 409], ['BONUS_INVALID', 400],
     ['EMPLOYEE_REQUIRED', 400], ['NOT_FOUND', 404],
   ] as const) {
     if (msg.includes(code)) return { code, status }

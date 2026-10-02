@@ -2,13 +2,14 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { getCurrentUserOrNull } from '@/lib/auth/current-user'
 import { getSupabaseServer } from '@/lib/supabase/server'
 import { isUuid } from '@/lib/transactions'
+import { monthEnd, parseMonth } from '@/lib/wage-month'
 import { payErrorCode } from '@/lib/payroll'
 
 export const runtime = 'nodejs'
 
 /**
  * POST /api/payroll/pay — จ่ายยอดค้างของคนคนหนึ่งให้หมด
- * body: `{ employeeId, bonus?, expected? }`
+ * body: `{ employeeId, bonus?, expected?, month? }` · `month` = จ่ายถึงสิ้นเดือนนั้น
  *
  * 🔴 งานทั้งหมดอยู่ใน RPC `pay_employee_wage` = ทรานแซกชันเดียว
  * แยกเป็นหลาย request จากที่นี่แล้ววันหนึ่งจะบันทึกว่าจ่ายแล้วสำเร็จ แต่หัก
@@ -42,11 +43,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'BAD_REQUEST' }, { status: 400 })
   }
 
+  // จ่ายถึงสิ้นเดือน (คำขอเจ้าของ 2 ต.ค. 2569) · ไม่ส่ง = ทุกอย่างที่ค้าง (แบบเดิม)
+  const month = body.month === undefined || body.month === null ? undefined : parseMonth(body.month)
+  if (month === null) return NextResponse.json({ error: 'MONTH_INVALID' }, { status: 400 })
+  const through = month === undefined ? undefined : monthEnd(month)
+
   const sb = await getSupabaseServer()
   const { data, error } = await sb.rpc('pay_employee_wage', {
     p_employee: employeeId,
     p_bonus: bonus,
     ...(expected === undefined ? {} : { p_expected: expected }),
+    ...(through === undefined ? {} : { p_through: through }),
   })
 
   if (error) {

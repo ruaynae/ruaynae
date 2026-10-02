@@ -97,8 +97,10 @@ async function onPostback(turn: Turn, ev: NonNullable<LineEvent['postback']>) {
       return expense.askWho(turn)
     case 'xe':
       return expense.setWho(turn, d.e ?? '')
+    case 'wm':
+      return wages.showMonth(turn, d.mo)
     case 'wg':
-      return wages.showWageSlip(turn, d.e ?? '')
+      return wages.showWageSlip(turn, d.e ?? '', d.mo)
     default:
       return send(turn, [text(copy.expired, menuItems())])
   }

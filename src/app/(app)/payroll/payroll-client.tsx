@@ -7,7 +7,8 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { fmtBaht, fmtDate } from '@/lib/format'
-import { PayAllButton, PayOneDialog } from './pay-dialogs'
+import { monthKey, monthShort, isOpenMonth } from '@/lib/wage-month'
+import { PayAllButton, PayOneDialog, type PayRow } from './pay-dialogs'
 
 /**
  * เบี้ย/ค่าหักหนึ่งรายการของคนหนึ่งคน — **พร้อมวันที่ที่ได้**
@@ -102,16 +103,25 @@ export function PayrollBoard({
   rows,
   payments,
   advances,
+  payMonth,
+  payMonths,
+  payRows,
 }: {
   today: string
   rows: Row[]
   payments: Payment[]
   advances: Advance[]
+  /** จ่ายถึงสิ้นเดือนนี้ (`YYYY-MM-01`) — ค่าเริ่มต้นคือเดือนที่แล้ว (จ่ายวันที่ 5 ของเดือนถัดไป) */
+  payMonth: string
+  /** เดือนที่มีของค้าง ให้เลือกในกล่องจ่าย */
+  payMonths: string[]
+  /** ยอดถึงสิ้นเดือน `payMonth` รายคน — ที่ปุ่มจ่ายใช้ (ไม่ใช่ยอดค้างทั้งหมดบนการ์ด) */
+  payRows: PayRow[]
 }) {
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
   const [advanceFor, setAdvanceFor] = useState<Row | null>(null)
-  const [payFor, setPayFor] = useState<Row | null>(null)
+  const [payFor, setPayFor] = useState<PayRow | null>(null)
   const [amount, setAmount] = useState('')
   /** วันที่เบิก — ลงย้อนหลังได้ (คำสั่งเจ้าของ 20 ก.ย. 2569) เริ่มที่วันนี้เสมอ */
   const [advDate, setAdvDate] = useState(today)
@@ -180,10 +190,29 @@ export function PayrollBoard({
           ค่าแรงค้างจ่ายรายคน
           <span className="ml-auto text-xs font-normal tnum text-muted-token">{rows.length} คน</span>
         </div>
-        {/* R15 · วันเงินออกจ่ายทีเดียวทุกคน (คำตอบเจ้าของข้อ 6) */}
-        {rows.some((r) => r.accrued > 0 || r.owed > 0) && (
-          <div className="flex justify-end border-b border-line-soft px-3.5 py-2.5 md:px-4">
-            <PayAllButton rows={rows} today={today} />
+        {/* R15 · วันเงินออกจ่ายทีเดียวทุกคน (คำตอบเจ้าของข้อ 6)
+            · จ่ายถึงสิ้นเดือนที่เลือก (คำขอเจ้าของ 2 ต.ค. 2569 · จ่ายวันที่ 5 ของเดือนถัดไป) */}
+        {rows.length > 0 && (
+          <div className="flex flex-col gap-2 border-b border-line-soft px-3.5 py-2.5 sm:flex-row sm:items-center md:px-4">
+            <label className="flex min-w-0 items-center gap-2 text-sm text-ink-2">
+              <span className="shrink-0">จ่ายถึงสิ้นเดือน</span>
+              <select
+                value={monthKey(payMonth)}
+                onChange={(e) => router.replace(`/payroll?pay=${e.target.value}`, { scroll: false })}
+                disabled={busy !== null || payMonths.length < 2}
+                aria-label="จ่ายถึงสิ้นเดือน"
+                className="input-base w-auto min-w-36 py-1.5"
+              >
+                {(payMonths.includes(payMonth) ? payMonths : [...payMonths, payMonth].sort()).map((m) => (
+                  <option key={m} value={monthKey(m)}>
+                    {monthShort(m)}{isOpenMonth(m, today) ? ' (ยังไม่จบเดือน)' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="sm:ml-auto">
+              <PayAllButton rows={payRows} today={today} month={payMonth} />
+            </div>
           </div>
         )}
         {rows.length === 0 ? (
@@ -398,7 +427,17 @@ export function PayrollBoard({
                   <button
                     type="button"
                     onClick={() => {
-                      setPayFor(r)
+                      // ยอดถึงสิ้นเดือนที่เลือก · ไม่มีอะไรค้างถึงวันนั้น = ศูนย์ (ยังให้โบนัสได้)
+                      setPayFor(
+                        payRows.find((p) => p.employee_id === r.employee_id) ?? {
+                          employee_id: r.employee_id,
+                          full_name: r.full_name,
+                          days: 0,
+                          accrued: 0,
+                          owed: 0,
+                          advanced: 0,
+                        },
+                      )
                       setFieldError('')
                     }}
                     // เปิดได้เสมอ — คนที่ติดลบอย่างเดียวก็ได้โบนัสมาหักหนี้ได้ (R15-C-05)
@@ -572,7 +611,7 @@ export function PayrollBoard({
       </Dialog.Root>
 
       {/* ── กล่องยืนยันจ่าย (รายคน) — แยกไฟล์ `pay-dialogs.tsx` พร้อมโบนัส (R15) */}
-      <PayOneDialog row={payFor} today={today} onClose={() => setPayFor(null)} />
+      <PayOneDialog row={payFor} today={today} month={payMonth} onClose={() => setPayFor(null)} />
     </div>
   )
 }
