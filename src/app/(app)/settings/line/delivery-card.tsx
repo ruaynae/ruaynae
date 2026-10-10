@@ -20,8 +20,8 @@ import { TestPushButton } from './test-push-button'
  *    — ให้ปุ่มทดสอบเป็นตัวพิสูจน์ว่าข้อความถึงจริง
  */
 
-/** cron ยิงทุก 5 นาที · เกินนี้ยังค้างอยู่ = ผิดปกติ */
-const STALE_MIN = 15
+/** cron ยิงทุก 1 นาที · เกินนี้ยังค้างอยู่ = ผิดปกติ */
+const STALE_MIN = 5
 
 type AccountStatus = {
   id: string
@@ -119,7 +119,7 @@ function Verdict({ s }: { s: AccountStatus }) {
   if (s.unsent > 0) {
     return (
       <p className="text-sm text-ink-2">
-        รอรอบส่งถัดไป <span className="tabular-nums">{s.unsent}</span> รายการ (ส่งทุกประมาณ 5 นาที)
+        รอรอบส่งถัดไป <span className="tabular-nums">{s.unsent}</span> รายการ (ส่งทุกประมาณ 1 นาที)
       </p>
     )
   }
@@ -199,7 +199,7 @@ export function DeliveryCard({ accounts, hasToken }: { accounts: LinkedAccount[]
         <div className="min-w-0">
           <h2 className="text-sm font-semibold text-ink">สถานะแจ้งเตือนรออนุมัติทาง LINE</h2>
           <p className="mt-0.5 text-xs text-muted-token">
-            ส่งรวบเป็นข้อความเดียวทุกประมาณ 5 นาที · ส่งเฉพาะตอนมีรายการรออนุมัติค้างอยู่ ·
+            ส่งรวบเป็นข้อความเดียวทุกประมาณ 1 นาที · ส่งเฉพาะตอนมีรายการรออนุมัติค้างอยู่ ·
             ปุ่มทดสอบกินโควตา 1 ข้อความต่อครั้ง
           </p>
         </div>

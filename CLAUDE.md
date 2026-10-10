@@ -287,7 +287,7 @@ Dashboard → **Settings → API Keys** → แท็บ **"Publishable and secr
 | `sweep-orphans` | `7 * * * *` | ทุกชั่วโมง | `/api/cron/sweep-orphans` — ลบไฟล์ R2 ที่ `upload_intents` หมดอายุแล้วไม่มีคนใช้ |
 | `recurring-expenses` | `55 0 * * *` | 07:55 | `/api/cron/recurring` — ลงรายจ่ายรายเดือนที่ถึงกำหนด |
 | `daily-digest` | `0 1 * * *` | 08:00 | `/api/cron/daily-digest` — สรุปของค้างส่งเจ้าของ (**ไม่มีของค้าง = ไม่ส่ง**) |
-| `push-dispatch` | `*/5 * * * *` | ทุก 5 นาที | `/api/cron/push-dispatch` — ส่ง push ที่ค้างคิว |
+| `push-dispatch` | `* * * * *` | ทุก 1 นาที (เดิม 5 นาที · เปลี่ยน 11 ต.ค. 2569 ให้แจ้งเตือน LINE เร็วขึ้น) | `/api/cron/push-dispatch` — ส่ง push ที่ค้างคิว |
 
 - 🔴 **URL และ `CRON_SECRET` อยู่ใน Supabase Vault ไม่ใช่ในไฟล์ migration** —
   commit ความลับเมื่อไหร่ก็ติดอยู่ในประวัติ git ตลอดไป (§13 ข้อ 4)
