@@ -4,6 +4,7 @@ import { DataError } from '@/components/ui/data-error'
 import { PageHeader } from '@/components/ui/page-header'
 import { PAGE_SIZE } from '@/lib/constants'
 import { getSupabaseServer } from '@/lib/supabase/server'
+import { DeliveryCard } from './delivery-card'
 import { KeysForm, type KeyState } from './keys-form'
 import { LinkPanel } from './link-panel'
 import { QuotaCard } from './quota-card'
@@ -22,7 +23,7 @@ export default async function LineSettingsPage() {
     sb.rpc('line_key_status'),
     sb
       .from('line_accounts')
-      .select('id, display_name, created_at')
+      .select('id, profile_id, display_name, created_at')
       .order('created_at', { ascending: false })
       .range(0, PAGE_SIZE - 1),
   ])
@@ -66,6 +67,8 @@ export default async function LineSettingsPage() {
       </section>
 
       <QuotaCard hasToken={keys.access_token.set} />
+
+      <DeliveryCard accounts={accounts.data ?? []} hasToken={keys.access_token.set} />
 
       <LinkPanel
         webhookUrl={webhookUrl}
