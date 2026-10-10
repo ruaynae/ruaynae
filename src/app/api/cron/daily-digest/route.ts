@@ -16,7 +16,7 @@ const MAX_OWNERS = 20
  * ก็จะไม่มีใครเห็น
  *
  * 🔴 **ไม่ยิง push เอง** — แค่เขียนแถวลง `notifications` แล้ว `push-dispatch`
- * (ทุก 5 นาที) เป็นคนส่งต่อ · ตัวส่ง push อยู่ที่เดียวทั้งระบบ ไม่งั้นวันที่
+ * (ทุก 1 นาที) เป็นคนส่งต่อ · ตัวส่ง push อยู่ที่เดียวทั้งระบบ ไม่งั้นวันที่
  * ต้องแก้เรื่อง VAPID หรือการลบ subscription ที่ตายแล้ว จะมีที่ให้แก้สองที่
  * แล้วที่หนึ่งจะเงียบไม่ตาม
  *
@@ -151,7 +151,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'CREATE_FAILED' }, { status: 500 })
   }
 
-  // push ถูกส่งต่อโดย `push-dispatch` ภายใน 5 นาที — ที่นี่ไม่ยิงเอง
+  // push ถูกส่งต่อโดย `push-dispatch` ภายใน 1 นาที — ที่นี่ไม่ยิงเอง
   return NextResponse.json({
     ok: true,
     today,
