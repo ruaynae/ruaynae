@@ -7,7 +7,9 @@ import { lineToken } from './config'
 import { data, text } from './bot/messages'
 import { MENU_LABEL } from './bot/copy'
 
-const KINDS = ['txn_pending', 'advance_pending'] as const
+/** ชนิดแจ้งเตือนที่ส่งเข้า LINE · หน้าตั้งค่า LINE อ่านค่านี้ไปนับสถานะ ห้ามเขียนสำเนาแยก */
+export const LINE_PUSH_KINDS = ['txn_pending', 'advance_pending'] as const
+const KINDS = LINE_PUSH_KINDS
 const BATCH = 200
 
 export type LinePushResult = {

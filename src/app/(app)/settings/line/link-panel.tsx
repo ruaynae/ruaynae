@@ -5,7 +5,12 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
-export type LinkedAccount = { id: string; display_name: string | null; created_at: string }
+export type LinkedAccount = {
+  id: string
+  profile_id: string
+  display_name: string | null
+  created_at: string
+}
 
 const NETWORK = 'เชื่อมต่อไม่ได้ ตรวจสอบสัญญาณแล้วลองใหม่'
 
