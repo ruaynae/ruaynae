@@ -10,6 +10,7 @@ export type LinkedAccount = {
   profile_id: string
   display_name: string | null
   created_at: string
+  notify_pending: boolean
 }
 
 const NETWORK = 'เชื่อมต่อไม่ได้ ตรวจสอบสัญญาณแล้วลองใหม่'
@@ -99,7 +100,8 @@ export function LinkPanel({
         <div className="border-b border-line-soft px-4 py-3">
           <h2 className="text-sm font-semibold text-ink">ผูกบัญชี LINE ของเจ้าของ</h2>
           <p className="mt-0.5 text-xs text-muted-token">
-            บอทตอบเฉพาะบัญชีที่ผูกไว้ · ผูกได้หลายบัญชี (ขอรหัสใหม่ทุกครั้งที่ผูกเพิ่ม) · แจ้งเตือนส่งเข้าทุกบัญชี
+            บอทตอบเฉพาะบัญชีที่ผูกไว้ · ผูกได้หลายบัญชี (ขอรหัสใหม่ทุกครั้งที่ผูกเพิ่ม) ·
+            แจ้งเตือนรออนุมัติส่งเข้าเฉพาะบัญชีที่เปิดสวิตช์ไว้
           </p>
         </div>
         <div className="space-y-3 px-4 py-4">
@@ -111,6 +113,40 @@ export function LinkPanel({
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-ink">{a.display_name ?? 'บัญชี LINE'}</p>
                   <p className="text-xs text-muted-token">ผูกเมื่อ {fmtDateTime(a.created_at)}</p>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={a.notify_pending}
+                    disabled={busy !== null}
+                    onClick={() =>
+                      call(
+                        `notify:${a.id}`,
+                        '/api/settings/line/notify',
+                        () => {
+                          toast.success(
+                            a.notify_pending
+                              ? 'ปิดแจ้งเตือนรออนุมัติของบัญชีนี้แล้ว'
+                              : 'เปิดแจ้งเตือนรออนุมัติของบัญชีนี้แล้ว',
+                          )
+                          router.refresh()
+                        },
+                        'ตั้งค่าไม่สำเร็จ ลองใหม่อีกครั้ง',
+                        { id: a.id, on: !a.notify_pending },
+                      )
+                    }
+                    className="mt-1 inline-flex min-h-10 items-center gap-2.5 text-sm text-ink-2 disabled:opacity-60"
+                  >
+                    <span
+                      aria-hidden
+                      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${a.notify_pending ? 'bg-brand' : 'bg-surface-3'}`}
+                    >
+                      <span
+                        className={`absolute top-0.5 size-5 rounded-full bg-white shadow transition-all ${a.notify_pending ? 'left-[22px]' : 'left-0.5'}`}
+                      />
+                    </span>
+                    {busy === `notify:${a.id}` && <Loader2 className="size-4 animate-spin" />}
+                    แจ้งเตือนรออนุมัติ: {a.notify_pending ? 'เปิด' : 'ปิด'}
+                  </button>
                 </div>
                 <button
                   type="button"

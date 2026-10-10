@@ -23,7 +23,7 @@ export default async function LineSettingsPage() {
     sb.rpc('line_key_status'),
     sb
       .from('line_accounts')
-      .select('id, profile_id, display_name, created_at')
+      .select('id, profile_id, display_name, created_at, notify_pending')
       .order('created_at', { ascending: false })
       .range(0, PAGE_SIZE - 1),
   ])
