@@ -2,9 +2,11 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/database.types'
-import { LineHttpError, push } from './client'
+import { LineHttpError, push, type LineMessage } from './client'
 import { lineToken } from './config'
-import { data, text } from './bot/messages'
+import { rpc } from './bot/api'
+import { advanceBubble, expenseBubble, type Queue } from './bot/approval-cards'
+import { bubble, carousel, data, text } from './bot/messages'
 import { MENU_LABEL } from './bot/copy'
 
 /** ชนิดแจ้งเตือนที่ส่งเข้า LINE · หน้าตั้งค่า LINE อ่านค่านี้ไปนับสถานะ ห้ามเขียนสำเนาแยก */
@@ -21,6 +23,39 @@ export type LinePushResult = {
 
 /** เจ้าของหนึ่งคน (profile) + ทุกบัญชี LINE ที่ผูกไว้ */
 type Target = { profileId: string; since: number; lineUserIds: string[] }
+
+/**
+ * การ์ดรายละเอียดของที่รออนุมัติ พร้อมปุ่มอนุมัติ/ตีกลับ — ข้อความเดียว (carousel) = กินโควตา 1 ข้อความ/บัญชี
+ * 🔴 ปุ่มใช้ postback ชุดเดียวกับเมนู "รออนุมัติ" ในแชท (`approval-cards.ts`) · ตีกลับจะถามเหตุผลต่อในแชท
+ * 🔴 ดึงผ่าน `bot_queue` (สวมสิทธิ์เจ้าของ → กติกาเดิม) · ล้มเหลวคืน null ให้ผู้เรียกถอยไปข้อความสรุป
+ */
+async function approvalCards(lineUserId: string): Promise<LineMessage | null> {
+  try {
+    const q = await rpc<Queue>('bot_queue', { p_line_user: lineUserId })
+    if (!q) return null
+    const total = q.advance_count + q.expense_count
+    if (total === 0) return null
+    const bubbles = [...q.advances.map(advanceBubble), ...q.expenses.map(expenseBubble)]
+    const shown = Math.min(bubbles.length, bubbles.length < total ? 11 : 12)
+    const cards = bubbles.slice(0, shown)
+    if (shown < total) {
+      cards.push(
+        bubble({
+          title: `ยังมีอีก ${total - shown} รายการ`,
+          lines: ['กดดูทั้งหมดเพื่อจัดการต่อ'],
+          buttons: [{ label: MENU_LABEL.apr, style: 'primary', data: data({ m: 'apr' }) }],
+        }),
+      )
+    }
+    const parts: string[] = []
+    if (q.advance_count > 0) parts.push(`ใบเบิก ${q.advance_count} ใบ`)
+    if (q.expense_count > 0) parts.push(`รายจ่าย ${q.expense_count} รายการ`)
+    return carousel(`มีรออนุมัติ: ${parts.join(' · ')}`, cards)
+  } catch (e) {
+    console.error('[line-push] ดึงรายละเอียดรออนุมัติไม่ได้ ถอยไปข้อความสรุป', (e as Error).message)
+    return null
+  }
+}
 
 /**
  * ส่งแจ้งเตือน "มีของรออนุมัติ" เข้า LINE ของเจ้าของ — รวบเป็นข้อความเดียวต่อรอบ cron
@@ -94,9 +129,9 @@ export async function dispatchLinePush(admin: SupabaseClient<Database>): Promise
       const parts: string[] = []
       if (nTx > 0) parts.push(`รายจ่าย ${nTx} รายการ`)
       if (nAdv > 0) parts.push(`ใบเบิก ${nAdv} ใบ`)
-      const message = text(`มีรออนุมัติ: ${parts.join(' · ')}`, [
-        { label: MENU_LABEL.apr, data: data({ m: 'apr' }) },
-      ])
+      const message =
+        (await approvalCards(t.lineUserIds[0])) ??
+        text(`มีรออนุมัติ: ${parts.join(' · ')}`, [{ label: MENU_LABEL.apr, data: data({ m: 'apr' }) }])
 
       // ส่งเข้าทุกบัญชีของเจ้าของคนนี้ · บัญชีหนึ่งล้มต้องไม่ขวางบัญชีที่เหลือ
       let ok = 0

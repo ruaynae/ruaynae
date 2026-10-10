@@ -1,15 +1,8 @@
 import { rpc, send, setState } from '../api'
 import { copy, dbErrorText } from '../copy'
-import { bubble, carousel, data, menuItems, text } from '../messages'
+import { advanceBubble, expenseBubble, type Queue } from '../approval-cards'
+import { carousel, menuItems, text } from '../messages'
 import type { Turn } from '../types'
-import { baht, thaiDate } from '../util'
-
-type Queue = {
-  advances: { id: string; employee: string; amount: number; date: string; site: string | null; by: string | null; note: string | null }[]
-  expenses: { id: string; kind: string; amount: number; date: string; category: string | null; site: string | null; by: string | null; note: string | null; slips: number }[]
-  advance_count: number
-  expense_count: number
-}
 
 type Decision = {
   ok: boolean
@@ -17,8 +10,6 @@ type Decision = {
   code?: string
   label?: string
 }
-
-const compact = (xs: (string | null | undefined)[]) => xs.filter((x): x is string => !!x)
 
 /** เมนู 3 · คิวรออนุมัติ: ใบเบิก + รายจ่ายที่หัวหน้าโครงการคีย์ */
 export async function showQueue(turn: Turn) {
@@ -33,21 +24,7 @@ export async function showQueue(turn: Turn) {
     msgs.push(
       carousel(
         `ใบเบิก ${q.advance_count} รายการ`,
-        q.advances.map((a) =>
-          bubble({
-            title: `เบิก ${a.employee} ${baht(a.amount)}`,
-            lines: compact([
-              `วันที่ ${thaiDate(a.date)}`,
-              a.site ? `โครงการ ${a.site}` : null,
-              a.by ? `ผู้ยื่น ${a.by}` : null,
-              a.note ? `หมายเหตุ ${a.note}` : null,
-            ]),
-            buttons: [
-              { label: copy.apr.approve, style: 'primary', data: data({ a: 'ap', k: 'advance', i: a.id, x: 'approve' }) },
-              { label: copy.apr.reject, data: data({ a: 'ap', k: 'advance', i: a.id, x: 'reject' }) },
-            ],
-          }),
-        ),
+        q.advances.map(advanceBubble),
       ),
     )
   }
@@ -56,22 +33,7 @@ export async function showQueue(turn: Turn) {
     msgs.push(
       carousel(
         `รายจ่าย ${q.expense_count} รายการ`,
-        q.expenses.map((e) =>
-          bubble({
-            title: `${e.category ?? 'รายจ่าย'} ${baht(e.amount)}`,
-            lines: compact([
-              `วันที่ ${thaiDate(e.date)}`,
-              e.site ? `โครงการ ${e.site}` : 'ส่วนกลาง',
-              e.by ? `ผู้คีย์ ${e.by}` : null,
-              e.note ? `หมายเหตุ ${e.note}` : null,
-              e.slips ? `แนบสลิป ${e.slips} รูป (ดูในเว็บ)` : null,
-            ]),
-            buttons: [
-              { label: copy.apr.approve, style: 'primary', data: data({ a: 'ap', k: 'expense', i: e.id, x: 'approve' }) },
-              { label: copy.apr.reject, data: data({ a: 'ap', k: 'expense', i: e.id, x: 'reject' }) },
-            ],
-          }),
-        ),
+        q.expenses.map(expenseBubble),
       ),
     )
   }
