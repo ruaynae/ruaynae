@@ -776,6 +776,7 @@ export type Database = {
           display_name: string | null
           id: string
           line_user_id: string
+          notify_pending: boolean
           profile_id: string
         }
         Insert: {
@@ -783,6 +784,7 @@ export type Database = {
           display_name?: string | null
           id?: string
           line_user_id: string
+          notify_pending?: boolean
           profile_id: string
         }
         Update: {
@@ -790,6 +792,7 @@ export type Database = {
           display_name?: string | null
           id?: string
           line_user_id?: string
+          notify_pending?: boolean
           profile_id?: string
         }
         Relationships: [
@@ -2335,6 +2338,10 @@ export type Database = {
       }
       set_attendance_ot: {
         Args: { p_att: string; p_ot: number }
+        Returns: undefined
+      }
+      set_line_account_notify: {
+        Args: { p_id: string; p_on: boolean }
         Returns: undefined
       }
       set_line_keys: {

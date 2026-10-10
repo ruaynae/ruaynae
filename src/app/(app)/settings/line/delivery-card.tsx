@@ -26,6 +26,7 @@ const STALE_MIN = 15
 type AccountStatus = {
   id: string
   name: string
+  notify: boolean
   total: number
   unsent: number
   oldestUnsentMin: number | null
@@ -79,6 +80,7 @@ async function readStatus(accounts: LinkedAccount[]): Promise<Status | 'error'> 
       rows.push({
         id: a.id,
         name: a.display_name ?? 'บัญชี LINE',
+        notify: a.notify_pending,
         total: total.count ?? 0,
         unsent: unsent.count ?? 0,
         oldestUnsentMin: oldest ? Math.max(0, Math.round((now - new Date(oldest).getTime()) / 60_000)) : null,
@@ -99,6 +101,13 @@ function fmtAge(min: number): string {
 }
 
 function Verdict({ s }: { s: AccountStatus }) {
+  if (!s.notify) {
+    return (
+      <p className="text-sm text-muted-token">
+        ปิดแจ้งเตือนรออนุมัติของบัญชีนี้ — ระบบไม่ส่งข้อความอัตโนมัติ (ปุ่มทดสอบยังใช้ได้)
+      </p>
+    )
+  }
   if (s.unsent > 0 && s.oldestUnsentMin !== null && s.oldestUnsentMin >= STALE_MIN) {
     return (
       <p className="text-sm text-expense">

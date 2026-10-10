@@ -41,15 +41,20 @@ export async function dispatchLinePush(admin: SupabaseClient<Database>): Promise
 
   const { data: accounts, error: aErr } = await admin
     .from('line_accounts')
-    .select('line_user_id, profile_id, created_at')
+    .select('line_user_id, profile_id, created_at, notify_pending')
     .order('created_at', { ascending: true })
     .range(0, 20)
   if (aErr) return { pushed: 0, marked: 0, error: aErr.message }
   if (!accounts || accounts.length === 0) return { skipped: 'NO_ACCOUNT', pushed: 0, marked: 0 }
 
+  // 🔴 บัญชีที่เจ้าของปิดสวิตช์ "แจ้งเตือนรออนุมัติ" ไม่เข้ารายการ — ไม่ส่งและไม่นับเป็นผู้รับ
+  //    (เจ้าของที่ปิดครบทุกบัญชี = แถวแจ้งเตือนของเขาค้างไว้ ไม่ถูกมาร์ค · เปิดทีหลังจะได้ข้อความเดียวตามยอดที่รออยู่จริง)
+  const enabled = accounts.filter((a) => a.notify_pending)
+  if (enabled.length === 0) return { skipped: 'NOTHING', pushed: 0, marked: 0 }
+
   // รวมบัญชี LINE ตามเจ้าของ · `since` = วันที่ผูกบัญชีแรกสุดของเจ้าของคนนั้น
   const targets = new Map<string, Target>()
-  for (const acc of accounts) {
+  for (const acc of enabled) {
     const at = new Date(acc.created_at).getTime()
     const t = targets.get(acc.profile_id)
     if (t) {
