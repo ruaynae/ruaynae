@@ -110,6 +110,8 @@ create type advance_status as enum ('pending','approved','rejected');
 | `notifications` | `user_id`, `kind`, `title`, `body`, `link`, `read_at` | ของตัวเอง |
 | `push_subscriptions` | `user_id`, `endpoint` (unique), `p256dh`, `auth`, `last_ok_at` | ของตัวเอง |
 | `line_accounts` | LINE userId ↔ `profile_id` ของเจ้าของ (R16) · **เจ้าของหนึ่งคนผูกได้หลาย LINE** (30 ก.ย. 2569 · `line_user_id` unique อย่างเดียว) · push ส่งเข้าบัญชีที่ **`notify_pending` = true** (11 ต.ค. 2569 · ค่าตั้งต้นเปิด · เจ้าของปิดรายบัญชีที่ `/settings/line` ผ่าน `set_line_account_notify()` · ผูกใหม่ = กลับเป็นเปิด) = กินโควตาต่อบัญชี | เจ้าของอ่านได้ · เขียนผ่าน `bot_link()` / `unlink_line_account()` เท่านั้น |
+| `pos_settings` | แถวเดียว (R18): ร้าน Loyverse ที่ใช้ (`store_id`/`store_name`) · วิธีชำระเงินของบิลเบิก (`withdraw_payment_type_id`/`_name`) · `items_synced_at` · โทเคนอยู่ใน Vault (`loyverse_access_token`) ไม่ใช่ตารางนี้ | **owner เท่านั้น** |
+| `pos_items` | สำเนาสินค้าจาก Loyverse (R18) หนึ่งแถวต่อ `variant_id` · ช่องสำเนาเขียนได้เฉพาะ `pos_items_sync()` (service role · GUC `app.pos_sync`) · เจ้าของแก้ได้แค่ **`cost_override`** (ทุนที่เติมเอง) กับ **`reorder_point`** (`guard_pos_item`) · หายจาก Loyverse = `is_active false` ไม่ลบ | **owner เท่านั้น** (หัวหน้าได้ view ไม่มีทุนใน M1) |
 | `line_link_codes` · `line_link_failures` · `line_events` · `line_sessions` · `line_outbox_test` | รหัสผูก 6 หลัก (หมดอายุ 10 นาที · ล็อก 5 ครั้ง) · กัน webhook ซ้ำ · สถานะเมนูในแชท · กล่องขาออกของโหมดปลอม | **ปิดทั้งหมด** — service role ผ่านฟังก์ชัน `bot_*` เท่านั้น |
 
 ### "คน" กับ "ผู้ใช้ระบบ" เป็นคนละเรื่อง — อย่ายุบเป็นตารางเดียว
@@ -466,6 +468,8 @@ src/
     api/transactions/[id]/attachments/route.ts · api/attachments/[id]/route.ts
     api/uploads/sign/route.ts · api/uploads/[id]/route.ts
     api/cron/sweep-orphans/route.ts · api/cron/daily-digest/route.ts
+    (app)/settings/loyverse   โทเคน Loyverse (Vault) · ทดสอบเชื่อมต่อ · เลือกร้าน+วิธีชำระเงิน "เบิกใช้งาน" · ดึงสินค้า (R18)
+    api/settings/loyverse/{token,test,config,sync} · lib/loyverse/{client,items,errors,owner-guard}.ts
     (app)/settings/line       คีย์ LINE (เก็บใน Vault) · ผูกบัญชี · โควตาข้อความเดือนนี้ · สร้างเมนูล่าง (R16)
     api/line/webhook          ตรวจลายเซ็นก่อน JSON.parse · ตอบ 200 แล้วทำงานใน after()
     api/settings/line/{keys,link-code,unlink,rich-menu}
@@ -624,6 +628,13 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
       `payroll_balances_through`) · ไม่ส่งวันตัด = แบบเดิม · โบนัสไม่ติดวันตัด · ปฏิทินอยู่ที่ `lib/wage-month.ts`
       · ✅ **apply บนฐานจริงแล้ว 2 ต.ค. 2569** · `verify-monthly-wages-db` 19/19 · line 94/94 · payday 35/35 · advance 29/29
       · ยอดของคนงาน 18 คนก่อน/หลัง apply ตรงกันทุกตัว · เหลือแถว 👤 บน LINE/เบราว์เซอร์ · ตารางตรวจรับ `docs/test-plan/R17-monthly-wages.md`
+- [ ] **R18 · เบิกวัสดุจากร้าน (Loyverse) เข้าต้นทุนโครงการ** (18 ต.ค. 2569) — **Loyverse POS เดิมเป็นหน้าร้าน+สต็อก ไม่สร้างเอง**
+      · หัวหน้าโครงการคีย์ใบขอเบิก (เว็บ/LINE) → แท็บเล็ตแคชเชียร์เห็น → ออกบิลใน Loyverse จ่ายด้วย **"เบิกใช้งาน"** (ไม่เก็บเงิน)
+      → ดึงบิลจาก API → รายจ่ายหมวด "วัสดุจากร้าน" **approved อัตโนมัติ** · ต้นทุน = `cost_total` ของบิล ไม่ใช่ราคาขาย
+      · ทุน 0 = `null` รอเติมทุนในหน้าของเรา แล้วคิดย้อนหลัง · สต็อกใกล้หมด (`inventory_levels.update` + LINE รวบรอบ)
+      · รายงานการเบิกย้อนหลัง ("เบิกเกินไหม") · โทเคนใน Vault · **ขายปลีกยังอยู่ Loyverse · งานเบิกอยู่ระบบเรา**
+      · M0 (เชื่อมต่อ+ดึงสินค้า) เขียนแล้ว · ⚠️ **migration ยังไม่ apply** · รูปร่างข้อมูล Loyverse ยังไม่ยืนยันกับเอกสาร — ปุ่มทดสอบคือตัวพิสูจน์
+      · แผน + ตารางตรวจรับ `docs/test-plan/R18-loyverse-withdrawals.md`
 - [x] **R9 · รอบคำสั่งเจ้าของ 4 ก.ย. 2569** — เรียกหน่วยงานว่า "โครงการ" ทั้งระบบ · ปิดการ์ด
       "งานวันนี้" · ต้นทุนสะสมแยกสามก้อน (ค่าแรง/ค่าวัสดุ/อื่น ๆ) + ธง `categories.is_material`
       · ยอดรวมแยกหมวดในหน้าโครงการ · **จ่ายค่าแรงรายคนปุ่มเดียว** (เลิกใช้คำว่า "รอบจ่าย"
