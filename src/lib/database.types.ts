@@ -1220,6 +1220,96 @@ export type Database = {
           },
         ]
       }
+      pos_items: {
+        Row: {
+          barcode: string | null
+          category: string | null
+          cost_override: number | null
+          in_stock: number | null
+          is_active: boolean
+          item_id: string
+          name: string
+          pos_cost: number | null
+          pos_low_stock: number | null
+          price: number | null
+          reorder_point: number | null
+          sku: string | null
+          synced_at: string
+          track_stock: boolean
+          updated_at: string
+          variant_id: string
+          variant_name: string | null
+        }
+        Insert: {
+          barcode?: string | null
+          category?: string | null
+          cost_override?: number | null
+          in_stock?: number | null
+          is_active?: boolean
+          item_id: string
+          name: string
+          pos_cost?: number | null
+          pos_low_stock?: number | null
+          price?: number | null
+          reorder_point?: number | null
+          sku?: string | null
+          synced_at?: string
+          track_stock?: boolean
+          updated_at?: string
+          variant_id: string
+          variant_name?: string | null
+        }
+        Update: {
+          barcode?: string | null
+          category?: string | null
+          cost_override?: number | null
+          in_stock?: number | null
+          is_active?: boolean
+          item_id?: string
+          name?: string
+          pos_cost?: number | null
+          pos_low_stock?: number | null
+          price?: number | null
+          reorder_point?: number | null
+          sku?: string | null
+          synced_at?: string
+          track_stock?: boolean
+          updated_at?: string
+          variant_id?: string
+          variant_name?: string | null
+        }
+        Relationships: []
+      }
+      pos_settings: {
+        Row: {
+          id: boolean
+          items_synced_at: string | null
+          store_id: string | null
+          store_name: string | null
+          updated_at: string
+          withdraw_payment_type_id: string | null
+          withdraw_payment_type_name: string | null
+        }
+        Insert: {
+          id?: boolean
+          items_synced_at?: string | null
+          store_id?: string | null
+          store_name?: string | null
+          updated_at?: string
+          withdraw_payment_type_id?: string | null
+          withdraw_payment_type_name?: string | null
+        }
+        Update: {
+          id?: boolean
+          items_synced_at?: string | null
+          store_id?: string | null
+          store_name?: string | null
+          updated_at?: string
+          withdraw_payment_type_id?: string | null
+          withdraw_payment_type_name?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
@@ -1800,6 +1890,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _loyverse_token: { Args: never; Returns: string }
       _bot_as: { Args: { p_line_user: string }; Returns: string }
       _line_key: { Args: { p_name: string }; Returns: string }
       attendance_by_site: {
@@ -2005,6 +2096,7 @@ export type Database = {
         Returns: string
       }
       line_key_status: { Args: never; Returns: Json }
+      loyverse_token_status: { Args: never; Returns: Json }
       mcp_assume_owner: { Args: { p_actor: string }; Returns: undefined }
       mcp_begin_write: {
         Args: { p_actor: string; p_key: string }
@@ -2211,6 +2303,7 @@ export type Database = {
         }[]
       }
       payroll_open_months: { Args: never; Returns: string[] }
+      pos_items_sync: { Args: { p_rows: Json }; Returns: Json }
       payroll_outstanding: {
         Args: never
         Returns: {
@@ -2340,6 +2433,7 @@ export type Database = {
         Args: { p_att: string; p_ot: number }
         Returns: undefined
       }
+      set_loyverse_token: { Args: { p_token: string }; Returns: undefined }
       set_line_account_notify: {
         Args: { p_id: string; p_on: boolean }
         Returns: undefined

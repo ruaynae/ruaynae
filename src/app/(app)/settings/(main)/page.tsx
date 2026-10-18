@@ -7,6 +7,7 @@ import {
   Lock,
   MessageCircle,
   SlidersHorizontal,
+  Store,
   Tags,
   Users,
 } from 'lucide-react'
@@ -176,6 +177,22 @@ export default async function SettingsPage() {
             <span className="block text-sm font-semibold text-ink">ทะเบียนลูกค้า</span>
             <span className="block text-xs text-muted-token">
               ชื่อ ที่อยู่ และเลขผู้เสียภาษีที่ฟอร์มเอกสารเติมให้อัตโนมัติ
+            </span>
+          </span>
+          <ChevronRight className="size-4 shrink-0 text-muted-token" />
+        </Link>
+      )}
+
+      {isOwner && (
+        <Link
+          href="/settings/loyverse"
+          className="flex items-center gap-3 rounded-lg border border-line bg-surface px-4 py-3.5 transition-colors hover:border-brand"
+        >
+          <Store className="size-5 shrink-0 text-brand" strokeWidth={1.8} />
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-ink">ร้านวัสดุ (Loyverse)</span>
+            <span className="block text-xs text-muted-token">
+              เชื่อม Loyverse POS ของร้าน · ดึงรายการสินค้าและสต็อกมาใช้กับใบขอเบิกของช่าง
             </span>
           </span>
           <ChevronRight className="size-4 shrink-0 text-muted-token" />
