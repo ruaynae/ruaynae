@@ -20,14 +20,14 @@ export async function POST(req: NextRequest) {
   if (me.role !== 'owner') return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
 
   let fullName = ''
-  let role: 'owner' | 'site_supervisor' = 'site_supervisor'
+  let role: 'owner' | 'site_supervisor' | 'cashier' = 'site_supervisor'
   let email = ''
   let password = ''
   let pin = ''
   try {
     const b = await req.json()
     fullName = String(b?.fullName ?? '').trim().slice(0, 120)
-    role = b?.role === 'owner' ? 'owner' : 'site_supervisor'
+    role = b?.role === 'owner' ? 'owner' : b?.role === 'cashier' ? 'cashier' : 'site_supervisor'
     email = String(b?.email ?? '').trim().toLowerCase()
     password = String(b?.password ?? '')
     pin = String(b?.pin ?? '').trim()
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
 
   const admin = getSupabaseAdmin()
 
-  // เจ้าของล็อกอินด้วยอีเมล · หัวหน้าโครงการล็อกอินด้วย PIN — คนละทางกันคนละเงื่อนไข
+  // เจ้าของล็อกอินด้วยอีเมล · หัวหน้าโครงการและแคชเชียร์ล็อกอินด้วย PIN — คนละทางกันคนละเงื่อนไข
   if (role === 'owner') {
     if (!email.includes('@')) return NextResponse.json({ error: 'EMAIL_REQUIRED' }, { status: 400 })
     // ยาวกว่าขั้นต่ำของ Supabase เพราะบัญชีจริงไม่ควรใช้รหัสสั้นเท่าบัญชีทดสอบ

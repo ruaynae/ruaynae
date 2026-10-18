@@ -48,6 +48,11 @@ export const TABLE_LABEL: Record<string, string> = {
   payroll_runs: 'การจ่ายค่าแรง',
   payroll_lines: 'บรรทัดจ่ายรายคน',
   login_attempts: 'ความพยายามล็อกอิน',
+  pos_settings: 'ตั้งค่าร้านวัสดุ (Loyverse)',
+  pos_items: 'สินค้าร้านวัสดุ',
+  loyverse_token: 'โทเคน Loyverse',
+  material_requests: 'ใบขอเบิกวัสดุ',
+  material_request_lines: 'รายการในใบขอเบิก',
 }
 
 export const tableLabel = (t: string) => TABLE_LABEL[t] ?? t

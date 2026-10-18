@@ -7,10 +7,14 @@ import type { NavBadges } from '@/components/shell/nav'
 import { getCurrentUser } from '@/lib/auth/current-user'
 import { getBranding } from '@/lib/branding'
 import { getSupabaseServer } from '@/lib/supabase/server'
+import { headers } from 'next/headers'
+import { redirect } from 'next/navigation'
+import { cashierMayOpen } from '@/lib/cashier-paths'
 
 const ROLE_LABEL = {
   owner: 'เห็นทุกโครงการ · อนุมัติได้',
   site_supervisor: 'เห็นเฉพาะโครงการที่ดูแล',
+  cashier: 'แคชเชียร์ร้าน · ใบเบิกรอจ่าย',
 } as const
 
 /** กี่รายการในกล่องกระดิ่ง — เก่ากว่านั้นดูได้จากหน้าที่ลิงก์ไป */
@@ -19,6 +23,15 @@ const BELL_SIZE = 20
 export default async function AppLayout({ children }: LayoutProps<'/'>) {
   // ยิงคู่กัน ไม่ต่อคิว — สองอันนี้ไม่ได้ขึ้นต่อกัน
   const [user, branding] = await Promise.all([getCurrentUser(), getBranding()])
+
+  // 🔴 ด่านบทบาทแคชเชียร์ (R18) — เปิดได้แค่หน้าร้าน · หน้าอื่นเด้งไป /pickup
+  //    อยู่ใน layout (นอก Suspense ของ page) จึง redirect ได้จริง (§17 ข้อ 6)
+  //    สิทธิ์จริงยังอยู่ที่ RLS/RPC · ด่านนี้กันไม่ให้แคชเชียร์เห็นฟอร์มที่ไม่ใช่งานของเขา
+  if (user.role === 'cashier') {
+    const path = (await headers()).get('x-pathname') ?? ''
+    if (!cashierMayOpen(path)) redirect('/pickup')
+  }
+
   const sb = await getSupabaseServer()
 
   // 🔴 RLS คุมอยู่แล้วว่าเห็นได้เฉพาะของตัวเอง — ไม่ต้องมี `.eq('user_id')`
@@ -32,6 +45,7 @@ export default async function AppLayout({ children }: LayoutProps<'/'>) {
     { count: rejectedCount, error: rErr },
     { count: advancePendingCount, error: apErr },
     { count: advanceRejectedCount, error: arErr },
+    { data: mrOpen, error: mrErr },
   ] = await Promise.all([
       sb
         .from('notifications')
@@ -64,8 +78,11 @@ export default async function AppLayout({ children }: LayoutProps<'/'>) {
       // 🔴 ไม่มีเงื่อนไข role — RLS เป็นคนกำหนดขอบเขต: เจ้าของเห็นทุกใบที่
       // ตีกลับไปแล้วยังค้าง · หัวหน้าโครงการเห็นเฉพาะของตัวเอง
       sb.from('advances').select('id', { count: 'exact', head: true }).eq('status', 'rejected'),
+      // ใบขอเบิกวัสดุที่รอจ่าย (R18) — ขอบเขตตามบทบาทอยู่ใน RPC
+      sb.rpc('material_requests_open_count'),
     ])
 
+  if (mrErr) console.error('[shell] นับใบขอเบิกไม่ได้', mrErr.message)
   if (nErr || cErr || pErr || rErr || apErr || arErr) {
     // กระดิ่ง/ตัวเลขเมนูพังต้องไม่ทำให้ทั้งแอปพัง — บันทึกไว้แล้วแสดงเป็นค่าว่าง
     console.error(
@@ -82,6 +99,8 @@ export default async function AppLayout({ children }: LayoutProps<'/'>) {
     '/approvals': (pendingCount ?? 0) + (advancePendingCount ?? 0),
     '/ledger': rejectedCount ?? 0,
     '/advances': advanceRejectedCount ?? 0,
+    '/pickup': user.role === 'site_supervisor' ? 0 : ((mrOpen as number | null) ?? 0),
+    '/materials': user.role === 'site_supervisor' ? ((mrOpen as number | null) ?? 0) : 0,
   }
 
   return (
