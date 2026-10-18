@@ -50,7 +50,12 @@ export function BottomNav({
   const [moreOpen, setMoreOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
 
-  const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href))
+  // ช่องที่ยาวกว่าและตรงกว่าชนะ (`/pickup/done` ไม่ทำให้ `/pickup` ติดไฟด้วย)
+  const isActive = (href: string) =>
+    href === '/'
+      ? pathname === '/'
+      : pathname.startsWith(href) &&
+        !slots.some((o) => o.href.length > href.length && o.href.startsWith(href) && pathname.startsWith(o.href))
 
   // เมนูที่ไม่ได้อยู่ในแถบล่าง ไปรวมกันใน "เพิ่มเติม"
   const inBar = new Set(slots.map((i) => i.href))
@@ -84,6 +89,8 @@ export function BottomNav({
         {/* ── ปุ่มกลาง: แผ่นบันทึกประจำวัน ─────────────────────────────
             ทุกการบันทึกที่ทำทุกวันอยู่ห่างไม่เกิน 2 แตะจากทุกหน้า
             ปุ่มใหญ่รายการแรกคือบันทึกรายจ่าย — งานที่ทำบ่อยที่สุดยังเร็วเท่าเดิม */}
+        {/* แคชเชียร์ (R18) ไม่มีงานบันทึกประจำวัน → เว้นช่องกลางว่าง แต่คงตาราง 5 ช่อง */}
+        {quickAdd.length === 0 ? <span aria-hidden /> : (
         <Dialog.Root open={addOpen} onOpenChange={setAddOpen}>
           <Dialog.Trigger
             aria-label="บันทึกประจำวัน"
@@ -136,6 +143,7 @@ export function BottomNav({
             </Dialog.Content>
           </Dialog.Portal>
         </Dialog.Root>
+        )}
 
         {slots.slice(2).map((i) => (
           <Slot

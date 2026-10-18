@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import {
   AlertTriangle,
   CalendarClock,
@@ -41,6 +42,8 @@ const SHOW_TODAY_BOARD = false
 
 export default async function OverviewPage() {
   const me = await getCurrentUser()
+  // แคชเชียร์ร้าน (R18) ไม่มีหน้า "วันนี้" — งานของเขาคือใบเบิกรอจ่าย
+  if (me.role === 'cashier') redirect('/pickup')
   const sb = await getSupabaseServer()
   const today = todayInBangkok()
 

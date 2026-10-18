@@ -12,7 +12,7 @@ import { PageHeader } from '@/components/ui/page-header'
 type Row = {
   id: string
   full_name: string
-  role: 'owner' | 'site_supervisor'
+  role: 'owner' | 'site_supervisor' | 'cashier'
   is_active: boolean
   created_at: string
 }
@@ -33,7 +33,7 @@ const MESSAGES: Record<string, string> = {
 }
 const fail = (code?: string) => MESSAGES[code ?? ''] ?? 'ทำรายการไม่สำเร็จ กรุณาลองใหม่'
 
-const ROLE_LABEL = { owner: 'เจ้าของ', site_supervisor: 'หัวหน้าโครงการ' } as const
+const ROLE_LABEL = { owner: 'เจ้าของ', site_supervisor: 'หัวหน้าโครงการ', cashier: 'แคชเชียร์ร้าน' } as const
 
 export function UsersClient({ meId, users }: { meId: string; users: Row[] }) {
   const router = useRouter()
@@ -96,7 +96,8 @@ export function UsersClient({ meId, users }: { meId: string; users: Row[] }) {
     }
   }
 
-  const isSupervisorForm = form.role === 'site_supervisor'
+  // หัวหน้าโครงการและแคชเชียร์ล็อกอินด้วย PIN ทั้งคู่
+  const isSupervisorForm = form.role !== 'owner'
 
   return (
     <div className="space-y-4">
@@ -141,6 +142,7 @@ export function UsersClient({ meId, users }: { meId: string; users: Row[] }) {
                 className="input-base"
               >
                 <option value="site_supervisor">หัวหน้าโครงการ (ล็อกอินด้วย PIN)</option>
+                <option value="cashier">แคชเชียร์ร้าน (ล็อกอินด้วย PIN · เห็นแค่ใบเบิกรอจ่าย)</option>
                 <option value="owner">เจ้าของ (ล็อกอินด้วยอีเมล)</option>
               </select>
             </div>
@@ -223,13 +225,13 @@ export function UsersClient({ meId, users }: { meId: string; users: Row[] }) {
                 </div>
                 <div className="truncate text-xs text-muted-token">
                   {ROLE_LABEL[u.role]}
-                  {u.role === 'site_supervisor' && ' · ล็อกอินด้วย PIN'}
+                  {u.role !== 'owner' && ' · ล็อกอินด้วย PIN'}
                   {!u.is_active && ' · ปิดใช้งานอยู่'}
                 </div>
               </div>
 
               <div className="flex shrink-0 gap-2">
-                {u.role === 'site_supervisor' && (
+                {u.role !== 'owner' && (
                   <button
                     onClick={() => { setPinFor(u); setPinValue('') }}
                     disabled={busy !== null}

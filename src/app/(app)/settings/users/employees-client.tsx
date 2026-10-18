@@ -31,9 +31,9 @@ export type DeleteInfoRow = DeleteInfo & { employee_id: string }
 
 type Site = { id: string; name: string }
 /** บัญชีล็อกอินที่ผูกได้ — ต้องมี `role` มาด้วย ไม่งั้นกล่องเลือกบอกไม่ได้ว่าใครเป็นใคร */
-type Person = { id: string; full_name: string; role: 'owner' | 'site_supervisor' }
+type Person = { id: string; full_name: string; role: 'owner' | 'site_supervisor' | 'cashier' }
 
-const ROLE_LABEL = { owner: 'เจ้าของ', site_supervisor: 'หัวหน้าโครงการ' } as const
+const ROLE_LABEL = { owner: 'เจ้าของ', site_supervisor: 'หัวหน้าโครงการ', cashier: 'แคชเชียร์ร้าน' } as const
 
 /** ตำแหน่งที่พิมพ์บ่อย — กดแล้วเติมให้ พิมพ์เองก็ยังได้ */
 const JOB_TITLES = [

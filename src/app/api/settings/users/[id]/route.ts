@@ -15,13 +15,13 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const { id } = await ctx.params
 
   let fullName: string | undefined
-  let role: 'owner' | 'site_supervisor' | undefined
+  let role: 'owner' | 'site_supervisor' | 'cashier' | undefined
   let isActive: boolean | undefined
   let pin: string | undefined
   try {
     const b = await req.json()
     if (typeof b?.fullName === 'string') fullName = b.fullName.trim().slice(0, 120)
-    if (b?.role === 'owner' || b?.role === 'site_supervisor') role = b.role
+    if (b?.role === 'owner' || b?.role === 'site_supervisor' || b?.role === 'cashier') role = b.role
     if (typeof b?.isActive === 'boolean') isActive = b.isActive
     if (typeof b?.pin === 'string') pin = b.pin.trim()
   } catch {

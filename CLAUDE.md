@@ -27,6 +27,7 @@ migration `20260831040000_branding_company_name.sql` ซึ่งเติม**�
 | Role | ล็อกอิน | เห็น | ทำได้ |
 |---|---|---|---|
 | `owner` | อีเมล + รหัสผ่าน | ทุกโครงการ ทุกตัวเลข กำไร audit log | ทุกอย่าง · อนุมัติ/ตีกลับ · ปิดรอบจ่ายค่าแรง · CRUD ทั้งหมด |
+| `cashier` | PIN 6 หลัก | **ใบขอเบิกวัสดุเท่านั้น** (R18 · 19 ต.ค. 2569) — ไม่เห็นเงิน คนงาน หรือโครงการ | กด "จ่ายของแล้ว" ที่ `/pickup` · ด่านหน้าอยู่ที่ `(app)/layout.tsx` (`cashierMayOpen` + header `x-pathname` จาก proxy) · สิทธิ์จริงอยู่ที่ RLS/RPC |
 | `site_supervisor` | PIN 6 หลัก | เฉพาะโครงการที่ดูแล **ณ ช่วงเวลานั้น** | คีย์รายจ่ายโครงการตัวเอง (เข้าคิวรออนุมัติ) · ลงชื่อคนเข้าโครงการ · **ตั้งเบิกค่าแรงให้ลูกน้อง (เข้าคิวรออนุมัติ ไม่ใช่การจ่ายเงิน · ไม่ต้องผูกโครงการ ไม่มีเพดาน)** |
 
 **คนงานไม่ล็อกอิน** — เป็นแถวใน `employees` ไม่ใช่ผู้ใช้ระบบ `role` ถูกกำหนดฝั่งเซิร์ฟเวอร์เท่านั้น ห้ามเชื่อ metadata จาก client
@@ -68,7 +69,7 @@ migration `20260831040000_branding_company_name.sql` ซึ่งเติม**�
 
 ### Enums
 ```sql
-create type user_role      as enum ('owner','site_supervisor');
+create type user_role      as enum ('owner','site_supervisor','cashier');  -- cashier = R18
 create type site_status    as enum ('planning','active','paused','done','cancelled');
 create type txn_kind       as enum ('income','expense');
 create type txn_status     as enum ('pending','approved','rejected');
@@ -112,6 +113,7 @@ create type advance_status as enum ('pending','approved','rejected');
 | `line_accounts` | LINE userId ↔ `profile_id` ของเจ้าของ (R16) · **เจ้าของหนึ่งคนผูกได้หลาย LINE** (30 ก.ย. 2569 · `line_user_id` unique อย่างเดียว) · push ส่งเข้าบัญชีที่ **`notify_pending` = true** (11 ต.ค. 2569 · ค่าตั้งต้นเปิด · เจ้าของปิดรายบัญชีที่ `/settings/line` ผ่าน `set_line_account_notify()` · ผูกใหม่ = กลับเป็นเปิด) = กินโควตาต่อบัญชี | เจ้าของอ่านได้ · เขียนผ่าน `bot_link()` / `unlink_line_account()` เท่านั้น |
 | `pos_settings` | แถวเดียว (R18): ร้าน Loyverse ที่ใช้ (`store_id`/`store_name`) · วิธีชำระเงินของบิลเบิก (`withdraw_payment_type_id`/`_name`) · `items_synced_at` · โทเคนอยู่ใน Vault (`loyverse_access_token`) ไม่ใช่ตารางนี้ | **owner เท่านั้น** |
 | `pos_items` | สำเนาสินค้าจาก Loyverse (R18) หนึ่งแถวต่อ `variant_id` · ช่องสำเนาเขียนได้เฉพาะ `pos_items_sync()` (service role · GUC `app.pos_sync`) · เจ้าของแก้ได้แค่ **`cost_override`** (ทุนที่เติมเอง) กับ **`reorder_point`** (`guard_pos_item`) · หายจาก Loyverse = `is_active false` ไม่ลบ | **owner เท่านั้น** (หัวหน้าได้ view ไม่มีทุนใน M1) |
+| `material_requests` · `material_request_lines` | ใบขอเบิกวัสดุ (R18 · M1): `request_no` (`RQ0001` จาก sequence), `site_id`, `employee_id` (ช่าง · ไม่บังคับ), `requested_by`, `status` (`open`/`issued`/`cancelled`), `issued_by/_at` · บรรทัด = `variant_id` + `qty` | อ่านตรงได้เฉพาะ owner · **ไม่มี policy เขียน** — ทุกทางผ่าน RPC `material_request_create/issue/cancel` · `material_requests_feed` (ขอบเขตตามบทบาท · ไม่มีทุน) · `pos_item_search` |
 | `line_link_codes` · `line_link_failures` · `line_events` · `line_sessions` · `line_outbox_test` | รหัสผูก 6 หลัก (หมดอายุ 10 นาที · ล็อก 5 ครั้ง) · กัน webhook ซ้ำ · สถานะเมนูในแชท · กล่องขาออกของโหมดปลอม | **ปิดทั้งหมด** — service role ผ่านฟังก์ชัน `bot_*` เท่านั้น |
 
 ### "คน" กับ "ผู้ใช้ระบบ" เป็นคนละเรื่อง — อย่ายุบเป็นตารางเดียว
@@ -195,6 +197,8 @@ create type advance_status as enum ('pending','approved','rejected');
 ### Helper `SECURITY DEFINER`
 ```sql
 is_owner() -> boolean
+is_supervisor() -> boolean   -- R18 · บทบาทที่สามทำให้ "ไม่ใช่เจ้าของ" ≠ "หัวหน้าโครงการ" อีกต่อไป
+is_cashier() -> boolean      -- R18
 supervises_site(p_site uuid, p_on date default current_date) -> boolean
 employee_balance(p_employee uuid)      -- ประตูของ authenticated · **เจ้าของเท่านั้น**
 employee_balance_raw(p_employee uuid)  -- สูตรเปล่า ไม่มีด่าน · เฉพาะ definer/superuser
@@ -468,6 +472,8 @@ src/
     api/transactions/[id]/attachments/route.ts · api/attachments/[id]/route.ts
     api/uploads/sign/route.ts · api/uploads/[id]/route.ts
     api/cron/sweep-orphans/route.ts · api/cron/daily-digest/route.ts
+    (app)/materials           ใบขอเบิกวัสดุ (หัวหน้า/เจ้าของ) · new/request-form.tsx · (app)/pickup หน้าจอแคชเชียร์ (+ /pickup/done)
+    components/materials/*    request-card · request-action · pickup-list · auto-refresh · lib/materials.ts (ชนิด+ข้อความ error)
     (app)/settings/loyverse   โทเคน Loyverse (Vault) · ทดสอบเชื่อมต่อ · เลือกร้าน+วิธีชำระเงิน "เบิกใช้งาน" · ดึงสินค้า (R18)
     api/settings/loyverse/{token,test,config,sync} · lib/loyverse/{client,items,errors,owner-guard}.ts
     (app)/settings/line       คีย์ LINE (เก็บใน Vault) · ผูกบัญชี · โควตาข้อความเดือนนี้ · สร้างเมนูล่าง (R16)
@@ -633,6 +639,7 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
       → ดึงบิลจาก API → รายจ่ายหมวด "วัสดุจากร้าน" **approved อัตโนมัติ** · ต้นทุน = `cost_total` ของบิล ไม่ใช่ราคาขาย
       · ทุน 0 = `null` รอเติมทุนในหน้าของเรา แล้วคิดย้อนหลัง · สต็อกใกล้หมด (`inventory_levels.update` + LINE รวบรอบ)
       · รายงานการเบิกย้อนหลัง ("เบิกเกินไหม") · โทเคนใน Vault · **ขายปลีกยังอยู่ Loyverse · งานเบิกอยู่ระบบเรา**
+      · M1 ใบขอเบิก + บทบาทแคชเชียร์ (`/materials` · `/pickup`) เขียนแล้ว · ⚠️ migration 2 ไฟล์ต้องรันแยก
       · ✅ **M0 ใช้งานจริงแล้ว 19 ต.ค. 2569** — migration apply แล้ว (เจ้าของรันเอง) · ดึงสินค้าได้ 125 · ทุน 0 = 11 · ติดลบ 40 ตรงกับไฟล์ส่งออก
       · แผน + ตารางตรวจรับ `docs/test-plan/R18-loyverse-withdrawals.md`
 - [x] **R9 · รอบคำสั่งเจ้าของ 4 ก.ย. 2569** — เรียกหน่วยงานว่า "โครงการ" ทั้งระบบ · ปิดการ์ด
@@ -1006,6 +1013,12 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
    · **แก้:** รวมบัญชีตามเจ้าของ → ส่งเข้าทุกบัญชี → มาร์คครั้งเดียวเมื่อมีอย่างน้อยหนึ่งบัญชีรับสำเร็จ
    · **ตรวจ:** `select created, content from net._http_response` ดู `"pushed":N` ต้องเท่าจำนวนบัญชีที่ผูก (ไม่ใช่ 1)
    · **บทเรียน:** ตัวนับ "จัดการแล้ว" ต้องอยู่ระดับเดียวกับหน่วยที่วน — วนต่อ X แต่มาร์คต่อ Y (Y ⊃ X) = X ตัวหลัง ๆ ถูกข้าม
+40. **เพิ่มบทบาทที่สาม = policy ที่เขียนว่า "ไม่ใช่เจ้าของ แต่เป็นเจ้าของแถว" กลายเป็นประตูของบทบาทใหม่** (R18 · 19 ต.ค. 2569)
+   · `advances_insert` ยอมให้ "ใครก็ได้ที่ `created_by = ตัวเอง` และไม่ผูกโครงการ" — สมัยมีสองบทบาทแปลว่าหัวหน้าโครงการ
+   · พอเพิ่ม `cashier` แคชเชียร์ก็ยื่นคำขอเบิกค่าแรงได้ทันที และ `employees_select` (`is_active` อย่างเดียว) เปิดรายชื่อคนงานให้
+   · **แก้:** `is_supervisor()` ในกิ่งที่ไม่ใช่เจ้าของ · **วิธีหา:** ไล่ทุก policy ที่ไม่มี `is_owner()`/`supervises_site()`
+     (`grep -A4 "create policy"` แล้วกรองบรรทัด `using`/`with check`) และทุกที่ในโค้ดที่ `role !== 'owner'` แปลว่าหัวหน้า
+   · และ layout ของ App Router **ไม่รันซ้ำตอนเปลี่ยนหน้าแบบ client** — ด่านใน layout กันได้แค่การเปิดหน้าตรง ๆ · หน้าแรกจึงต้อง redirect เองด้วย
 
 ## 18. ตัวแปรสภาพแวดล้อม
 

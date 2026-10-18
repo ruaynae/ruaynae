@@ -6,6 +6,8 @@ import {
   HandCoins,
   Home,
   Inbox,
+  PackageCheck,
+  PackagePlus,
   Plug,
   Receipt,
   Settings,
@@ -36,6 +38,10 @@ export type NavItem = {
   /** เห็นเฉพาะหัวหน้าโครงการ — งานที่เจ้าของทำจากอีกหน้าหนึ่งอยู่แล้ว
    *  (เจ้าของเบิกให้ลูกน้องที่ `/payroll` ซึ่งจ่ายทันที ไม่ต้องยื่นคำขอกับตัวเอง) */
   supervisorOnly?: boolean
+  /** แคชเชียร์ร้าน (R18) เห็นเฉพาะเมนูที่ติดธงนี้ — เมนูอื่นทั้งหมดถูกซ่อน */
+  cashierOk?: boolean
+  /** ซ่อนจากหัวหน้าโครงการ (เช่นหน้าจอแคชเชียร์) โดยเจ้าของยังเห็น */
+  hideFromSupervisor?: boolean
 }
 
 export type NavGroup = { heading: string; items: NavItem[] }
@@ -82,6 +88,27 @@ export const NAV: NavGroup[] = [
     ],
   },
   {
+    heading: 'ร้านวัสดุ',
+    items: [
+      // หัวหน้าโครงการคีย์ใบขอเบิกแทนช่าง (R18) · เจ้าของคีย์ได้ด้วย
+      {
+        href: '/materials',
+        label: 'เบิกวัสดุจากร้าน',
+        sub: 'คีย์ใบขอเบิกให้ช่างไปรับของ',
+        icon: PackagePlus,
+      },
+      // หน้าจอแคชเชียร์บนแท็บเล็ตร้าน · เจ้าของเปิดดูได้
+      {
+        href: '/pickup',
+        label: 'ใบเบิกรอจ่าย',
+        sub: 'หน้าจอแคชเชียร์ร้าน',
+        icon: PackageCheck,
+        cashierOk: true,
+        hideFromSupervisor: true,
+      },
+    ],
+  },
+  {
     heading: 'เจ้าของ',
     items: [
       {
@@ -105,7 +132,7 @@ export const NAV: NavGroup[] = [
         icon: ShieldCheck,
         ownerOnly: true,
       },
-      { href: '/settings', label: 'ตั้งค่า', sub: 'แบรนด์ ผู้ใช้ หมวดค่าใช้จ่าย', icon: Settings },
+      { href: '/settings', label: 'ตั้งค่า', sub: 'แบรนด์ ผู้ใช้ หมวดค่าใช้จ่าย', icon: Settings, cashierOk: true },
     ],
   },
   {
@@ -128,7 +155,11 @@ export const NAV: NavGroup[] = [
  * ซ่อนเมนูแล้วคิดว่าปลอดภัยคือการเข้าใจผิดที่แพงที่สุดเรื่องหนึ่ง
  */
 export const visibleTo = (role: Role, i: NavItem | QuickAddItem): boolean =>
-  (!i.ownerOnly || role === 'owner') && (!i.supervisorOnly || role === 'site_supervisor')
+  role === 'cashier'
+    ? i.cashierOk === true
+    : (!i.ownerOnly || role === 'owner') &&
+      (!i.supervisorOnly || role === 'site_supervisor') &&
+      (!i.hideFromSupervisor || role !== 'site_supervisor')
 
 export function navFor(role: Role): NavGroup[] {
   return NAV.map((g) => ({
@@ -226,7 +257,14 @@ export const badgeTotal = (groups: NavGroup[], badges: NavBadges) =>
 /** เลขบนป้าย — เกิน 99 ตัดเป็น "99+" ไม่งั้นป้ายกว้างจนดันเมนูเสียรูป */
 export const badgeText = (n: number) => (n > 99 ? '99+' : String(n))
 
-export const bottomNavFor = (role: Role): NavItem[] => [
+export const bottomNavFor = (role: Role): NavItem[] =>
+  role === 'cashier'
+    ? [
+        { href: '/pickup', label: 'รอจ่าย', sub: '', icon: PackageCheck },
+        { href: '/pickup/done', label: 'จ่ายแล้ว', sub: '', icon: Receipt },
+        { href: '/settings', label: 'ตั้งค่า', sub: '', icon: Settings },
+      ]
+    : [
   { href: '/', label: 'วันนี้', sub: '', icon: Home },
   role === 'owner'
     ? { href: '/approvals', label: 'รออนุมัติ', sub: '', icon: Inbox }

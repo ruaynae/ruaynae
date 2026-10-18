@@ -948,6 +948,63 @@ export type Database = {
         }
         Relationships: []
       }
+      material_request_lines: {
+        Row: { id: string; qty: number; request_id: string; seq: number; variant_id: string }
+        Insert: { id?: string; qty: number; request_id: string; seq: number; variant_id: string }
+        Update: { id?: string; qty?: number; request_id?: string; seq?: number; variant_id?: string }
+        Relationships: []
+      }
+      material_requests: {
+        Row: {
+          cancelled_at: string | null
+          cancelled_by: string | null
+          created_at: string
+          employee_id: string | null
+          id: string
+          issued_at: string | null
+          issued_by: string | null
+          note: string | null
+          request_no: string
+          requested_by: string
+          site_id: string | null
+          status: string
+          updated_at: string
+          via_line: boolean
+        }
+        Insert: {
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          created_at?: string
+          employee_id?: string | null
+          id?: string
+          issued_at?: string | null
+          issued_by?: string | null
+          note?: string | null
+          request_no: string
+          requested_by: string
+          site_id?: string | null
+          status?: string
+          updated_at?: string
+          via_line?: boolean
+        }
+        Update: {
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          created_at?: string
+          employee_id?: string | null
+          id?: string
+          issued_at?: string | null
+          issued_by?: string | null
+          note?: string | null
+          request_no?: string
+          requested_by?: string
+          site_id?: string | null
+          status?: string
+          updated_at?: string
+          via_line?: boolean
+        }
+        Relationships: []
+      }
       mcp_call_log: {
         Row: {
           at: string
@@ -2091,6 +2148,20 @@ export type Database = {
         Returns: number
       }
       is_owner: { Args: never; Returns: boolean }
+      is_cashier: { Args: never; Returns: boolean }
+      is_supervisor: { Args: never; Returns: boolean }
+      material_request_cancel: { Args: { p_id: string }; Returns: Json }
+      material_request_create: {
+        Args: { p_employee: string | null; p_lines: Json; p_note: string | null; p_site: string }
+        Returns: Json
+      }
+      material_request_issue: { Args: { p_id: string }; Returns: Json }
+      material_requests_feed: {
+        Args: { p_limit?: number; p_offset?: number; p_status?: string }
+        Returns: Json
+      }
+      material_requests_open_count: { Args: never; Returns: number }
+      pos_item_search: { Args: { p_limit?: number; p_q: string }; Returns: Json }
       issue_document: {
         Args: { p_id: string; p_seller: Json }
         Returns: string
@@ -2493,13 +2564,14 @@ export type Database = {
         | "advance_pending"
         | "advance_approved"
         | "advance_rejected"
+        | "material_request"
       owed_kind: "reimburse" | "bonus"
       pay_method: "cash" | "transfer"
       payroll_status: "open" | "closed"
       site_status: "planning" | "active" | "paused" | "done" | "cancelled"
       txn_kind: "income" | "expense"
       txn_status: "pending" | "approved" | "rejected"
-      user_role: "owner" | "site_supervisor"
+      user_role: "owner" | "site_supervisor" | "cashier"
       vat_mode: "inclusive" | "exclusive" | "none"
       wage_type: "daily" | "monthly"
     }
@@ -2643,6 +2715,7 @@ export const Constants = {
         "advance_pending",
         "advance_approved",
         "advance_rejected",
+        "material_request"
       ],
       owed_kind: ["reimburse", "bonus"],
       pay_method: ["cash", "transfer"],
@@ -2650,7 +2723,7 @@ export const Constants = {
       site_status: ["planning", "active", "paused", "done", "cancelled"],
       txn_kind: ["income", "expense"],
       txn_status: ["pending", "approved", "rejected"],
-      user_role: ["owner", "site_supervisor"],
+      user_role: ["owner", "site_supervisor", "cashier"],
       vat_mode: ["inclusive", "exclusive", "none"],
       wage_type: ["daily", "monthly"],
     },

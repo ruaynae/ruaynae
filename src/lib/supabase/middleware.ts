@@ -5,8 +5,18 @@ import type { Database } from '@/lib/database.types'
 /** เส้นทางที่เข้าได้โดยไม่ต้องล็อกอิน */
 const PUBLIC_PATHS = ['/login', '/manifest.webmanifest', '/sw.js']
 
+/**
+ * ส่งเส้นทางปัจจุบันต่อให้ layout อ่านได้ (layout ของ App Router ไม่รู้ pathname เอง)
+ * 🔴 ใช้ทำ "ด่านบทบาท" ของแคชเชียร์ใน `(app)/layout.tsx` — ค่าที่ client ส่ง header ชื่อนี้มาเองถูกทับเสมอ
+ */
+function nextWithPath(request: NextRequest) {
+  const headers = new Headers(request.headers)
+  headers.set('x-pathname', request.nextUrl.pathname)
+  return NextResponse.next({ request: { headers } })
+}
+
 export async function updateSession(request: NextRequest) {
-  let response = NextResponse.next({ request })
+  let response = nextWithPath(request)
 
   const supabase = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -18,7 +28,7 @@ export async function updateSession(request: NextRequest) {
         },
         setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          response = NextResponse.next({ request })
+          response = nextWithPath(request)
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options),
           )
