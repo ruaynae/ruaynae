@@ -770,6 +770,140 @@ export type Database = {
           },
         ]
       }
+      letter_series: {
+        Row: {
+          contract_ref: string
+          created_at: string
+          id: string
+          intro: string
+          is_active: boolean
+          label: string
+          prefix: string
+          recipient: string
+          signer_title: string
+          site_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          contract_ref?: string
+          created_at?: string
+          id?: string
+          intro?: string
+          is_active?: boolean
+          label: string
+          prefix: string
+          recipient?: string
+          signer_title?: string
+          site_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          contract_ref?: string
+          created_at?: string
+          id?: string
+          intro?: string
+          is_active?: boolean
+          label?: string
+          prefix?: string
+          recipient?: string
+          signer_title?: string
+          site_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "letter_series_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      letters: {
+        Row: {
+          attachments: string[]
+          body: string
+          closing: string
+          created_at: string
+          created_by: string | null
+          fields: Json
+          id: string
+          intro: string | null
+          letter_date: string
+          letterhead: Json
+          recipient: string
+          refs: string[]
+          seq: number
+          series_id: string
+          show_receipt: boolean
+          signer_title: string
+          subject: string
+          template_id: string | null
+          updated_at: string
+          year_ce: number | null
+        }
+        Insert: {
+          attachments?: string[]
+          body?: string
+          closing?: string
+          created_at?: string
+          created_by?: string | null
+          fields?: Json
+          id?: string
+          intro?: string | null
+          letter_date: string
+          letterhead?: Json
+          recipient: string
+          refs?: string[]
+          seq: number
+          series_id: string
+          show_receipt?: boolean
+          signer_title?: string
+          subject: string
+          template_id?: string | null
+          updated_at?: string
+          year_ce?: number | null
+        }
+        Update: {
+          attachments?: string[]
+          body?: string
+          closing?: string
+          created_at?: string
+          created_by?: string | null
+          fields?: Json
+          id?: string
+          intro?: string | null
+          letter_date?: string
+          letterhead?: Json
+          recipient?: string
+          refs?: string[]
+          seq?: number
+          series_id?: string
+          show_receipt?: boolean
+          signer_title?: string
+          subject?: string
+          template_id?: string | null
+          updated_at?: string
+          year_ce?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "letters_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "letters_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "letter_series"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       line_accounts: {
         Row: {
           created_at: string

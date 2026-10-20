@@ -5,6 +5,7 @@ import {
   FileText,
   HandCoins,
   Home,
+  Mail,
   Inbox,
   PackageCheck,
   PackagePlus,
@@ -59,6 +60,14 @@ export const NAV: NavGroup[] = [
         label: 'เอกสาร',
         sub: 'ใบเสนอราคา ใบเสร็จ/ใบกำกับภาษี',
         icon: FileText,
+        ownerOnly: true,
+      },
+      // หนังสือถึงหน่วยงาน (R19) ออกในนามห้างและลงชื่อผู้ลงนาม — ของเจ้าของเหมือนเอกสาร
+      {
+        href: '/letters',
+        label: 'หนังสือบริษัท',
+        sub: 'ออกหนังสือถึงหน่วยงาน · ทะเบียนหนังสือส่ง',
+        icon: Mail,
         ownerOnly: true,
       },
     ],
