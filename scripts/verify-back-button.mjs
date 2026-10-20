@@ -74,10 +74,11 @@ const restId = async (table) =>
     headers: { apikey: env.SUPABASE_SECRET_KEY, Authorization: `Bearer ${env.SUPABASE_SECRET_KEY}` },
   }).then((r) => r.json()).then((j) => j?.[0]?.id ?? null).catch(() => null)
 
-const [siteId, docId] = await Promise.all([restId('sites'), restId('documents')])
+const [siteId, docId, letterId] = await Promise.all([restId('sites'), restId('documents'), restId('letters')])
 
 /** id ที่ถูกชนิดของเส้นทางนั้น — ไม่มีข้อมูลให้ทดสอบ = ข้ามอย่างเปิดเผย */
-const idFor = (path) => (path.startsWith('/documents/') ? docId : siteId)
+const idFor = (path) =>
+  path.startsWith('/documents/') ? docId : path.startsWith('/letters/') ? letterId : siteId
 
 const skipped = []
 const routes = routesUnder('src/app/(app)')

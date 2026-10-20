@@ -5,6 +5,7 @@ import {
   FileText,
   HardHat,
   Lock,
+  Mail,
   MessageCircle,
   SlidersHorizontal,
   Store,
@@ -159,6 +160,24 @@ export default async function SettingsPage() {
             <span className="block text-sm font-semibold text-ink">เอกสาร</span>
             <span className="block text-xs text-muted-token">
               เลขที่ใบเสนอราคา/ใบเสร็จ และข้อมูลผู้ขายที่พิมพ์ลงกระดาษ
+            </span>
+          </span>
+          <ChevronRight className="size-4 shrink-0 text-muted-token" />
+        </Link>
+      )}
+
+      {/* ชุดเลขหนังสือบริษัท (R19) — คำนำหน้าเลขที่ เรียน สัญญา ย่อหน้าแนะนำ ต่อโครงการ
+          · หนังสือที่ลงทะเบียนแล้วถือสำเนาของตัวเอง การแก้ตรงนี้มีผลกับฉบับถัดไปเท่านั้น */}
+      {isOwner && (
+        <Link
+          href="/settings/letters"
+          className="flex items-center gap-3 rounded-lg border border-line bg-surface px-4 py-3.5 transition-colors hover:border-brand"
+        >
+          <Mail className="size-5 shrink-0 text-brand" strokeWidth={1.8} />
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-ink">ชุดเลขหนังสือ</span>
+            <span className="block text-xs text-muted-token">
+              คำนำหน้าเลขที่ เรียน สัญญา และย่อหน้าแนะนำของหนังสือบริษัท แยกตามโครงการ
             </span>
           </span>
           <ChevronRight className="size-4 shrink-0 text-muted-token" />

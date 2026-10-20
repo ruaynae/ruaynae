@@ -491,3 +491,125 @@
 
   @page { size: A4 portrait; margin: 0; }
 }
+
+/*
+  ── หนังสือบริษัท (R19) ─────────────────────────────────────────────────
+  กระดาษ A4 ตามหนังสือจริงของห้าง: ขอบ 1″ (ล่าง 0.75″) · TH Sarabun New 16pt
+  · บรรทัด = 1.158 × ความสูงบรรทัดของฟอนต์ (Word "auto 278") → 1.507em
+
+  🔴 ฟอนต์: เครื่องที่มี TH Sarabun New ใช้ตัวจริง · เครื่องที่ไม่มี (มือถือ) ใช้ Sarabun
+  (OFL · `public/fonts` ที่มีอยู่แล้ว) ซึ่งวาดมาจาก TH Sarabun New แต่ตัวใหญ่กว่า ~1.5 เท่า
+  · `size-adjust` ย่อให้ความกว้างตัวอักษรเท่ากัน ตัดบรรทัดได้ใกล้ไฟล์ Word
+  (วัดจากประโยคในหนังสือจริง: ปกติ 0.667 · หนา 0.68)
+*/
+@font-face {
+  font-family: 'Letter Sarabun';
+  src: url('/fonts/Sarabun-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+  size-adjust: 66.7%;
+}
+@font-face {
+  font-family: 'Letter Sarabun';
+  src: url('/fonts/Sarabun-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-display: swap;
+  size-adjust: 68%;
+}
+
+@layer components {
+  /* ย่อทั้งแผ่นให้พอดีคอลัมน์ — `--lz` ตั้งจาก ResizeObserver ของกล่องตัวอย่าง */
+  .letter-zoom { zoom: var(--lz, 1); width: 794px; }
+
+  /* 🔴 ขนาดเป็น px คงที่ (A4 ที่ 96dpi) ไม่ใช่ % — กระดาษต้องตัดบรรทัดเหมือนกันทุกจอ
+     แล้วค่อยย่อทั้งแผ่นด้วย zoom · ขอบ 96/72px = 1″/0.75″ */
+  .letter-sheet {
+    position: relative;
+    width: 794px;
+    min-height: 1123px;
+    padding: 96px 96px 72px;
+    margin: 0 auto 16px;
+    background: #fff;
+    color: #000;
+    font-family: 'TH Sarabun New', 'Letter Sarabun', 'Sarabun', sans-serif;
+    font-size: 16pt;
+    line-height: 1.507;
+    text-align: left;
+    overflow: hidden;
+  }
+  .letter-sheet p { margin: 0 0 8pt; }
+  .letter-sheet .lt-b { font-weight: 700; }
+  .letter-sheet .lt-tight { margin: 0; line-height: 1.496; }
+  .letter-sheet .lt-blank::after { content: '\00a0'; }
+
+  /* หัวกระดาษ — โลโก้ลอยตำแหน่งเดียวกับไฟล์ Word (เยื้องเข้าขอบซ้าย 0.32″ สูงกว่าบรรทัดชื่อ 0.49″) */
+  .letter-sheet .lt-head { position: relative; }
+  .letter-sheet .lt-logo {
+    position: absolute; left: -22.8pt; top: -35.6pt; width: 90.5pt; height: 91.2pt;
+    object-fit: contain;
+  }
+  .letter-sheet .lt-name { margin: 0; padding-left: 72pt; font-size: 20pt; font-weight: 700; line-height: 1.301; }
+  .letter-sheet .lt-addr {
+    margin: 0; padding-bottom: 1pt; border-bottom: 0.75pt solid #000;
+    font-size: 14pt; line-height: 1.301; text-align: center;
+  }
+  .letter-sheet .lt-gap { margin: 0 0 8pt; font-size: 15pt; }
+  .letter-sheet .lt-date { text-align: right; white-space: pre-wrap; }
+
+  /* เรื่อง/เรียน/อ้างถึง ชิด 0.5″ · สิ่งที่ส่งมาด้วย ชิด 1″ · บรรทัดที่ตัดขึ้นใหม่ชิดตามกัน */
+  .letter-sheet .lt-row { margin: 0; padding-left: 36pt; text-indent: -36pt; }
+  .letter-sheet .lt-row.lt-wide { padding-left: 72pt; text-indent: -72pt; }
+  .letter-sheet .lt-row .lt-k { display: inline-block; width: 36pt; text-indent: 0; }
+  .letter-sheet .lt-row.lt-wide .lt-k { width: 72pt; }
+  .letter-sheet .lt-row.lt-last { margin-bottom: 8pt; }
+
+  .letter-sheet .lt-p { text-indent: 36pt; text-align: justify; }
+  .letter-sheet .lt-li { margin: 0; padding-left: 54pt; text-indent: -18pt; text-align: justify; }
+  .letter-sheet .lt-li.lt-last { margin-bottom: 8pt; }
+  .letter-sheet .lt-li .lt-k { display: inline-block; width: 18pt; text-indent: 0; }
+  .letter-sheet .lt-close { margin: 0; text-indent: 36pt; line-height: 1.496; }
+  .letter-sheet .lt-sig { margin: 0; padding-left: 18pt; line-height: 1.496; text-align: center; }
+
+  /* กล่อง "รับเอกสารแล้ว" — ลอยเหมือน text box ของ Word ไม่ดันเนื้อหา */
+  .letter-sheet .lt-receipt-anchor { position: relative; height: 24pt; margin: 0; }
+  .letter-sheet .lt-receipt {
+    position: absolute; left: 364.2pt; top: 3.6pt; width: 139.1pt; height: 77pt;
+    padding: 3.6pt 7.2pt; border: 0.75pt solid #000; background: #fff;
+    font-size: 14pt; line-height: 1.5; white-space: nowrap; overflow: hidden;
+  }
+
+  /* ช่องที่ยังไม่ได้กรอก — เห็นบนจอ แต่ไม่ถูกพิมพ์เป็นแถบสี */
+  .letter-sheet .lt-blank-mark { background: #fff1b8; border-radius: 2px; }
+
+  .letter-sheet .lt-photo-title { margin-bottom: 10pt; text-align: center; font-weight: 700; }
+  .letter-sheet .lt-photo { margin: 0 0 6pt; text-align: center; }
+  .letter-sheet .lt-photo img { display: inline-block; max-width: 100%; object-fit: contain; }
+  .letter-sheet .lt-caption { margin: 0 0 12pt; text-align: center; }
+  .letter-sheet .lt-grid { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .letter-sheet .lt-grid td { padding: 4pt; border: 0.5pt solid #000; text-align: center; vertical-align: top; }
+  .letter-sheet .lt-grid img { max-width: 100%; max-height: 170pt; object-fit: contain; }
+  .letter-sheet .lt-grid p { margin: 2pt 0 0; font-size: 14pt; line-height: 1.3; }
+
+  /* เส้นบอกว่าเนื้อหาจะเลยไปหน้า 2 */
+  .letter-sheet .lt-break {
+    position: absolute; left: 0; right: 0; height: 0; border-top: 2px dashed #d97706;
+  }
+  .letter-sheet .lt-break span {
+    position: absolute; right: 24px; top: -11px; padding: 1px 8px; border-radius: 9px;
+    background: #fff7e0; color: #8a5a00; font: 600 12px/1.4 var(--font-sans);
+  }
+}
+
+@media print {
+  /* กระดาษหนังสือใช้ขอบของตัวเองตามต้นฉบับ (ทับขอบ 12/14mm ของกระดาษเอกสาร) */
+  .letter-zoom { zoom: 1 !important; width: auto !important; }
+  .paper.letter-sheet {
+    width: 100% !important;
+    min-height: 295mm !important;
+    padding: 25.4mm 25.4mm 19.05mm !important;
+    overflow: visible !important;
+  }
+  .paper.letter-sheet + .paper.letter-sheet { break-before: page; }
+  .letter-sheet .lt-blank-mark { background: none; }
+  .letter-sheet .lt-break { display: none; }
+}
