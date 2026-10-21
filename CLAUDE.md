@@ -472,6 +472,7 @@ src/
     api/transactions/[id]/attachments/route.ts · api/attachments/[id]/route.ts
     api/uploads/sign/route.ts · api/uploads/[id]/route.ts
     api/cron/sweep-orphans/route.ts · api/cron/daily-digest/route.ts
+    (app)/plans              แผนงานก่อสร้างจาก BOQ (R20) · components/plans/* · lib/boq/{core,workbook,progress-sheet,xlsx-kit}.ts
     (app)/materials           ใบขอเบิกวัสดุ (หัวหน้า/เจ้าของ) · new/request-form.tsx · (app)/pickup หน้าจอแคชเชียร์ (+ /pickup/done)
     components/materials/*    request-card · request-action · pickup-list · auto-refresh · lib/materials.ts (ชนิด+ข้อความ error)
     (app)/settings/loyverse   โทเคน Loyverse (Vault) · ทดสอบเชื่อมต่อ · เลือกร้าน+วิธีชำระเงิน "เบิกใช้งาน" · ดึงสินค้า (R18)
@@ -647,6 +648,14 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
       ต่อโครงการ) + `letters` (unique ชุด+ปี+เลข) · ไฟล์ Word ประกอบที่เซิร์ฟเวอร์ด้วย `jszip` (`letter-docx.ts`) · หัวกระดาษแช่แข็งตอนลงทะเบียน
       · หนังสือเก่านำเข้าจากไฟล์สำรอง `.json` (ห้ามเข้า repo public) · ⚠️ **migration `20261020090000_r19_letters.sql` ยังไม่ได้ apply**
       · ตารางตรวจรับ `docs/test-plan/R19-letters.md`
+- [ ] **R20 · แผนงานก่อสร้างจาก BOQ + ปริมาณงานที่แล้วเสร็จ** (21 ต.ค. 2569) — เมนู `/plans` (เจ้าของเท่านั้น)
+      · อัปโหลด BOQ (.xlsx) → อ่าน ปร.6 → ปร.5 → ปร.4 **จับคู่ด้วยยอดเงิน ไม่ใช่ชื่อชีต** (ไฟล์จริงมีชีตของโครงการอื่นค้าง)
+      → จัดลำดับงานตามช่วงขั้นตอนก่อสร้าง (`PHASE_RULES`) → ดาวน์โหลด Excel 3 ชีต: แผนงาน (แท่งราย W + S-Curve + ค่าใช้จ่ายรายเดือน)
+      · **ปริมาณงานที่แล้วเสร็จ** (รายการย่อย ปร.4 ให้กรอก % สะสมรายสัปดาห์ · เว้นว่าง = เท่าสัปดาห์ก่อน → ผูกเข้าแถว Actual + บอกเร็ว/ช้ากว่าแผน)
+      · ที่มาจาก BOQ · **ไม่แตะฐานข้อมูล** คำนวณในเบราว์เซอร์ทั้งหมด (`exceljs` โหลดตอนกดเท่านั้น)
+      · 🔴 สูตรแถว Plan ใน Excel = `distribute()` ใน `lib/boq/core.ts` — แก้ที่หนึ่งต้องแก้อีกที่
+      · 🔴 ชีตซ่อน "คำนวณ" นับสัปดาห์ที่กรอกจาก**ธงของแถวรายการ** ไม่ใช่ทั้งคอลัมน์ของแบบฟอร์ม (แถวงานอ่านค่ากลับ = อ้างอิงวน → `#VALUE!` ทั้งไฟล์)
+      · unit test `tests/unit/boq-core.test.mjs` (ชีตจำลอง — ห้ามใส่ BOQ จริงของลูกค้าใน repo public) · ตารางตรวจรับ `docs/test-plan/R20-construction-plan.md`
 - [x] **R9 · รอบคำสั่งเจ้าของ 4 ก.ย. 2569** — เรียกหน่วยงานว่า "โครงการ" ทั้งระบบ · ปิดการ์ด
       "งานวันนี้" · ต้นทุนสะสมแยกสามก้อน (ค่าแรง/ค่าวัสดุ/อื่น ๆ) + ธง `categories.is_material`
       · ยอดรวมแยกหมวดในหน้าโครงการ · **จ่ายค่าแรงรายคนปุ่มเดียว** (เลิกใช้คำว่า "รอบจ่าย"

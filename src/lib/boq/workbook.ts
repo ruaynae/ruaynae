@@ -1,0 +1,341 @@
+import type { Cell, CellValue, Font, PaperSize, Workbook, Worksheet } from 'exceljs'
+import {
+  activeTasks,
+  distribute,
+  norm,
+  parseBoq,
+  type BoqCategory,
+  type BoqProject,
+  type Grid,
+} from './core'
+import { LW, addProgressSheet, progressLayout } from './progress-sheet'
+import {
+  BOX, C, DATE_FMT, FONT, PCT, SHEET, addDays, baht, col, f, isoToDate, kit, monthBands, monthLabel, ref, type Style,
+} from './xlsx-kit'
+
+export { isoToDate }
+
+/**
+ * อ่าน BOQ และเขียนไฟล์แผนงานด้วย exceljs — ทำในเบราว์เซอร์ทั้งหมด ไฟล์ไม่ออกจากเครื่อง
+ * · exceljs โหลดตอนกดเท่านั้น (`import()`) หน้าอื่นไม่ต้องแบกไลบรารีราว 1 MB
+ * · ผังไฟล์ตามแผนงานที่ห้างใช้ยื่นหน่วยงานอยู่เดิม: หัวโครงการ · แท่งราย W · แถว Plan/Actual
+ *   · สรุปความคืบหน้าและค่าใช้จ่ายรายเดือน (S-Curve)
+ */
+
+const loadExcel = async () => (await import('exceljs')).default
+
+/** ค่าของช่องจาก exceljs → ค่าดิบ · ช่องลูกของช่องที่ผสาน = ว่าง (ไม่งั้นป้ายซ้ำไปทั้งแถว) */
+function rawValue(cell: Cell): unknown {
+  if (cell.isMerged && cell.master.address !== cell.address) return null
+  const v = cell.value as CellValue | { result?: unknown } | null
+  if (v == null) return null
+  if (typeof v === 'number' || typeof v === 'string') return v
+  if (v instanceof Date) return null
+  if (typeof v === 'object') {
+    if ('result' in v) {
+      const r = (v as { result?: unknown }).result
+      return typeof r === 'number' || typeof r === 'string' ? r : null
+    }
+    if ('richText' in v) return v.richText.map((t) => t.text).join('')
+    if ('text' in v && typeof v.text === 'string') return v.text
+  }
+  return null
+}
+
+function toGrid(ws: Worksheet): Grid {
+  const rows = Math.min(ws.rowCount, 3000)
+  const cols = Math.min(ws.columnCount, 40)
+  const data: unknown[][] = []
+  for (let r = 0; r < rows; r += 1) {
+    const row = ws.getRow(r + 1)
+    const line: unknown[] = []
+    for (let c = 0; c < cols; c += 1) line.push(rawValue(row.getCell(c + 1)))
+    data.push(line)
+  }
+  const v = (r: number, c: number) => data[r]?.[c] ?? null
+  return { name: ws.name, rows, cols, v, w: (r, c) => norm(v(r, c)) }
+}
+
+export async function readBoqFile(buf: ArrayBuffer) {
+  const ExcelJS = await loadExcel()
+  const wb = new ExcelJS.Workbook()
+  await wb.xlsx.load(buf)
+  return parseBoq(wb.worksheets.map(toGrid))
+}
+
+// ---------------------------------------------------------------------------
+
+export type PlanInput = {
+  project: BoqProject & { contractor: string; contractNo: string; contractDate: string }
+  factor: number | null
+  vat: number | null
+  categories: BoqCategory[]
+  days: number
+  /** `YYYY-MM-DD` (ค.ศ.) */
+  start: string
+}
+
+export async function buildPlanXlsx(p: PlanInput, chartPngBase64?: string): Promise<ArrayBuffer> {
+  const ExcelJS = await loadExcel()
+  const dist = distribute(p.categories, p.days)
+  const start = isoToDate(p.start)
+  const nW = dist.weeks
+  const W0 = 7
+  const cBud = W0 + nW
+  const cW = cBud + 1
+  const cProg = cBud + 2
+  const cResp = cBud + 3
+  const wl = (k: number) => col(W0 + k)
+
+  const wb: Workbook = new ExcelJS.Workbook()
+  wb.creator = 'RUAYNAE'
+  const ws = wb.addWorksheet(SHEET.plan, {
+    views: [{ state: 'frozen', xSplit: 6, ySplit: 9, showGridLines: false }],
+    pageSetup: { orientation: 'landscape', paperSize: 8 as PaperSize /* A3 */, fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+  })
+  const { put, merge } = kit(ws)
+  const layout = progressLayout(p.categories)
+  const planRows: number[] = []
+
+  ;[6, 40, 8, 11, 11, 7.5].forEach((w, i) => { ws.getColumn(i + 1).width = w })
+  for (let k = 0; k < nW; k += 1) ws.getColumn(W0 + k).width = 6.2
+  ws.getColumn(cBud).width = 15
+  ws.getColumn(cW).width = 9
+  ws.getColumn(cProg).width = 9
+  ws.getColumn(cResp).width = 16
+
+  // ---- หัวโครงการ (แถว 1–5)
+  const P = p.project
+  const lab: Style = { font: { bold: true, color: { argb: C.muted } }, border: false }
+  const val: Style = { border: false }
+  const longDate = '[$-1070000]d mmmm yyyy'
+  ;[['เจ้าของ :', lab], [P.owner, val], ['ที่อยู่หน้างาน :', lab], [P.loc1, val], [P.loc2, val]].forEach(([t, s], i) => {
+    merge(i + 1, 1, i + 1, 2)
+    put(`A${i + 1}`, t as string, s as Style)
+  })
+  merge(1, 3, 1, 4); put('C1', 'วันที่เริ่ม :', lab)
+  merge(2, 3, 2, 4); put('C2', start, { fmt: longDate, fill: C.input, font: { bold: true }, align: { horizontal: 'center' } })
+  merge(3, 3, 3, 4); put('C3', 'วันที่แล้วเสร็จ :', lab)
+  merge(4, 3, 4, 4)
+  put('C4', f('C2+D5-1', addDays(start, p.days - 1)), { fmt: longDate, font: { bold: true }, align: { horizontal: 'center' } })
+  put('C5', 'ระยะเวลา (วัน)', { ...lab, align: { horizontal: 'right' } })
+  put('D5', p.days, { fill: C.input, font: { bold: true }, align: { horizontal: 'center' } })
+  put('E1', 'สัญลักษณ์ :', lab)
+  put('E2', null, { fill: C.plan }); put('F2', 'แผนงาน', val)
+  put('E3', null, { fill: C.act }); put('F3', 'ผลงานจริง', val)
+  put('E4', null, { fill: C.input }); put('F4', 'ช่องกรอก', val)
+  const blank = (s: string) => s.trim() || '………………'
+  const title: [string, Partial<Font>][] = [
+    ['แผนงานก่อสร้าง', { size: 16, bold: true }],
+    [P.name, { size: 12, bold: true }],
+    [`เจ้าของ : ${P.owner}`, {}],
+    [`ผู้รับจ้าง : ${blank(P.contractor)}   สัญญาจ้างก่อสร้าง เลขที่ ${blank(P.contractNo)}   ลงวันที่ ${blank(P.contractDate)}`, {}],
+    [`รวมค่าก่อสร้างทั้งโครงการ/งานก่อสร้าง : ${P.total ? baht(P.total) : '-'} บาท`, { bold: true }],
+  ]
+  title.forEach(([t, font], i) => {
+    merge(i + 1, W0, i + 1, cResp)
+    put(`${col(W0)}${i + 1}`, t, { font, border: false, align: { horizontal: 'center', wrapText: false } })
+  })
+  ws.getRow(1).height = 24
+
+  // ---- หัวตาราง (แถว 7–9)
+  const H: Style = { fill: C.head, font: { bold: true }, align: { horizontal: 'center' } }
+  ;([['No.', 1], ['รายละเอียดงาน', 2], ['ระยะเวลา\n(วัน)', 3], ['เริ่ม\n(วันที่)', 4], ['เสร็จ\n(วันที่)', 5],
+    ['แผนงาน\n/ผลงาน', 6], ['งบประมาณ\n(บาท)', cBud], ['น้ำหนัก\n(%)', cW], ['คืบหน้า\n(%)', cProg], ['ผู้รับผิดชอบ', cResp]] as const)
+    .forEach(([t, c]) => { merge(7, c, 9, c); put(`${col(c)}7`, t, H) })
+  const weekStart = (k: number) => addDays(start, 7 * k)
+  const months = monthBands(start, nW)
+  for (const m of months) {
+    merge(7, W0 + m.from, 7, W0 + m.to)
+    put(`${wl(m.from)}7`, monthLabel(m.d), H)
+  }
+  for (let k = 0; k < nW; k += 1) {
+    put(`${wl(k)}8`, `W${k + 1}`, H)
+    put(`${wl(k)}9`, f(k === 0 ? '$C$2' : `${wl(k - 1)}9+7`, weekStart(k)),
+      { ...H, fmt: '[$-1070000]d/m', font: { size: 7, color: { argb: C.muted } } })
+  }
+
+  // ---- แถวงาน (เริ่มแถว 10) · หมวด 1 แถว · งานละ 2 แถว (Plan / Actual)
+  const first = 10
+  const T = first + p.categories.reduce((s, c) => {
+    const n = c.tasks.filter((t) => t.on).length
+    return s + (n ? 1 + n * 2 : 0)
+  }, 0)
+  let r = first
+  let ti = 0
+  let ci = 0
+  for (const cat of p.categories) {
+    const tasks = cat.tasks.filter((t) => t.on)
+    if (!tasks.length) continue
+    ci += 1
+    const cr = r
+    const catFill: Style = { fill: C.cat }
+    put(`A${cr}`, ci, { ...catFill, font: { bold: true }, align: { horizontal: 'center' } })
+    merge(cr, 2, cr, 6)
+    put(`B${cr}`, cat.name, { ...catFill, font: { bold: true } })
+    for (let k = 0; k < nW; k += 1) put(`${wl(k)}${cr}`, null, catFill)
+    const amt = tasks.reduce((s, t) => s + t.amount, 0)
+    put(`${col(cBud)}${cr}`, f(`SUM(${col(cBud)}${cr + 1}:${col(cBud)}${cr + tasks.length * 2})`, amt), { ...catFill, fmt: '#,##0.00' })
+    put(`${col(cW)}${cr}`, f(`SUM(${col(cW)}${cr + 1}:${col(cW)}${cr + tasks.length * 2})`, dist.total ? amt / dist.total : 0),
+      { ...catFill, fmt: '0.00%', align: { horizontal: 'center' } })
+    put(`${col(cProg)}${cr}`, null, catFill)
+    put(`${col(cResp)}${cr}`, null, catFill)
+    r += 1
+    tasks.forEach((t, j) => {
+      const a = r
+      const b = r + 1
+      planRows.push(a)
+      const tr = layout.taskRows[ti]
+      ;[1, 2, 3, 4, 5, cBud, cW, cProg, cResp].forEach((c) => merge(a, c, b, c))
+      put(`A${a}`, `${ci}.${j + 1}`, { align: { horizontal: 'center' } })
+      put(`B${a}`, t.name, { align: { indent: 1 } })
+      put(`C${a}`, t.dur, { fill: C.input, align: { horizontal: 'center' } })
+      put(`D${a}`, f(`$C$2+${t.offset}`, addDays(start, t.offset)), { fill: C.input, fmt: DATE_FMT, align: { horizontal: 'center' } })
+      put(`E${a}`, f(`D${a}+C${a}-1`, addDays(start, t.offset + t.dur - 1)), { fmt: DATE_FMT, align: { horizontal: 'center' } })
+      put(`F${a}`, 'Plan', { align: { horizontal: 'center' }, font: { size: 8, color: { argb: 'FF2D5A8A' } } })
+      put(`F${b}`, 'Actual', { align: { horizontal: 'center' }, font: { size: 8, color: { argb: 'FF9A6215' } } })
+      const cell: Style = { fmt: PCT, font: { size: 7 }, align: { horizontal: 'center', wrapText: false } }
+      for (let k = 0; k < nW; k += 1) {
+        const x = wl(k)
+        // 🔴 สูตรเดียวกับ distribute() ใน core.ts — วันที่ตกในสัปดาห์ ÷ ระยะเวลา × น้ำหนัก
+        put(`${x}${a}`, f(`IF($C${a}>0,MAX(0,MIN($E${a},${x}$9+6)-MAX($D${a},${x}$9)+1)/$C${a}*$${col(cW)}${a},0)`, dist.plan[ti][k]), cell)
+        // ผลงานจริงของสัปดาห์ = น้ำหนักงาน × (% สะสมสัปดาห์นี้ − สัปดาห์ก่อน) จากชีตปริมาณงานที่แล้วเสร็จ
+        const cur = ref(SHEET.progress, `${x}${tr}`)
+        const prev = k === 0 ? '0' : ref(SHEET.progress, `${wl(k - 1)}${tr}`)
+        put(`${x}${b}`, f(`IF(${k + 1}>${LW},"",$${col(cW)}${a}*(${cur}-${prev}))`, ''), cell)
+      }
+      put(`${col(cBud)}${a}`, t.amount, { fmt: '#,##0.00' })
+      put(`${col(cW)}${a}`, f(`IFERROR(${col(cBud)}${a}/$${col(cBud)}$${T},0)`, dist.weights[ti]), { fmt: '0.00%', align: { horizontal: 'center' } })
+      put(`${col(cProg)}${a}`, f(`IFERROR(SUM(${wl(0)}${b}:${wl(nW - 1)}${b})/${col(cW)}${a},0)`, 0), { fmt: '0%', align: { horizontal: 'center' } })
+      put(`${col(cResp)}${a}`, null, { fill: C.input })
+      r += 2
+      ti += 1
+    })
+  }
+  const lastRow = T - 1
+  const rngF = `$F$${first}:$F$${lastRow}`
+  merge(T, 1, T, 6)
+  put(`A${T}`, 'รวม', { ...H })
+  for (let k = 0; k < nW; k += 1) put(`${wl(k)}${T}`, null, { fill: C.head })
+  put(`${col(cBud)}${T}`, f(`SUMIF(${rngF},"Plan",${col(cBud)}${first}:${col(cBud)}${lastRow})`, dist.total), { ...H, fmt: '#,##0.00', align: {} })
+  put(`${col(cW)}${T}`, f(`SUMIF(${rngF},"Plan",${col(cW)}${first}:${col(cW)}${lastRow})`, 1), { ...H, fmt: '0.00%' })
+  put(`${col(cResp)}${T}`, null, { fill: C.head })
+
+  // ---- สรุป S-Curve: แผนตามสัญญา · ผลงานจริง · เปรียบเทียบ
+  let s = T + 2
+  const cumRow: Record<'Plan' | 'Actual', number> = { Plan: 0, Actual: 0 }
+  const group = (titleText: string, kind: 'Plan' | 'Actual', color: string) => {
+    const w = s
+    const c = s + 1
+    const m = s + 2
+    const mc = s + 3
+    merge(w, 1, mc, 2)
+    put(`A${w}`, titleText, { fill: C.sum, font: { bold: true, color: { argb: color } }, align: { horizontal: 'center' } })
+    ;([[w, 'ความคืบหน้า / สัปดาห์ (%)'], [c, 'ความคืบหน้าสะสม / สัปดาห์ (%)'], [m, 'ค่าใช้จ่าย / เดือน (บาท)'], [mc, 'ค่าใช้จ่ายสะสม / เดือน (บาท)']] as const)
+      .forEach(([rr, t]) => { merge(rr, 3, rr, 6); put(`C${rr}`, t, { fill: C.sum }) })
+    const pv = kind === 'Plan' ? dist.perWeek : dist.perWeek.map(() => 0)
+    let acc = 0
+    const cv = pv.map((x) => (acc += x))
+    const small: Style = { fmt: '0.00%', font: { size: 7 }, align: { horizontal: 'center', wrapText: false } }
+    for (let k = 0; k < nW; k += 1) {
+      const x = wl(k)
+      put(`${x}${w}`, f(`SUMIF(${rngF},"${kind}",${x}$${first}:${x}$${lastRow})`, pv[k]), small)
+      const cum = k === 0 ? `${x}${w}` : `${wl(k - 1)}${c}+${x}${w}`
+      // ผลงานจริงหยุดวาดหลังสัปดาห์ล่าสุดที่กรอก — ไม่งั้นเส้นจริงลากแบนไปจนจบสัญญา
+      put(`${x}${c}`, kind === 'Plan' ? f(cum, cv[k]) : f(`IF(${k + 1}>${LW},"",${cum})`, ''), { ...small, font: { size: 7, bold: true } })
+    }
+    for (const mo of months) {
+      const a = wl(mo.from)
+      const b = wl(mo.to)
+      merge(m, W0 + mo.from, m, W0 + mo.to)
+      merge(mc, W0 + mo.from, mc, W0 + mo.to)
+      const sum = pv.slice(mo.from, mo.to + 1).reduce((q, y) => q + y, 0)
+      const money: Style = { fmt: '#,##0', font: { size: 8 }, align: { horizontal: 'center' } }
+      put(`${a}${m}`, f(`SUM(${a}${w}:${b}${w})*$${col(cBud)}$${T}`, sum * dist.total), money)
+      // ผลงานจริงของเดือนที่ยังไม่จบ = ยอดสะสม ณ สัปดาห์ล่าสุดที่กรอก
+      const cumAt = kind === 'Plan'
+        ? `${b}${c}*$${col(cBud)}$${T}`
+        : `IF(${mo.from + 1}>${LW},"",INDEX(${a}${c}:${b}${c},MIN(${LW},${mo.to + 1})-${mo.from})*$${col(cBud)}$${T})`
+      put(`${a}${mc}`, f(cumAt, kind === 'Plan' ? cv[mo.to] * dist.total : ''), { ...money, font: { size: 8, bold: true } })
+    }
+    cumRow[kind] = c
+    s += 4
+  }
+  group('แผนงานตามสัญญา', 'Plan', 'FF2D5A8A')
+  group('ผลงานจริง', 'Actual', 'FF9A6215')
+  put(`${col(cProg)}${T}`, f(ref(SHEET.progress, '$D$7'), 0), { ...H, fmt: '0.00%' })
+  merge(s, 1, s, 2)
+  put(`A${s}`, 'เปรียบเทียบ', { fill: C.sum, font: { bold: true }, align: { horizontal: 'center' } })
+  merge(s, 3, s, 6)
+  put(`C${s}`, 'เร็ว (+) / ช้า (−) กว่าแผน สะสม (%)', { fill: C.sum })
+  for (let k = 0; k < nW; k += 1) {
+    const x = wl(k)
+    put(`${x}${s}`, f(`IF(${k + 1}>${LW},"",${x}${cumRow.Actual}-${x}${cumRow.Plan})`, ''),
+      { fmt: '+0.00%;-0.00%;0.00%', font: { size: 7 }, align: { horizontal: 'center', wrapText: false } })
+  }
+  ws.addConditionalFormatting({
+    ref: `${wl(0)}${s}:${wl(nW - 1)}${s}`,
+    rules: [{ type: 'cellIs', operator: 'lessThan', formulae: ['0'], priority: 3, style: { font: { color: { argb: 'FFB42318' }, bold: true } } }],
+  })
+  s += 2
+  const notes = [
+    `* หมายเหตุ มูลค่างานเป็นค่างานต้นทุน ไม่รวม Factor F${p.factor ? ` ${p.factor}` : ''} และภาษีมูลค่าเพิ่ม ${p.vat ? Math.round(p.vat * 100) : 7}%`,
+    '* แก้ "ระยะเวลา" และ "เริ่ม" (ช่องสีเหลือง) แล้วแท่งแผนงานกับ S-Curve คำนวณใหม่เอง',
+    `* แถว Actual ดึงจากชีต "${SHEET.progress}" — กรอก % แล้วเสร็จของแต่ละรายการที่ชีตนั้น ไม่ต้องกรอกที่นี่`,
+    '* เปลี่ยนวันที่เริ่มสัญญา ให้สร้างไฟล์ใหม่จากระบบ เพื่อให้หัวเดือนตรงกับวันที่',
+  ]
+  notes.forEach((t, i) => {
+    merge(s + i, 1, s + i, cResp)
+    put(`A${s + i}`, t, { border: false, font: { size: 8, color: { argb: C.muted } } })
+  })
+  s += notes.length + 1
+
+  // แท่งแผนงาน/ผลงานด้วย conditional formatting — ย้ายวันในช่องเหลืองแล้วแท่งย้ายตาม
+  ws.addConditionalFormatting({
+    ref: `${wl(0)}${first}:${wl(nW - 1)}${lastRow}`,
+    rules: [
+      { type: 'expression', priority: 1, formulae: [`AND($F${first}="Plan",N(${wl(0)}${first})>0)`],
+        style: { fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: C.plan } }, font: { color: { argb: 'FFFFFFFF' } } } },
+      { type: 'expression', priority: 2, formulae: [`AND($F${first}="Actual",N(${wl(0)}${first})>0)`],
+        style: { fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: C.act } } } },
+    ],
+  })
+  if (chartPngBase64) {
+    const id = wb.addImage({ base64: chartPngBase64, extension: 'png' })
+    ws.addImage(id, { tl: { col: 1, row: s - 1 }, ext: { width: 900, height: 340 } })
+  }
+  ws.pageSetup.printArea = `A1:${col(cResp)}${s + 18}`
+  ws.pageSetup.printTitlesRow = '7:9'
+
+  addProgressSheet(wb, {
+    categories: p.categories, dist, start, projectName: P.name, layout, planRows,
+    planWeightCol: col(cW), planCumRow: cumRow.Plan, planTotal: ref(SHEET.plan, `$${col(cBud)}$${T}`),
+  })
+
+  // ---- ชีตที่มาของทุกยอดในไฟล์ BOQ
+  const ws2 = wb.addWorksheet('ที่มาจาก BOQ', { views: [{ showGridLines: false }] })
+  ws2.columns = [{ width: 7 }, { width: 52 }, { width: 17 }, { width: 10 }, { width: 34 }]
+  const styleRow = (cells: CellValue[], fill?: string, bold = false) => {
+    const row = ws2.addRow(cells)
+    row.eachCell({ includeEmpty: true }, (c) => {
+      c.font = { name: FONT, size: 9, bold }
+      c.border = BOX
+      if (fill) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } }
+    })
+  }
+  styleRow(['No.', 'รายการ', 'ค่างานต้นทุน (บาท)', 'น้ำหนัก', 'แหล่งข้อมูลในไฟล์ BOQ'], C.head, true)
+  const on = activeTasks(p.categories)
+  let n = 0
+  p.categories.forEach((cat) => {
+    const tasks = cat.tasks.filter((t) => t.on)
+    if (!tasks.length) return
+    n += 1
+    styleRow([n, cat.name, tasks.reduce((q, t) => q + t.amount, 0), null, cat.source], C.cat, true)
+    tasks.forEach((t, j) => styleRow([`${n}.${j + 1}`, t.name, t.amount, dist.weights[on.indexOf(t)], t.source]))
+  })
+  styleRow(['', 'รวมค่างานต้นทุน', dist.total, 1, P.total ? `ค่าก่อสร้างทั้งโครงการ (ปร.6) ${baht(P.total)} บาท` : ''], undefined, true)
+  ws2.getColumn(3).numFmt = '#,##0.00'
+  ws2.getColumn(4).numFmt = '0.00%'
+
+  return (await wb.xlsx.writeBuffer()) as ArrayBuffer
+}

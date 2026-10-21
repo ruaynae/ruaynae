@@ -3,6 +3,7 @@ import {
   BarChart3,
   CalendarDays,
   FileText,
+  GanttChart,
   HandCoins,
   Home,
   Mail,
@@ -68,6 +69,14 @@ export const NAV: NavGroup[] = [
         label: 'หนังสือบริษัท',
         sub: 'ออกหนังสือถึงหน่วยงาน · ทะเบียนหนังสือส่ง',
         icon: Mail,
+        ownerOnly: true,
+      },
+      // อัปโหลด BOQ → แผนงานก่อสร้าง + S-Curve (Excel) · มีค่างานทุกหมวด จึงเป็นของเจ้าของ
+      {
+        href: '/plans',
+        label: 'แผนงานก่อสร้าง',
+        sub: 'อัปโหลด BOQ ได้แผนงานและ S-Curve',
+        icon: GanttChart,
         ownerOnly: true,
       },
     ],
