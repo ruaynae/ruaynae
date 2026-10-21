@@ -9,7 +9,7 @@ import { Badge, type BadgeTone } from '@/components/ui/badge'
 import { useSCurve, type CurveData } from './s-curve'
 
 /**
- * ติดตามผลงาน — อัปโหลดไฟล์แผนงาน (ที่ดาวน์โหลดจากแท็บแรก) หลังกรอกชีต "ปริมาณงานที่แล้วเสร็จ"
+ * ติดตามผลงาน — อัปโหลดไฟล์แผนงาน (ที่ดาวน์โหลดจากแท็บแรก) หลังกรอกผลงานรายงวดแล้ว
  * แล้วเห็นแผนเทียบจริงทันที · อ่านในเบราว์เซอร์ ไม่บันทึกที่ไหน (ไฟล์คือที่เก็บข้อมูล)
  */
 
@@ -24,7 +24,7 @@ const p1 = (x: number) => `${(x * 100).toFixed(1)}%`
 const signed = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : ''}${(Math.abs(x) * 100).toFixed(1)}%`
 
 const MESSAGES: Record<string, string> = {
-  NOT_PLAN_FILE: 'ไม่ใช่ไฟล์แผนงานจากระบบนี้ — ใช้ไฟล์ที่ดาวน์โหลดจากแท็บ "สร้างแผนงาน" แล้วกรอกชีต "ปริมาณงานที่แล้วเสร็จ"',
+  NOT_PLAN_FILE: 'ไม่ใช่ไฟล์แผนงานจากระบบนี้ — ใช้ไฟล์ที่ดาวน์โหลดจากแท็บ "สร้างแผนงาน" แล้วกรอกผลงานรายงวด',
 }
 
 function Bar({ value, plan }: { value: number; plan: number }) {
@@ -62,7 +62,7 @@ export function ProgressTracker() {
       const r = await readPlanFile(await file.arrayBuffer())
       setReport(r)
       setFileName(file.name)
-      if (!r.installments.length) toast.info('ไฟล์นี้ยังไม่มีการกรอกผลงาน — กรอกวันที่ส่งงวดและ % แล้วเสร็จที่ชีต "ปริมาณงานที่แล้วเสร็จ" แล้วอัปโหลดใหม่')
+      if (!r.installments.length) toast.info('ไฟล์นี้ยังไม่มีการกรอกผลงาน — กรอก % แล้วเสร็จที่ชีตหมวด (คอลัมน์ "งวดที่") และวันที่ส่งงวดที่ชีต "สรุปผลเบิกจ่าย" แล้วอัปโหลดใหม่')
       else if (r.installments.some((p) => !p.date)) toast.warning('มีงวดที่ยังไม่ใส่วันที่ส่งงวด — งวดนั้นเทียบกับแผนไม่ได้')
       else if (r.start && r.installments.some((p) => p.date && p.date < r.start!))
         toast.warning('มีวันที่ส่งงวดก่อนวันเริ่มสัญญาในไฟล์ — ตรวจวันที่ในแถว "วันที่ส่งงวด"')
@@ -85,7 +85,7 @@ export function ProgressTracker() {
       <div className="min-w-0 flex-1">
         <div className="break-words font-semibold text-ink">{fileName || 'ยังไม่ได้เลือกไฟล์แผนงาน'}</div>
         <div className="text-sm text-muted-token">
-          ไฟล์แผนงานที่ดาวน์โหลดจากระบบ และกรอก % ในชีต &quot;ปริมาณงานที่แล้วเสร็จ&quot; แล้ว · ปิดไฟล์ใน Excel ก่อนเลือก
+          ไฟล์แผนงานที่ดาวน์โหลดจากระบบ และกรอกผลงานรายงวดแล้ว · ปิดไฟล์ใน Excel ก่อนเลือก
         </div>
       </div>
       <span className={`btn-primary cursor-pointer ${reading ? 'pointer-events-none opacity-60' : ''}`}>
@@ -108,8 +108,8 @@ export function ProgressTracker() {
         <div className="card-surface p-5 text-sm text-ink-2">
           <div className="mb-2 font-semibold text-ink">ใช้อย่างไร</div>
           <ol className="list-decimal space-y-1 pl-5">
-            <li>เปิดไฟล์แผนงานที่ดาวน์โหลดไว้ ไปที่ชีต &quot;ปริมาณงานที่แล้วเสร็จ&quot;</li>
-            <li>ส่งงวดเมื่อไหร่ กรอกในคอลัมน์ &quot;งวดที่ …&quot;: วันที่ส่งงวด และ % แล้วเสร็จสะสมของแต่ละรายการ (ช่องสีเหลือง) แล้วบันทึกไฟล์</li>
+            <li>ส่งงวดเมื่อไหร่ เปิดไฟล์แผนงานที่ดาวน์โหลดไว้ ใส่วันที่ส่งงวดที่ชีต &quot;สรุปผลเบิกจ่าย&quot;</li>
+            <li>ที่ชีตหมวด (เช่น &quot;1 งานสถาปัตยกรรม&quot;) กรอก % แล้วเสร็จสะสมของแต่ละรายการในคอลัมน์ &quot;งวดที่ …&quot; (ช่องสีเหลือง) แล้วบันทึกไฟล์</li>
             <li>อัปโหลดไฟล์ที่นี่ — เห็น S-Curve แผนเทียบจริง และงานไหนเร็ว/ช้ากว่าแผน</li>
           </ol>
         </div>

@@ -113,18 +113,34 @@ import { readProgress, statusOf } from '../../src/lib/boq/progress-core.ts'
 
 test('อ่านไฟล์ที่กรอกผลงานรายงวด: ช่องว่างยกค่างวดก่อน · แผน ณ วันส่งงวดคิดรายวัน', () => {
   const D = (y, m, d) => new Date(Date.UTC(y, m - 1, d))
-  const form = sheet('ปริมาณงานที่แล้วเสร็จ', [
-    ['ปริมาณงานที่แล้วเสร็จ'], [PROJECT], [],
-    ['วันที่ส่งงวด (กรอก)', null, null, null, null, null, D(2026, 6, 10), D(2026, 6, 30)],
-    ['No.', 'รายการ', 'ปริมาณ', 'หน่วย', 'มูลค่า (บาท)', 'น้ำหนัก', 'งวดที่ 1', 'งวดที่ 2', 'งวดที่ 3', 'ล่าสุด (%)'],
-    ['1', 'หมวดงานสถาปัตยกรรม'],
-    ['1.1', 'หมวดงานรื้อถอน', null, null, 100],
-    [null, 'รื้อฝ้า', 10, 'ตร.ม.', 40, null, 0.5, 1],
-    [null, 'รื้อพื้น', 10, 'ตร.ม.', 60, null, 40],
-    ['1.2', 'งานพื้น', null, null, 300],
-    [null, 'ปูกระเบื้อง', 10, 'ตร.ม.', 300],
-    ['รวมทั้งโครงการ'],
+  const summary = sheet('สรุปผลเบิกจ่าย', [
+    [], [], [PROJECT],
+    ['งวดที่ 1', null, D(2026, 6, 10)],
+    ['งวดที่ 2', null, D(2026, 6, 30)],
+    ['งวดที่ 3'],
   ])
+  // ชีตหมวด: หัวตารางแถว 8 (index 7) · งวดเริ่มคอลัมน์ M (index 12) · ตารางสรุปหัวชีตจบที่แถว "รวม…"
+  const row = (cells, periods = []) => { const r = new Array(12).fill(null); cells.forEach((v, i) => { r[i] = v }); return [...r, ...periods] }
+  const cat = { name: '1 งานสถาปัตยกรรม', rows: 0, cols: 20, v: null, w: null }
+  const rows = [
+    [], [], [], [], [], [], [],
+    row(['ลำดับที่', 'รายการ', 'จำนวน', 'หน่วย', 'มูลค่างาน', 'เปอร์เซ็นที่แล้วเสร็จ'], ['งวดที่ 1', 'งวดที่ 2', 'งวดที่ 3']),
+    [],
+    row(['1', 'หมวดงานสถาปัตยกรรม']),
+    row(['1.1', 'หมวดงานรื้อถอน', 1, 'งาน', 100], [0.99, 0.99]),
+    row(['1.2', 'งานพื้น', 1, 'งาน', 300]),
+    row([null, 'รวมหมวดงานสถาปัตยกรรม', null, null, 400]),
+    [],
+    row(['1', 'หมวดงานสถาปัตยกรรม']),
+    row(['1.1', 'หมวดงานรื้อถอน']),
+    row([null, ' - รื้อฝ้า', 10, 'ตร.ม.', 40], [0.5, 1]),
+    row([null, ' - รื้อพื้น', 10, 'ตร.ม.', 60], [40]),
+    row([null, 'รวมหมวดงานรื้อถอน', null, null, 100]),
+    row(['1.2', 'งานพื้น']),
+    row([null, ' - ปูกระเบื้อง', 10, 'ตร.ม.', 300]),
+    row([null, 'รวมงานพื้น', null, null, 300]),
+  ]
+  Object.assign(cat, sheet(cat.name, rows), { cols: 20 })
   // งาน 1.1: 1–10 มิ.ย. (10 วัน) · งาน 1.2: 11 มิ.ย.–10 ก.ค. (30 วัน)
   const plan = sheet('แผนงานก่อสร้าง', [
     [], [null, null, D(2026, 6, 1)], [], [], [], [], [],
@@ -133,11 +149,12 @@ test('อ่านไฟล์ที่กรอกผลงานรายง�
     [null, null, null, null, null, 'Actual'],
     [null, null, 30, D(2026, 6, 11), D(2026, 7, 10), 'Plan', 0, 0.1, 0.175, 0.175, 0.175, 0.125],
   ])
-  const r = readProgress(form, plan)
+  const r = readProgress(summary, [cat], plan)
+  assert.equal(r.projectName, PROJECT)
   assert.equal(r.installments.length, 2)
   const [p1, p2] = r.installments
   assert.deepEqual([p1.date, p1.week, p2.date, p2.week], ['2026-06-10', 2, '2026-06-30', 5])
-  // งวด 1: (0.5×40 + 0.4×60)/400 = 0.11 · แผน = งาน 1.1 เสร็จพอดี = 0.25
+  // งวด 1: (0.5×40 + 0.4×60)/400 = 0.11 · แผน = งาน 1.1 เสร็จพอดี = 0.25 (ค่าในตารางสรุปหัวชีตไม่ถูกนับซ้ำ)
   assert.ok(Math.abs(p1.actual - 0.11) < 1e-9)
   assert.ok(Math.abs(p1.plan - 0.25) < 1e-9)
   // งวด 2: รื้อพื้นว่าง → ยก 40% · แผน = 0.25 + 0.75 × 20/30
@@ -147,6 +164,7 @@ test('อ่านไฟล์ที่กรอกผลงานรายง�
   assert.equal(r.actualCum[4], p2.actual)
   assert.equal(r.actualCum[2], null)
   const [demo, floor] = r.tasks
+  assert.equal(demo.category, 'หมวดงานสถาปัตยกรรม')
   assert.ok(Math.abs(demo.actual - 0.64) < 1e-9)
   assert.equal(demo.plan, 1)
   assert.ok(Math.abs(floor.plan - 20 / 30) < 1e-9)
@@ -155,5 +173,6 @@ test('อ่านไฟล์ที่กรอกผลงานรายง�
 })
 
 test('ไฟล์ที่ไม่ใช่แผนงานจากระบบ → NOT_PLAN_FILE', () => {
-  assert.throws(() => readProgress(sheet('x', [['สวัสดี']]), sheet('y', [])), /NOT_PLAN_FILE/)
+  assert.throws(() => readProgress(sheet('x', [['สวัสดี']]), [], sheet('y', [])), /NOT_PLAN_FILE/)
+  assert.throws(() => readProgress(sheet('x', []), [sheet('z', [['สวัสดี']])], sheet('y', [])), /NOT_PLAN_FILE/)
 })

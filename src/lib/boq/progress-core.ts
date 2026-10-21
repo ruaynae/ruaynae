@@ -64,44 +64,56 @@ const dayOf = (v: unknown): number | null => {
 const iso = (t: number) => new Date(t).toISOString().slice(0, 10)
 const thShort = (t: number) => new Date(t).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: 'UTC' })
 
-export function readProgress(form: Grid, plan: Grid): ProgressReport {
-  let head = -1
-  for (let r = 0; r < Math.min(form.rows, 40); r += 1)
-    if (form.w(r, 1) === 'รายการ' && /^งวดที่/.test(form.w(r, 6))) { head = r; break }
-  if (head < 0) throw new Error('NOT_PLAN_FILE')
-  const P0 = 6
-  let periods = 0
-  while (/^งวดที่/.test(form.w(head, P0 + periods))) periods += 1
-  let dateRow = -1
-  for (let r = 0; r < head; r += 1) if (/^วันที่ส่งงวด/.test(form.w(r, 0))) dateRow = r
-  const dates = Array.from({ length: periods }, (_, k) => (dateRow >= 0 ? dayOf(form.v(dateRow, P0 + k)) : null))
+/**
+ * @param summary ชีต "สรุปผลเบิกจ่าย" — ตารางผลงานรายงวด (คอลัมน์ A "งวดที่ k" · C วันที่ส่งงวด)
+ * @param sheets ชีตหมวดเรียงตามไฟล์ — หัวตารางแถว 8 · คอลัมน์งวดเริ่มที่ M · ส่วนรายละเอียดอยู่ใต้แถว "รวม…" แรก
+ * @param plan ชีตแผนงาน
+ */
+export function readProgress(summary: Grid, sheets: Grid[], plan: Grid): ProgressReport {
+  if (!sheets.length) throw new Error('NOT_PLAN_FILE')
+  const P0 = 12
+  const periods = (() => {
+    let n = 0
+    while (/^งวดที่/.test(sheets[0].w(7, P0 + n))) n += 1
+    return n
+  })()
+  if (!periods) throw new Error('NOT_PLAN_FILE')
+  const dates: (number | null)[] = new Array(periods).fill(null)
+  for (let r = 0; r < summary.rows; r += 1) {
+    const m = /^งวดที่ (\d+)$/.exec(summary.w(r, 0))
+    if (m && Number(m[1]) <= periods) dates[Number(m[1]) - 1] = dayOf(summary.v(r, 2))
+  }
 
-  // รายการย่อย = แถวที่มีปริมาณ (คอลัมน์ C) · แถวงาน = รหัส N.k ไม่มีปริมาณ · หมวด = รหัสเลขเดียว
+  // รายการย่อย = แถวที่มีจำนวน (C) และมูลค่า (E) ในส่วนรายละเอียด · แถวงาน = รหัส N.k ไม่มีจำนวน
   type Item = { amount: number; eff: number[] }
   const tasks: { code: string; name: string; category: string; amount: number; items: Item[] }[] = []
-  let category = ''
   let lastPeriod = 0
-  for (let r = head + 1; r < form.rows; r += 1) {
-    const a = form.w(r, 0)
-    if (/^รวม/.test(a)) break
-    const qty = n(form.v(r, 2))
-    if (/^\d+$/.test(a) && qty == null) { category = form.w(r, 1); continue }
-    if (/^\d+\.\d+$/.test(a) && qty == null) { tasks.push({ code: a, name: form.w(r, 1), category, amount: 0, items: [] }); continue }
-    const t = tasks[tasks.length - 1]
-    const amount = n(form.v(r, 4))
-    if (!t || qty == null || amount == null) continue
-    const eff: number[] = []
-    let prev = 0
-    for (let k = 0; k < periods; k += 1) {
-      const v = pct(form.v(r, P0 + k))
-      if (v != null) {
-        prev = v
-        lastPeriod = Math.max(lastPeriod, k + 1)
+  for (const g of sheets) {
+    const category = g.w(9, 1)
+    let r = 10
+    while (r < g.rows && !/^รวม/.test(g.w(r, 1))) r += 1 // ข้ามตารางสรุปหัวชีต
+    for (r += 1; r < g.rows; r += 1) {
+      const a = g.w(r, 0)
+      const name = g.w(r, 1)
+      const qty = n(g.v(r, 2))
+      if (/^รวม/.test(name)) continue
+      if (/^\d+\.\d+$/.test(a) && qty == null) { tasks.push({ code: a, name, category, amount: 0, items: [] }); continue }
+      const t = tasks[tasks.length - 1]
+      const amount = n(g.v(r, 4))
+      if (!t || qty == null || amount == null || !name) continue
+      const eff: number[] = []
+      let prev = 0
+      for (let k = 0; k < periods; k += 1) {
+        const v = pct(g.v(r, P0 + k))
+        if (v != null) {
+          prev = v
+          lastPeriod = Math.max(lastPeriod, k + 1)
+        }
+        eff.push(prev)
       }
-      eff.push(prev)
+      t.items.push({ amount, eff })
+      t.amount += amount
     }
-    t.items.push({ amount, eff })
-    t.amount += amount
   }
   if (!tasks.length) throw new Error('NOT_PLAN_FILE')
   const total = tasks.reduce((s, t) => s + t.amount, 0) || 1
@@ -142,7 +154,7 @@ export function readProgress(form: Grid, plan: Grid): ProgressReport {
 
   const lastDate = lastPeriod ? dates[lastPeriod - 1] : null
   return {
-    projectName: form.w(1, 0),
+    projectName: summary.w(2, 0),
     start: start == null ? null : iso(start),
     labels: Array.from({ length: weeks }, (_, k) => `W${k + 1}`),
     sublabels: Array.from({ length: weeks }, (_, k) => (start == null ? '' : thShort(start + k * 7 * DAY))),

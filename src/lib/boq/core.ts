@@ -30,7 +30,15 @@ export type BoqTask = {
   dur: number
   on: boolean
 }
-export type BoqCategory = { name: string; source: string; tasks: BoqTask[] }
+export type BoqCategory = {
+  name: string
+  source: string
+  tasks: BoqTask[]
+  /** ตัวคูณจากค่างานต้นทุนเป็นค่าก่อสร้าง: Factor F (งานก่อสร้าง) หรือ 1 + VAT (ครุภัณฑ์) — ตามแบบ ปร.5 ของหมวด */
+  mult: number
+  /** ชื่อกลุ่มตามแบบ ปร.5 เช่น "แบบสรุปค่าก่อสร้าง" · "แบบสรุปค่าครุภัณฑ์จัดซื้อ" */
+  group: string
+}
 export type BoqProject = {
   name: string
   owner: string
@@ -167,6 +175,7 @@ function detailItems(g: Grid, amt: number, ch: Child, after: number): BoqItem[] 
 // ---- ปร.5: "N รายการ ค่างานต้นทุน"
 type Pr5 = {
   sheet: string
+  label: string
   project: string
   items: { name: string; amount: number }[]
   factor: number | null
@@ -199,7 +208,10 @@ function pr5Info(g: Grid): Pr5 {
       }
     }
   }
-  return { sheet: g.name, project: projectName(g), items, factor, vat }
+  let label = ''
+  for (let r = 0; r < Math.min(g.rows, 20) && !label; r += 1)
+    if (/^แบบสรุป/.test(g.w(r, 1))) label = g.w(r, 1)
+  return { sheet: g.name, label: label || g.w(0, 0) || g.name, project: projectName(g), items, factor, vat }
 }
 
 const isPr6 = (n: string) => /ปร\.?\s*6/.test(n)
@@ -279,6 +291,7 @@ export function parseBoq(sheets: Grid[]): BoqModel {
   for (const p of pr5) {
     if (p.factor) factor = p.factor
     if (p.vat) vat = p.vat
+    const meta = { mult: p.factor ?? (p.vat ? 1 + p.vat : 1), group: p.label }
     let group: { block: Block; cat: BoqCategory } | null = null
     for (const it of p.items) {
       // 1) ทั้งหมวดตรงกับก้อนสรุปของ ปร.4 → ใช้รายการย่อยของก้อนนั้น
@@ -287,6 +300,7 @@ export function parseBoq(sheets: Grid[]): BoqModel {
         used.add(blk)
         group = null
         categories.push({
+          ...meta,
           name: it.name,
           source: `${p.sheet} → ${blk.sheet}`,
           tasks: blk.children.map((ch) => task(ch.name, ch.amount, blk.sheet, ch.items)),
@@ -297,7 +311,7 @@ export function parseBoq(sheets: Grid[]): BoqModel {
       const hit = findChild(it.amount, it.name)
       if (hit) {
         if (!group || group.block !== hit.b) {
-          group = { block: hit.b, cat: { name: hit.b.name, source: `${p.sheet} → ${hit.b.sheet}`, tasks: [] } }
+          group = { block: hit.b, cat: { ...meta, name: hit.b.name, source: `${p.sheet} → ${hit.b.sheet}`, tasks: [] } }
           categories.push(group.cat)
         }
         group.cat.tasks.push(task(it.name, it.amount, hit.b.sheet, hit.ch.items))
@@ -306,14 +320,14 @@ export function parseBoq(sheets: Grid[]): BoqModel {
       // 3) ไม่มีรายละเอียด → หมวดนั้นเป็นงานเดียว
       group = null
       warnings.push(`ไม่พบรายละเอียด ปร.4 ของ "${it.name}" ใช้ยอดจาก ${p.sheet} เป็นงานเดียว`)
-      categories.push({ name: it.name, source: p.sheet, tasks: [task(it.name, it.amount, p.sheet)] })
+      categories.push({ ...meta, name: it.name, source: p.sheet, tasks: [task(it.name, it.amount, p.sheet)] })
     }
   }
 
   if (!categories.length && blocks.length) {
     warnings.push('ไม่พบแบบ ปร.5 จึงใช้ทุกหมวดที่พบในแบบ ปร.4')
     for (const b of blocks)
-      categories.push({ name: b.name, source: b.sheet, tasks: b.children.map((ch) => task(ch.name, ch.amount, b.sheet, ch.items)) })
+      categories.push({ name: b.name, source: b.sheet, mult: 1, group: 'งานก่อสร้าง', tasks: b.children.map((ch) => task(ch.name, ch.amount, b.sheet, ch.items)) })
   }
   const cats = categories
     .map((c) => ({ ...c, tasks: c.tasks.filter((t) => t.amount > 0) }))
