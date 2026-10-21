@@ -39,6 +39,7 @@ export function PlanBuilder() {
   const [days, setDays] = useState(180)
   const [daysText, setDaysText] = useState('180')
   const [periods, setPeriods] = useState('5')
+  const [w124, setW124] = useState(false)
   const [exporting, setExporting] = useState(false)
   const canvas = useRef<HTMLCanvasElement>(null)
 
@@ -119,7 +120,7 @@ export function PlanBuilder() {
     try {
       const { buildPlanXlsx } = await import('@/lib/boq/workbook')
       const n = Math.min(24, Math.max(1, Math.round(Number(periods)) || 5))
-      const buf = await buildPlanXlsx({ project, factor: model.factor, vat: model.vat, categories: cats, days, start, periods: n })
+      const buf = await buildPlanXlsx({ project, factor: model.factor, vat: model.vat, categories: cats, days, start, periods: n, w124 })
       const a = document.createElement('a')
       a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
       a.download = `แผนงานก่อสร้าง_${(project.name || 'โครงการ').slice(0, 60).replace(/[\\/:*?"<>|]/g, '')}.xlsx`
@@ -269,6 +270,13 @@ export function PlanBuilder() {
               onChange={(e) => setPeriods(e.target.value.replace(/\D/g, '').slice(0, 2))}
               onBlur={() => setPeriods(String(Math.min(24, Math.max(1, Number(periods) || 5))))}
             />
+          </label>
+          <label className="flex items-start gap-2 self-end text-sm text-ink-2 sm:col-span-full">
+            <input type="checkbox" className="mt-1 size-4 shrink-0 accent-[var(--brand)]" checked={w124} onChange={(e) => setW124(e.target.checked)} />
+            <span>
+              <span className="font-semibold text-ink">ประเมินตามหนังสือกรมบัญชีกลาง ว.124</span>
+              <span className="block text-muted-token">เส้นแดงวันตรวจ (เวลาเกิน 1/2 · 3/4 · ครบสัญญา) และเส้นเทา &quot;แผน ÷ 2&quot; บน S-Curve + ตารางผลประเมินในชีตสรุปผลเบิกจ่าย</span>
+            </span>
           </label>
         </div>
       </section>

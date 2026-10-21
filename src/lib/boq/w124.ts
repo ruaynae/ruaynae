@@ -70,7 +70,7 @@ const utc = (iso: string) => Date.parse(`${iso}T00:00:00Z`)
  * · ถึงวันตรวจแล้วหรือยังเทียบกับ "ข้อมูล ณ วันที่" ของไฟล์
  */
 export function withW124(r: ProgressReport): ProgressReport {
-  if (!r.start || !r.days) return r
+  if (!r.w124Enabled || !r.start || !r.days) return r
   const start = utc(r.start)
   const asOf = utc(r.asOf)
   const w124: W124Check[] = W124.map((rule) => {

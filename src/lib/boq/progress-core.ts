@@ -57,6 +57,8 @@ export type ProgressReport = {
   actualCum: (number | null)[]
   installments: Installment[]
   tasks: TaskProgress[]
+  /** ไฟล์นี้สร้างแบบมีการประเมินตาม ว.124 */
+  w124Enabled: boolean
   /** ระยะเวลาสัญญา (วัน) ในชีตแผนงาน */
   days: number | null
   /** ข้อมูล ณ วันที่ `YYYY-MM-DD` — ตรงกับชีตสรุป */
@@ -180,6 +182,8 @@ export function readProgress(summary: Grid, sheets: Grid[], plan: Grid): Progres
   const asOf = dayOf(summary.v(3, 4)) ?? lastDate ?? Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
   return {
     days: n(plan.v(4, 3)),
+    // ไฟล์ที่ติ๊ก ว.124 ตอนสร้างมีตาราง "ว.124 ข้อ …" ในชีตสรุป · ไม่ติ๊ก = ไม่ประเมิน
+    w124Enabled: Array.from({ length: summary.rows }, (_, r) => summary.w(r, 0)).some((t) => /^ว\.124 ข้อ/.test(t)),
     asOf: iso(asOf),
     w124: [],
     projectName: summary.w(2, 0),

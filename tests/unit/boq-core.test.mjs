@@ -203,7 +203,7 @@ test('ว.124: ผ่านเมื่อถึงเกณฑ์ · ยัง�
 test('ว.124: ผลงาน ณ วันตรวจ = งวดล่าสุดที่ส่งไม่เกินวันตรวจ', () => {
   const base = { projectName: '', labels: [], sublabels: [], planWeekly: [], planCum: [], actualCum: [], tasks: [], w124: [] }
   const r = withW124({
-    ...base, start: '2026-03-01', days: 180, asOf: '2026-07-10',
+    ...base, w124Enabled: true, start: '2026-03-01', days: 180, asOf: '2026-07-10',
     installments: [
       { no: 1, date: '2026-05-15', week: 11, plan: 0.13, actual: 0.2 },
       { no: 2, date: '2026-07-10', week: 19, plan: 0.64, actual: 0.35 },

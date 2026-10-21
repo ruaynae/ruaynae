@@ -41,6 +41,8 @@ export type CatLayout = {
   last: number
 }
 export type ProgressLayout = {
+  /** เจ้าของติ๊กให้มีการประเมินตาม ว.124 (ตาราง + เส้นในกราฟ) */
+  w124: boolean
   periods: number
   cats: CatLayout[]
   /** ต่องานที่ติ๊กอยู่ (เรียงเหมือนชีตแผนงาน): ชีตและแถวในตารางสรุปหัวชีต */
@@ -63,7 +65,7 @@ const sheetName = (no: number, name: string) =>
 const fiscalYear = (d: Date) => d.getUTCFullYear() + 543 + (d.getUTCMonth() >= 9 ? 1 : 0)
 
 /** ตำแหน่งของทุกแถว — คิดก่อนเขียนชีตแผนงาน เพราะแถว Actual ต้องอ้างถึง */
-export function progressLayout(categories: BoqCategory[], periods: number, start: Date, days: number): ProgressLayout {
+export function progressLayout(categories: BoqCategory[], periods: number, start: Date, days: number, w124 = false): ProgressLayout {
   const cats: CatLayout[] = []
   const tasks: ProgressLayout['tasks'] = []
   let itemCount = 0
@@ -106,9 +108,9 @@ export function progressLayout(categories: BoqCategory[], periods: number, start
   const status = period0 + periods + 1
   const w124Head = status + 3
   const w124Row0 = w124Head + 1
-  const fyHead = w124Row0 + W124.length + 3
+  const fyHead = w124 ? w124Row0 + W124.length + 3 : status + 3
   return {
-    periods, cats, tasks, groups, itemCount, fiscalYears,
+    w124, periods, cats, tasks, groups, itemCount, fiscalYears,
     summary: { groupRow0, groupTotal, periodHead, period0, status, w124Head, w124Row0, fyHead, fy0: fyHead + 2, fyTotal: fyHead + 2 + fiscalYears.length },
   }
 }
@@ -306,7 +308,7 @@ export function addProgressSheets(wb: Workbook, a: ProgressArgs) {
   calc.set('B1', f(`MAX(${kc(0)}2:${kc(nP - 1)}2)`, 0))
   calc.set('A1', f(`IF(B1=0,0,N(INDEX(${kc(0)}${CALC_WEEK_ROW}:${kc(nP - 1)}${CALC_WEEK_ROW},B1)))`, 0))
 
-  w124CalcCells(a.layout).forEach((v, k) => calc.set(k, v))
+  if (a.layout.w124) w124CalcCells(a.layout).forEach((v, k) => calc.set(k, v))
   return { calc, chart }
 }
 
@@ -474,7 +476,7 @@ function addSummarySheet(
     { type: 'containsText', operator: 'containsText', text: 'เร็วกว่าแผน', priority: 31, style: { font: { color: { argb: C.good }, bold: true } } },
   ] })
 
-  addW124Table(ws, a, { asOf, start, days, p0, p1 })
+  if (L.w124) addW124Table(ws, a, { asOf, start, days, p0, p1 })
 
   // ---- งบประมาณรายปี
   const fh = S.fyHead
