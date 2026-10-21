@@ -111,33 +111,45 @@ test('รายการย่อยจากส่วนรายละเอ�
 
 import { readProgress, statusOf } from '../../src/lib/boq/progress-core.ts'
 
-test('อ่านไฟล์ที่กรอก % แล้ว: ช่องว่างยกค่าสัปดาห์ก่อน · สัปดาห์ล่าสุด · แผนของงาน', () => {
+test('อ่านไฟล์ที่กรอกผลงานรายงวด: ช่องว่างยกค่างวดก่อน · แผน ณ วันส่งงวดคิดรายวัน', () => {
+  const D = (y, m, d) => new Date(Date.UTC(y, m - 1, d))
   const form = sheet('ปริมาณงานที่แล้วเสร็จ', [
     ['ปริมาณงานที่แล้วเสร็จ'], [PROJECT], [],
-    ['No.', 'รายการ', 'ปริมาณ', 'หน่วย', 'มูลค่า (บาท)', 'น้ำหนัก', 'W1 1/6', 'W2 8/6', 'W3 15/6', 'ล่าสุด (%)'],
+    ['วันที่ส่งงวด (กรอก)', null, null, null, null, null, D(2026, 6, 10), D(2026, 6, 30)],
+    ['No.', 'รายการ', 'ปริมาณ', 'หน่วย', 'มูลค่า (บาท)', 'น้ำหนัก', 'งวดที่ 1', 'งวดที่ 2', 'งวดที่ 3', 'ล่าสุด (%)'],
     ['1', 'หมวดงานสถาปัตยกรรม'],
     ['1.1', 'หมวดงานรื้อถอน', null, null, 100],
-    [null, 'รื้อฝ้า', 10, 'ตร.ม.', 40, null, 0.5, null, 1],
-    [null, 'รื้อพื้น', 10, 'ตร.ม.', 60, null, 20, 40],
+    [null, 'รื้อฝ้า', 10, 'ตร.ม.', 40, null, 0.5, 1],
+    [null, 'รื้อพื้น', 10, 'ตร.ม.', 60, null, 40],
     ['1.2', 'งานพื้น', null, null, 300],
     [null, 'ปูกระเบื้อง', 10, 'ตร.ม.', 300],
     ['รวมทั้งโครงการ'],
   ])
+  // งาน 1.1: 1–10 มิ.ย. (10 วัน) · งาน 1.2: 11 มิ.ย.–10 ก.ค. (30 วัน)
   const plan = sheet('แผนงานก่อสร้าง', [
-    [null, null, null, null, null, 'Plan', 0.1, 0.15, 0],
+    [], [null, null, D(2026, 6, 1)], [], [], [], [], [],
+    [null, null, null, null, null, null, 'W1', 'W2', 'W3', 'W4', 'W5', 'W6'],
+    [null, null, 10, D(2026, 6, 1), D(2026, 6, 10), 'Plan', 0.175, 0.075],
     [null, null, null, null, null, 'Actual'],
-    [null, null, null, null, null, 'Plan', 0, 0.25, 0.5],
+    [null, null, 30, D(2026, 6, 11), D(2026, 7, 10), 'Plan', 0, 0.1, 0.175, 0.175, 0.175, 0.125],
   ])
   const r = readProgress(form, plan)
-  assert.equal(r.lastWeek, 3)
-  assert.deepEqual(r.labels, ['W1 1/6', 'W2 8/6', 'W3 15/6'])
+  assert.equal(r.installments.length, 2)
+  const [p1, p2] = r.installments
+  assert.deepEqual([p1.date, p1.week, p2.date, p2.week], ['2026-06-10', 2, '2026-06-30', 5])
+  // งวด 1: (0.5×40 + 0.4×60)/400 = 0.11 · แผน = งาน 1.1 เสร็จพอดี = 0.25
+  assert.ok(Math.abs(p1.actual - 0.11) < 1e-9)
+  assert.ok(Math.abs(p1.plan - 0.25) < 1e-9)
+  // งวด 2: รื้อพื้นว่าง → ยก 40% · แผน = 0.25 + 0.75 × 20/30
+  assert.ok(Math.abs(p2.actual - (40 + 24) / 400) < 1e-9)
+  assert.ok(Math.abs(p2.plan - (0.25 + 0.75 * 20 / 30)) < 1e-9)
+  assert.equal(r.actualCum[1], p1.actual)
+  assert.equal(r.actualCum[4], p2.actual)
+  assert.equal(r.actualCum[2], null)
   const [demo, floor] = r.tasks
-  // W3: รื้อฝ้า 100% (40) · รื้อพื้นยก 40% จาก W2 (24) → 64/100
   assert.ok(Math.abs(demo.actual - 0.64) < 1e-9)
-  assert.equal(floor.actual, 0)
-  assert.ok(Math.abs(demo.plan - 1) < 1e-9) // (0.1+0.15)/0.25
-  assert.ok(Math.abs(r.actualCum[2] - 64 / 400) < 1e-9)
-  assert.ok(Math.abs(r.planCum[2] - 1) < 1e-9)
+  assert.equal(demo.plan, 1)
+  assert.ok(Math.abs(floor.plan - 20 / 30) < 1e-9)
   assert.equal(statusOf(-0.02, 0.01), 'behind')
   assert.equal(statusOf(0.004, 0.005), 'on')
 })

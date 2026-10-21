@@ -1,19 +1,22 @@
 import type { Workbook } from 'exceljs'
 import type { BoqCategory, Distribution } from './core'
-import { C, SHEET, col, f, kit, monthBands, monthLabel, ref, type Style } from './xlsx-kit'
+import { C, SHEET, col, f, kit, ref, type Style } from './xlsx-kit'
 
 /**
- * ชีต "ปริมาณงานที่แล้วเสร็จ" — แบบฟอร์มกรอก % แล้วเสร็จสะสมของทุกรายการใน ปร.4 รายสัปดาห์
- * แล้วผูกกลับเข้าแถว Actual ของชีตแผนงาน → S-Curve ผลงานจริงและผลต่างกับแผนขึ้นเอง
+ * ชีต "ปริมาณงานที่แล้วเสร็จ" — แบบฟอร์มกรอกผลงานตอน **ส่งงวดงาน** (ไม่ใช่รายสัปดาห์ · คำสั่งเจ้าของ 21 ต.ค. 2569)
  *
- * กติกาการกรอก: ช่องสัปดาห์ = % แล้วเสร็จ **สะสม** ของรายการนั้น ณ สิ้นสัปดาห์
- * · เว้นว่าง = เท่าสัปดาห์ก่อน (ไม่ต้องกรอกซ้ำทุกแถวทุกสัปดาห์) — ชีต "คำนวณ" (ซ่อน) ยกค่าต่อให้
- * · "สัปดาห์ล่าสุด" = สัปดาห์สุดท้ายที่มีการกรอกอย่างน้อยหนึ่งช่อง · หลังจากนั้นไม่วาดผลงานจริง
+ * ส่งงวดเมื่อไหร่ กรอกครั้งเดียวในคอลัมน์ "งวดที่ k": วันที่ส่งงวด + % แล้วเสร็จ **สะสม** ของแต่ละรายการ
+ * · ช่องรายการที่เว้นว่าง = เท่างวดก่อน — ชีต "คำนวณ" (ซ่อน) ยกค่าต่อให้
+ * · แผน ณ วันส่งงวด คิดรายวันจากวันเริ่ม/เสร็จของแต่ละงานในชีตแผนงาน (ไม่ปัดเป็นสัปดาห์)
+ * · ผูกกลับเข้าชีตแผนงาน: แถว Actual ขึ้นที่สัปดาห์ของวันส่งงวด · กราฟเส้นจริงลากผ่านจุดของแต่ละงวด
  */
 
-export const PROGRESS_FIRST = 16
-/** สัปดาห์ล่าสุดที่กรอก (0 = ยังไม่กรอก) */
+/** แถวหัวตารางรายการ — ข้อมูลเริ่มแถวถัดไป */
+export const PROGRESS_FIRST = 19
+/** ชีตคำนวณ: A1 = สัปดาห์ของงวดล่าสุด (0 = ยังไม่มี) · B1 = งวดล่าสุดที่กรอก · แถว 5 = สัปดาห์ของแต่ละงวด */
 export const LW = ref(SHEET.calc, '$A$1')
+export const LP = ref(SHEET.calc, '$B$1')
+export const ROW = { date: 13, week: 14, plan: 15, actual: 16, diff: 17, status: 18, calcWeek: 5 } as const
 const W0 = 7
 
 export type ProgressLayout = { catRows: number[]; taskRows: number[]; itemRows: number[][]; last: number }
@@ -40,26 +43,26 @@ export function progressLayout(categories: BoqCategory[]): ProgressLayout {
   return { catRows, taskRows, itemRows, last: r }
 }
 
+/** ช่วงคอลัมน์งวดของแถวหนึ่งในแบบฟอร์ม เช่น `$G$16:$K$16` */
+export const periodRange = (row: number, periods: number) => `$${col(W0)}$${row}:$${col(W0 + periods - 1)}$${row}`
+
 export function addProgressSheet(
   wb: Workbook,
   a: {
     categories: BoqCategory[]
     dist: Distribution
-    start: Date
+    periods: number
     projectName: string
     layout: ProgressLayout
-    /** ชีตแผนงาน: แถว Plan ของแต่ละงาน · ช่องน้ำหนัก · แถวแผนสะสม · ช่องยอดรวม */
+    /** ชีตแผนงาน: แถว Plan ของแต่ละงาน · ช่องยอดรวม */
     planRows: number[]
-    planWeightCol: string
-    planCumRow: number
     planTotal: string
   },
 ) {
-  const { dist, start, layout } = a
-  const nW = dist.weeks
-  const wl = (k: number) => col(W0 + k)
-  const lastW = wl(nW - 1)
-  const cLast = W0 + nW
+  const { dist, layout, periods: nP } = a
+  const pl = (k: number) => col(W0 + k)
+  const lastP = pl(nP - 1)
+  const cLast = W0 + nP
   const cPlan = cLast + 1
   const cDiff = cLast + 2
   const cStat = cLast + 3
@@ -67,79 +70,86 @@ export function addProgressSheet(
   const cVal = cLast + 5
   const P = (addr: string) => ref(SHEET.progress, addr)
   const K = (addr: string) => ref(SHEET.calc, addr)
+  const PL = (addr: string) => ref(SHEET.plan, addr)
   const first = PROGRESS_FIRST + 1
   const last = layout.last
+  // ชีตคำนวณ: คอลัมน์งวด = % สะสมที่ยกค่าต่อแล้ว · ชุดที่ 2 = ธงว่าช่องถูกกรอก · ชุดที่ 3 = สัดส่วนแผนของงาน ณ วันส่งงวด
+  const flag = (k: number) => col(W0 + nP + 2 + k)
+  const pfrac = (k: number) => col(W0 + 2 * nP + 4 + k)
 
   const ws = wb.addWorksheet(SHEET.progress, {
-    views: [{ state: 'frozen', xSplit: 2, ySplit: 15, showGridLines: false }],
+    views: [{ state: 'frozen', xSplit: 2, ySplit: PROGRESS_FIRST, showGridLines: false }],
     pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
   })
   const calc = wb.addWorksheet(SHEET.calc, { state: 'hidden' })
   const { put, merge } = kit(ws)
-  ;[6, 46, 9, 7, 14, 8].forEach((w, i) => { ws.getColumn(i + 1).width = w })
-  for (let k = 0; k < nW; k += 1) ws.getColumn(W0 + k).width = 6.4
+  ;[6, 50, 9, 7, 14, 8].forEach((w, i) => { ws.getColumn(i + 1).width = w })
+  for (let k = 0; k < nP; k += 1) ws.getColumn(W0 + k).width = 12
   ;[9, 9, 9, 12, 11, 14].forEach((w, i) => { ws.getColumn(cLast + i).width = w })
 
-  // ---- หัวแบบฟอร์ม + กล่องสถานะ
+  // ---- หัวแบบฟอร์ม + กล่องสถานะ (แถว 5–10)
   const lab: Style = { font: { bold: true, color: { argb: C.muted } }, border: false }
   merge(1, 1, 1, cVal)
-  put('A1', 'ปริมาณงานที่แล้วเสร็จ (ผลงานจริงเทียบแผน)', { font: { size: 15, bold: true }, border: false, align: { wrapText: false } })
+  put('A1', 'ปริมาณงานที่แล้วเสร็จ (ผลงานจริงเทียบแผน · รายงวดงาน)', { font: { size: 15, bold: true }, border: false, align: { wrapText: false } })
   merge(2, 1, 2, cVal)
   put('A2', a.projectName, { font: { size: 11, bold: true }, border: false, align: { wrapText: false } })
   merge(3, 1, 3, cVal)
-  put('A3', 'กรอก % แล้วเสร็จ "สะสม" ของแต่ละรายการในช่องสีเหลืองของสัปดาห์ที่รายงาน (พิมพ์ 40 = 40%) · ช่องที่เว้นว่างถือว่าเท่าสัปดาห์ก่อน · แถวงาน (ตัวหนา) และแผนงานคำนวณให้เอง',
+  put('A3', 'ส่งงวดเมื่อไหร่ กรอกในคอลัมน์ของงวดนั้น: วันที่ส่งงวด (แถว 13) + % แล้วเสร็จ "สะสม" ของแต่ละรายการ (พิมพ์ 40 = 40%) · ช่องที่เว้นว่างถือว่าเท่างวดก่อน',
     { border: false, font: { size: 8, color: { argb: C.muted } }, align: { wrapText: false } })
+  const at = (row: number) => `INDEX(${periodRange(row, nP)},${LP})`
   const box: [string, string, number | string, string?][] = [
-    ['สัปดาห์ล่าสุดที่กรอก', `IF(${LW}=0,"ยังไม่กรอก","W"&${LW})`, 'ยังไม่กรอก'],
-    ['แผนงานสะสม ณ สัปดาห์นั้น', `IF(${LW}=0,0,INDEX(${ref(SHEET.plan, `$G$${a.planCumRow}:$${lastW}$${a.planCumRow}`)},${LW}))`, 0, '0.00%'],
-    ['ผลงานจริงสะสม', `IF(${LW}=0,0,INDEX($G$12:$${lastW}$12,${LW}))`, 0, '0.00%'],
-    ['เร็ว (+) / ช้า (−) กว่าแผน', 'D7-D6', 0, '+0.00%;-0.00%;0.00%'],
-    ['สถานะโครงการ', `IF(${LW}=0,"-",IF(D8>=0.005,"เร็วกว่าแผน",IF(D8<=-0.005,"ช้ากว่าแผน","ตามแผน")))`, '-'],
+    ['งวดล่าสุดที่กรอก', `IF(${LP}=0,"ยังไม่กรอก","งวดที่ "&${LP})`, 'ยังไม่กรอก'],
+    ['วันที่ส่งงวด', `IF(${LP}=0,"",IF(${at(ROW.date)}="","ยังไม่ใส่วันที่",${at(ROW.date)}))`, '', '[$-1070000]d mmmm yyyy'],
+    ['แผนงานสะสม ณ วันส่งงวด', `IF(${LP}=0,0,N(${at(ROW.plan)}))`, 0, '0.00%'],
+    ['ผลงานจริงสะสม', `IF(${LP}=0,0,N(${at(ROW.actual)}))`, 0, '0.00%'],
+    ['เร็ว (+) / ช้า (−) กว่าแผน', 'D8-D7', 0, '+0.00%;-0.00%;0.00%'],
+    ['สถานะโครงการ', `IF(${LP}=0,"-",IF(${at(ROW.date)}="","ใส่วันที่ส่งงวดก่อน",IF(D9>=0.005,"เร็วกว่าแผน",IF(D9<=-0.005,"ช้ากว่าแผน","ตามแผน"))))`, '-'],
   ]
   box.forEach(([t, formula, result, fmt], i) => {
     const r = 5 + i
     merge(r, 1, r, 3)
     put(`A${r}`, t, { ...lab, border: true, fill: C.sum })
     merge(r, 4, r, 6)
-    put(`D${r}`, f(formula, result), { font: { bold: true, size: i === 4 ? 11 : 9 }, fmt, align: { horizontal: 'center' } })
+    put(`D${r}`, f(formula, result), { font: { bold: true, size: i === 5 ? 11 : 9 }, fmt, align: { horizontal: 'center' } })
   })
 
-  // ---- สรุปรายสัปดาห์ (แถว 11–14) อยู่ใต้หัวสัปดาห์ของแถว 15
-  const weekHead = 15
-  ;([['No.', 1], ['รายการ', 2], ['ปริมาณ', 3], ['หน่วย', 4], ['มูลค่า (บาท)', 5], ['น้ำหนัก', 6],
-    ['ล่าสุด (%)', cLast], ['แผน (%)', cPlan], ['ผลต่าง', cDiff], ['สถานะ', cStat], ['ปริมาณที่เสร็จ', cQty], ['มูลค่าที่เสร็จ (บาท)', cVal]] as const)
-    .forEach(([t, c]) => put(`${col(c)}${weekHead}`, t, { fill: C.head, font: { bold: true }, align: { horizontal: 'center' } }))
-  for (const m of monthBands(start, nW)) {
-    merge(10, W0 + m.from, 10, W0 + m.to)
-    put(`${wl(m.from)}10`, monthLabel(m.d), { fill: C.head, font: { bold: true }, align: { horizontal: 'center' } })
-  }
-  for (let k = 0; k < nW; k += 1) {
-    put(`${wl(k)}${weekHead}`, f(`"W${k + 1} "&TEXT(${ref(SHEET.plan, `${wl(k)}$9`)},"d/m")`, `W${k + 1}`),
-      { fill: C.head, font: { bold: true, size: 8 }, align: { horizontal: 'center' } })
-  }
-  const sumRows: [number, string][] = [[11, 'แผนงานสะสม (%)'], [12, 'ผลงานจริงสะสม (%)'], [13, 'เร็ว (+) / ช้า (−) (%)'], [14, 'สถานะ']]
+  // ---- สรุปรายงวด (แถว 12–18)
+  const head: Style = { fill: C.head, font: { bold: true }, align: { horizontal: 'center' } }
+  merge(12, 1, 12, 6)
+  put('A12', 'งวดงาน', head)
+  const sumRows: [number, string][] = [
+    [ROW.date, 'วันที่ส่งงวด (กรอก)'], [ROW.week, 'ตรงกับสัปดาห์ของแผน'], [ROW.plan, 'แผนงานสะสม ณ วันส่งงวด (%)'],
+    [ROW.actual, 'ผลงานจริงสะสม (%)'], [ROW.diff, 'เร็ว (+) / ช้า (−) (%)'], [ROW.status, 'สถานะ'],
+  ]
   sumRows.forEach(([r, t]) => { merge(r, 1, r, 6); put(`A${r}`, t, { fill: C.sum, font: { bold: true } }) })
-  merge(10, 1, 10, 6)
-  put('A10', 'สรุปรายสัปดาห์', { fill: C.head, font: { bold: true } })
-  const small: Style = { font: { size: 7 }, align: { horizontal: 'center', wrapText: false } }
-  for (let k = 0; k < nW; k += 1) {
-    const x = wl(k)
-    const after = `${k + 1}>${LW}`
-    put(`${x}11`, f(ref(SHEET.plan, `${x}${a.planCumRow}`), dist.cum[k]), { ...small, fmt: '0.00%' })
-    put(`${x}12`, f(`IF(${after},"",SUMPRODUCT($E$${first}:$E$${last},${K(`${x}${first}:${x}${last}`)})/${a.planTotal})`, ''), { ...small, fmt: '0.00%', font: { size: 7, bold: true } })
-    put(`${x}13`, f(`IF(${after},"",${x}12-${x}11)`, ''), { ...small, fmt: '+0.00%;-0.00%;0.00%' })
-    put(`${x}14`, f(`IF(${after},"",IF(${x}13>=0.005,"เร็ว",IF(${x}13<=-0.005,"ช้า","ตาม")))`, ''), small)
-  }
-
-  // ---- ชีตคำนวณ (ซ่อน): A1 = สัปดาห์ล่าสุด · แถว 2 = ธงสัปดาห์ที่มีการกรอก
-  //      คอลัมน์สัปดาห์ = % สะสมที่ยกค่าต่อแล้ว · คอลัมน์ชุดที่สอง (เลื่อนไป nW+2) = ธงว่าช่องนั้นถูกกรอก
-  // 🔴 นับการกรอกจากธงของแถวรายการเท่านั้น — นับทั้งคอลัมน์ของแบบฟอร์มจะรวมแถวงานที่อ่าน A1 กลับมา = อ้างอิงวน
-  const flag = (k: number) => col(W0 + nW + 2 + k)
-  for (let k = 0; k < nW; k += 1) {
-    const x = wl(k)
+  const start = PL('$C$2')
+  const small: Style = { font: { size: 8 }, align: { horizontal: 'center', wrapText: false } }
+  for (let k = 0; k < nP; k += 1) {
+    const x = pl(k)
+    const after = `${k + 1}>${LP}`
+    put(`${x}12`, `งวดที่ ${k + 1}`, head)
+    const d = ws.getCell(`${x}${ROW.date}`)
+    put(`${x}${ROW.date}`, null, { fill: C.input, fmt: '[$-1070000]d mmm yy', align: { horizontal: 'center' } })
+    d.dataValidation = { type: 'date', operator: 'greaterThan', allowBlank: true, formulae: [new Date(Date.UTC(2000, 0, 1))],
+      showErrorMessage: true, errorTitle: 'วันที่ไม่ถูกต้อง', error: 'กรอกเป็นวันที่ เช่น 15/8/2026' }
+    calc.getCell(`${x}${ROW.calcWeek}`).value =
+      f(`IF(OR(${after},${P(`${x}${ROW.date}`)}=""),"",INT((${P(`${x}${ROW.date}`)}-${start})/7)+1)`, '')
+    put(`${x}${ROW.week}`, f(`IF(${K(`${x}${ROW.calcWeek}`)}="","","W"&${K(`${x}${ROW.calcWeek}`)})`, ''), small)
+    put(`${x}${ROW.plan}`, f(`IF(${x}${ROW.date}="","",SUMPRODUCT($F$${first}:$F$${last},${K(`${pfrac(k)}${first}:${pfrac(k)}${last}`)}))`, ''), { ...small, fmt: '0.00%' })
+    put(`${x}${ROW.actual}`, f(`IF(${after},"",SUMPRODUCT($E$${first}:$E$${last},${K(`${x}${first}:${x}${last}`)})/${a.planTotal})`, ''), { ...small, fmt: '0.00%', font: { size: 8, bold: true } })
+    put(`${x}${ROW.diff}`, f(`IF(OR(${x}${ROW.plan}="",${x}${ROW.actual}=""),"",${x}${ROW.actual}-${x}${ROW.plan})`, ''), { ...small, fmt: '+0.00%;-0.00%;0.00%' })
+    put(`${x}${ROW.status}`, f(`IF(${x}${ROW.diff}="","",IF(${x}${ROW.diff}>=0.005,"เร็วกว่าแผน",IF(${x}${ROW.diff}<=-0.005,"ช้ากว่าแผน","ตามแผน")))`, ''), small)
     calc.getCell(`${x}2`).value = f(`IF(SUM(${flag(k)}${first}:${flag(k)}${last})>0,${k + 1},0)`, 0)
   }
-  calc.getCell('A1').value = f(`MAX(${wl(0)}2:${lastW}2)`, 0)
+  // 🔴 นับงวดที่กรอกจากธงของแถวรายการเท่านั้น — นับทั้งคอลัมน์ของแบบฟอร์มจะรวมแถวงานที่อ่าน B1 กลับมา = อ้างอิงวน
+  calc.getCell('B1').value = f(`MAX(${pl(0)}2:${lastP}2)`, 0)
+  calc.getCell('A1').value = f(`IF(B1=0,0,N(INDEX(${pl(0)}${ROW.calcWeek}:${lastP}${ROW.calcWeek},B1)))`, 0)
+
+  // ---- หัวตารางรายการ
+  ;([['No.', 1], ['รายการ', 2], ['ปริมาณ', 3], ['หน่วย', 4], ['มูลค่า (บาท)', 5], ['น้ำหนัก', 6],
+    ['ล่าสุด (%)', cLast], ['แผน (%)', cPlan], ['ผลต่าง', cDiff], ['สถานะ', cStat], ['ปริมาณที่เสร็จ', cQty], ['มูลค่าที่เสร็จ (บาท)', cVal]] as const)
+    .forEach(([t, c]) => put(`${col(c)}${PROGRESS_FIRST}`, t, head))
+  for (let k = 0; k < nP; k += 1) put(`${pl(k)}${PROGRESS_FIRST}`, `งวดที่ ${k + 1}`, head)
 
   // ---- รายการงาน
   const input: Style = { fill: C.input, fmt: '0%;;;@', font: { size: 8 }, align: { horizontal: 'center', wrapText: false } }
@@ -166,18 +176,19 @@ export function addProgressSheet(
       put(`D${tr}`, null, bold)
       put(`E${tr}`, f(`SUM(E${i0}:E${i1})`, t.amount), { ...bold, fmt: '#,##0.00' })
       put(`F${tr}`, f(`IFERROR(E${tr}/${a.planTotal},0)`, dist.weights[ti]), { ...bold, fmt: '0.00%', align: { horizontal: 'center' } })
-      for (let k = 0; k < nW; k += 1) {
-        const x = wl(k)
-        put(`${x}${tr}`, f(`IF(${k + 1}>${LW},"",SUMPRODUCT($E$${i0}:$E$${i1},${K(`${x}${i0}:${x}${i1}`)})/$E$${tr})`, ''),
+      for (let k = 0; k < nP; k += 1) {
+        const x = pl(k)
+        put(`${x}${tr}`, f(`IF(${k + 1}>${LP},"",SUMPRODUCT($E$${i0}:$E$${i1},${K(`${x}${i0}:${x}${i1}`)})/$E$${tr})`, ''),
           { ...bold, fmt: '0%', font: { bold: true, size: 8 }, align: { horizontal: 'center', wrapText: false } })
+        // แผนของงานนี้ ณ วันส่งงวด: เสร็จแล้ว = 1 · กำลังทำ = วันที่ผ่านไป ÷ ระยะเวลา · ยังไม่เริ่ม = 0
+        const dd = P(`${x}$${ROW.date}`)
+        calc.getCell(`${pfrac(k)}${tr}`).value = f(
+          `IF(${dd}="","",IF(${dd}>=${PL(`$E$${pr}`)},1,IF(${dd}>=${PL(`$D$${pr}`)},(${dd}-${PL(`$D$${pr}`)}+1)/${PL(`$C$${pr}`)},0)))`, '')
       }
-      put(`${col(cLast)}${tr}`, f(`IF(${LW}=0,0,INDEX($G${tr}:$${lastW}${tr},${LW}))`, 0), { ...bold, fmt: '0%', align: { horizontal: 'center' } })
-      // แผนของงานนี้ ณ สัปดาห์ล่าสุด = ผลรวมแถว Plan ถึงสัปดาห์นั้น ÷ น้ำหนักงาน
-      const planRow = ref(SHEET.plan, `$G$${pr}:$${lastW}$${pr}`)
-      put(`${col(cPlan)}${tr}`, f(`IF(${LW}=0,0,IFERROR(SUM(${ref(SHEET.plan, `$G$${pr}`)}:INDEX(${planRow},${LW}))/${ref(SHEET.plan, `$${a.planWeightCol}$${pr}`)},0))`, 0),
-        { ...bold, fmt: '0%', align: { horizontal: 'center' } })
+      put(`${col(cLast)}${tr}`, f(`IF(${LP}=0,0,INDEX($${pl(0)}${tr}:$${lastP}${tr},${LP}))`, 0), { ...bold, fmt: '0%', align: { horizontal: 'center' } })
+      put(`${col(cPlan)}${tr}`, f(`IF(${LP}=0,0,N(INDEX(${K(`$${pfrac(0)}${tr}:$${pfrac(nP - 1)}${tr}`)},${LP})))`, 0), { ...bold, fmt: '0%', align: { horizontal: 'center' } })
       put(`${col(cDiff)}${tr}`, f(`${col(cLast)}${tr}-${col(cPlan)}${tr}`, 0), { ...bold, fmt: '+0%;-0%;0%', align: { horizontal: 'center' } })
-      put(`${col(cStat)}${tr}`, f(`IF(${LW}=0,"-",IF(${col(cDiff)}${tr}>=0.01,"เร็วกว่าแผน",IF(${col(cDiff)}${tr}<=-0.01,"ช้ากว่าแผน","ตามแผน")))`, '-'),
+      put(`${col(cStat)}${tr}`, f(`IF(${LP}=0,"-",IF(${col(cDiff)}${tr}>=0.01,"เร็วกว่าแผน",IF(${col(cDiff)}${tr}<=-0.01,"ช้ากว่าแผน","ตามแผน")))`, '-'),
         { ...bold, align: { horizontal: 'center' } })
       put(`${col(cQty)}${tr}`, null, bold)
       put(`${col(cVal)}${tr}`, f(`SUM(${col(cVal)}${i0}:${col(cVal)}${i1})`, 0), { ...bold, fmt: '#,##0.00' })
@@ -190,19 +201,18 @@ export function addProgressSheet(
         put(`D${ir}`, it.unit, { align: { horizontal: 'center' } })
         put(`E${ir}`, it.amount, { fmt: '#,##0.00' })
         put(`F${ir}`, f(`IFERROR(E${ir}/${a.planTotal},0)`, dist.total ? it.amount / dist.total : 0), { fmt: '0.00%', font: { size: 8 }, align: { horizontal: 'center' } })
-        for (let k = 0; k < nW; k += 1) {
-          const x = wl(k)
-          const c = ws.getCell(`${x}${ir}`)
+        for (let k = 0; k < nP; k += 1) {
+          const x = pl(k)
           put(`${x}${ir}`, null, input)
-          c.dataValidation = {
+          ws.getCell(`${x}${ir}`).dataValidation = {
             type: 'decimal', operator: 'between', allowBlank: true, formulae: [0, 1],
             showErrorMessage: true, errorTitle: 'ค่าไม่ถูกต้อง', error: 'กรอก % แล้วเสร็จสะสม 0–100',
           }
-          const prev = k === 0 ? '0' : K(`${wl(k - 1)}${ir}`)
+          const prev = k === 0 ? '0' : K(`${pl(k - 1)}${ir}`)
           calc.getCell(`${flag(k)}${ir}`).value = f(`IF(${P(`${x}${ir}`)}="",0,1)`, 0)
           calc.getCell(`${x}${ir}`).value = f(`IF(${P(`${x}${ir}`)}="",${prev},MIN(1,MAX(0,${P(`${x}${ir}`)})))`, 0)
         }
-        put(`${col(cLast)}${ir}`, f(`IF(${LW}=0,0,INDEX(${K(`$G${ir}:$${lastW}${ir}`)},${LW}))`, 0), { fmt: '0%', align: { horizontal: 'center' } })
+        put(`${col(cLast)}${ir}`, f(`IF(${LP}=0,0,INDEX(${K(`$${pl(0)}${ir}:$${lastP}${ir}`)},${LP}))`, 0), { fmt: '0%', align: { horizontal: 'center' } })
         ;[cPlan, cDiff, cStat].forEach((c) => put(`${col(c)}${ir}`, null))
         put(`${col(cQty)}${ir}`, f(`IF(C${ir}="","",C${ir}*${col(cLast)}${ir})`, 0), { fmt: '#,##0.##', align: { horizontal: 'right' } })
         put(`${col(cVal)}${ir}`, f(`E${ir}*${col(cLast)}${ir}`, 0), { fmt: '#,##0.00' })
@@ -212,33 +222,33 @@ export function addProgressSheet(
   }
   const tot = last + 1
   merge(tot, 1, tot, 4)
-  put(`A${tot}`, 'รวมทั้งโครงการ', { fill: C.head, font: { bold: true }, align: { horizontal: 'center' } })
-  put(`E${tot}`, f(`SUMPRODUCT(($C$${first}:$C$${last}<>"")*$E$${first}:$E$${last})`, dist.total), { fill: C.head, font: { bold: true }, fmt: '#,##0.00' })
-  put(`F${tot}`, f(`E${tot}/${a.planTotal}`, 1), { fill: C.head, font: { bold: true }, fmt: '0.00%', align: { horizontal: 'center' } })
-  for (let k = 0; k < nW; k += 1) put(`${wl(k)}${tot}`, null, { fill: C.head })
-  put(`${col(cLast)}${tot}`, f('D7', 0), { fill: C.head, font: { bold: true }, fmt: '0.00%', align: { horizontal: 'center' } })
-  put(`${col(cPlan)}${tot}`, f('D6', 0), { fill: C.head, font: { bold: true }, fmt: '0.00%', align: { horizontal: 'center' } })
-  put(`${col(cDiff)}${tot}`, f('D8', 0), { fill: C.head, font: { bold: true }, fmt: '+0.00%;-0.00%;0.00%', align: { horizontal: 'center' } })
-  put(`${col(cStat)}${tot}`, f('D9', '-'), { fill: C.head, font: { bold: true }, align: { horizontal: 'center' } })
+  put(`A${tot}`, 'รวมทั้งโครงการ', { ...head })
+  put(`E${tot}`, f(`SUMPRODUCT(($C$${first}:$C$${last}<>"")*$E$${first}:$E$${last})`, dist.total), { ...head, fmt: '#,##0.00', align: {} })
+  put(`F${tot}`, f(`E${tot}/${a.planTotal}`, 1), { ...head, fmt: '0.00%' })
+  for (let k = 0; k < nP; k += 1) put(`${pl(k)}${tot}`, null, { fill: C.head })
+  put(`${col(cLast)}${tot}`, f('D8', 0), { ...head, fmt: '0.00%' })
+  put(`${col(cPlan)}${tot}`, f('D7', 0), { ...head, fmt: '0.00%' })
+  put(`${col(cDiff)}${tot}`, f('D9', 0), { ...head, fmt: '+0.00%;-0.00%;0.00%' })
+  put(`${col(cStat)}${tot}`, f('D10', '-'), head)
   put(`${col(cQty)}${tot}`, null, { fill: C.head })
-  put(`${col(cVal)}${tot}`, f(`SUMPRODUCT(($C$${first}:$C$${last}<>"")*${col(cVal)}${first}:${col(cVal)}${last})`, 0), { fill: C.head, font: { bold: true }, fmt: '#,##0.00' })
+  put(`${col(cVal)}${tot}`, f(`SUMPRODUCT(($C$${first}:$C$${last}<>"")*${col(cVal)}${first}:${col(cVal)}${last})`, 0), { ...head, fmt: '#,##0.00', align: {} })
 
   // สถานะเป็นสี: ช้า = แดง · เร็ว = เขียว (ทั้งข้อความและตัวเลขผลต่าง)
   let prio = 10
   const red = { font: { color: { argb: C.bad }, bold: true } }
   const green = { font: { color: { argb: C.good }, bold: true } }
-  for (const rg of ['D9', `${wl(0)}14:${lastW}14`, `${col(cStat)}${first}:${col(cStat)}${tot}`]) {
+  for (const rg of ['D10', `${pl(0)}${ROW.status}:${lastP}${ROW.status}`, `${col(cStat)}${first}:${col(cStat)}${tot}`]) {
     ws.addConditionalFormatting({ ref: rg, rules: [
       { type: 'containsText', operator: 'containsText', text: 'ช้า', priority: prio++, style: red },
       { type: 'containsText', operator: 'containsText', text: 'เร็ว', priority: prio++, style: green },
     ] })
   }
-  for (const rg of ['D8', `${wl(0)}13:${lastW}13`, `${col(cDiff)}${first}:${col(cDiff)}${tot}`]) {
+  for (const rg of ['D9', `${pl(0)}${ROW.diff}:${lastP}${ROW.diff}`, `${col(cDiff)}${first}:${col(cDiff)}${tot}`]) {
     const top = rg.split(':')[0]
     ws.addConditionalFormatting({ ref: rg, rules: [
       { type: 'expression', formulae: [`AND(ISNUMBER(${top}),${top}<0)`], priority: prio++, style: red },
       { type: 'expression', formulae: [`AND(ISNUMBER(${top}),${top}>0)`], priority: prio++, style: green },
     ] })
   }
-  ws.pageSetup.printTitlesRow = `${weekHead}:${weekHead}`
+  ws.pageSetup.printTitlesRow = `${PROGRESS_FIRST}:${PROGRESS_FIRST}`
 }
