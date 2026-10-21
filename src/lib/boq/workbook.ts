@@ -14,8 +14,9 @@ import {
   LP, LW, addProgressSheets, periodWeeksRange, progressLayout, summaryPeriodCell, summaryPeriodRange, taskPeriodRange,
 } from './progress-sheet'
 import {
-  BOX, C, DATE_FMT, FONT, PCT, SHEET, addDays, baht, col, f, isoToDate, kit, monthBands, monthLabel, ref, type Style,
+  BOX, C, DATE_FMT, FONT, PCT, SHEET, addDays, baht, col, f, isoToDate, kit, monthBands, monthLabel, ref, thDateShort, type Style,
 } from './xlsx-kit'
+import { W124, w124Offset, withW124 } from './w124'
 
 export { isoToDate }
 
@@ -77,7 +78,7 @@ export async function readPlanFile(buf: ArrayBuffer) {
   if (!plan || !summary) throw new Error('NOT_PLAN_FILE')
   // ชีตหมวด = ชีตที่หัวตารางมี "เปอร์เซ็นที่แล้วเสร็จ" และคอลัมน์ "งวดที่"
   const cats = wb.worksheets.filter((w) => w.getCell('F8').text.includes('เปอร์เซ็นที่แล้วเสร็จ') && /^งวดที่/.test(w.getCell('M8').text))
-  return readProgress(toGrid(summary), cats.map(toGrid), toGrid(plan))
+  return withW124(readProgress(toGrid(summary), cats.map(toGrid), toGrid(plan)))
 }
 
 // ---------------------------------------------------------------------------
@@ -92,6 +93,8 @@ export type PlanInput = {
   start: string
   /** จำนวนงวดงานในแบบฟอร์มปริมาณงานที่แล้วเสร็จ */
   periods: number
+  /** ใส่การประเมินตาม ว.124 (ตารางในชีตสรุป + เส้นแดง/เส้นเทาในกราฟ) — เจ้าของเลือกต่องาน */
+  w124: boolean
 }
 
 export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
@@ -117,7 +120,7 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
     pageSetup: { orientation: 'landscape', paperSize: 8 as PaperSize /* A3 */, fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
   })
   const { put, merge } = kit(ws)
-  const layout = progressLayout(p.categories, p.periods, start, p.days)
+  const layout = progressLayout(p.categories, p.periods, start, p.days, p.w124)
   const planRows: number[] = []
 
   ;[6, 40, 8, 11, 11, 7.5].forEach((w, i) => { ws.getColumn(i + 1).width = w })
@@ -316,6 +319,7 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
     `* หมายเหตุ มูลค่างานเป็นค่างานต้นทุน ไม่รวม Factor F${p.factor ? ` ${p.factor}` : ''} และภาษีมูลค่าเพิ่ม ${p.vat ? Math.round(p.vat * 100) : 7}%`,
     '* แก้ "ระยะเวลา" และ "เริ่ม" (ช่องสีเหลือง) แล้วแท่งแผนงานกับ S-Curve คำนวณใหม่เอง',
     '* S-Curve บนตาราง: เส้นน้ำเงิน = แผนงานสะสม · เส้นส้ม = ผลงานจริงสะสม (จุดตรงวันส่งงวด) · เส้นประเขียว = วันส่งงวด · แกน % อยู่คอลัมน์ "%"',
+    ...(p.w124 ? [`* เส้นประแดง = วันตรวจตามหนังสือกรมบัญชีกลาง ว.124 ข้อ 2.2 (เวลาเกิน 1/2 ผลงาน ≥ 25% · เกิน 3/4 ≥ 65% · ครบสัญญา ≥ 85%) · เส้นประเทา = แผนงาน ÷ 2 (ข้อ 2.2.2) · ผลประเมินอยู่ที่ชีต "${SHEET.summary}"`] : []),
     `* แถว Actual และแถวเปรียบเทียบดึงจากผลงานรายงวด — ส่งงวดเมื่อไหร่กรอกวันที่ที่ชีต "${SHEET.summary}" และ % แล้วเสร็จที่ชีตหมวด ผลจะขึ้นที่สัปดาห์ของวันส่งงวด`,
     '* เปลี่ยนวันที่เริ่มสัญญา ให้สร้างไฟล์ใหม่จากระบบ เพื่อให้หัวเดือนตรงกับวันที่',
   ]
@@ -397,6 +401,38 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
     calc.getCell(`${x}13`).value = f(`IF(ISNA(${x}8),NA(),1)`, '')
   }
 
+  // เส้นแนบ ว.124: แถว 16 = แผนสะสม ÷ 2 (x ใช้แถว 6) · แถว 14/15 = เส้นแดงแนวตั้งที่วันตรวจ
+  //   จุดของเส้น = 0 · เกณฑ์ของทุกข้อที่ตรวจวันเดียวกัน · 100% — หมุดและป้ายวางที่จุดเกณฑ์
+  if (p.w124) {
+    calc.getCell('F16').value = 0
+    for (let k = 0; k < nW; k += 1) calc.getCell(`${wl(k)}16`).value = f(`${wl(k)}7/2`, dist.cum[k] / 2)
+  }
+  const checks = !p.w124 ? [] : [...new Set(W124.map((r) => r.frac))].map((frac) => ({ frac, rules: W124.filter((r) => r.frac === frac) }))
+  let c0 = 1
+  const redLines = checks.map(({ frac, rules }) => {
+    const i = W124.indexOf(rules[0])
+    const xCell = `(${ref(SHEET.summary, `$F$${layout.summary.w124Row0 + i}`)}-${startCell}+1)/7`
+    const ys = [0, ...rules.map((r) => r.min), 1]
+    const x0 = (w124Offset(p.days, frac) + 1) / 7
+    ys.forEach((y, j) => {
+      calc.getCell(`${col(c0 + j)}14`).value = f(xCell, x0)
+      calc.getCell(`${col(c0 + j)}15`).value = y
+    })
+    const date = thDateShort(addDays(start, w124Offset(p.days, frac)))
+    const spec = {
+      name: `ว.124 ${rules[0].when}`,
+      x: ref(SHEET.calc, `$${col(c0)}$14:$${col(c0 + ys.length - 1)}$14`),
+      y: ref(SHEET.calc, `$${col(c0)}$15:$${col(c0 + ys.length - 1)}$15`),
+      color: 'C0261C', dash: true, marker: false, width: 15875,
+      points: rules.map((r, j) => ({
+        idx: j + 1,
+        lines: [`ว.124 ข้อ ${r.clause} · ผลงาน ≥ ${Math.round(r.min * 100)}%${r.halfPlan ? ' หรือครึ่งของแผน' : ''}`, `${r.when} · ${date}`],
+      })),
+    }
+    c0 += ys.length
+    return spec
+  })
+
   const buf = (await wb.xlsx.writeBuffer()) as ArrayBuffer
   const bar = progress.chart
   // 🔴 กราฟวางทับช่องสัปดาห์ของตาราง: กรอบวาดเริ่มขอบซ้าย W1 · แถวแรกของงาน → ขอบล่างแถวสุดท้าย
@@ -413,6 +449,8 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
     overlay: { plotW: (weekW * nW) / (weekW * nW + pctW) },
     series: [
       { name: 'แผนงานสะสม', x: ref(SHEET.calc, `$F$6:$${wl(nW - 1)}$6`), y: ref(SHEET.calc, `$F$7:$${wl(nW - 1)}$7`), color: '2F5F94', width: 22225 },
+      ...(p.w124 ? [{ name: 'แผนงาน ÷ 2 (ว.124 ข้อ 2.2.2)', x: ref(SHEET.calc, `$F$6:$${wl(nW - 1)}$6`), y: ref(SHEET.calc, `$F$16:$${wl(nW - 1)}$16`), color: '8A939C', dash: true, marker: false, width: 15875 }] : []),
+      ...redLines,
       { name: 'ผลงานจริงสะสม', x: ref(SHEET.calc, `$F$8:$${lastP}$8`), y: ref(SHEET.calc, `$F$9:$${lastP}$9`), color: 'E08A1E', width: 22225 },
       ...Array.from({ length: p.periods }, (_, k) => ({
         name: `งวดที่ ${k + 1}`,

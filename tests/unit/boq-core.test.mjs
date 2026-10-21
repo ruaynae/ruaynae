@@ -176,3 +176,44 @@ test('ไฟล์ที่ไม่ใช่แผนงานจากระ�
   assert.throws(() => readProgress(sheet('x', [['สวัสดี']]), [], sheet('y', [])), /NOT_PLAN_FILE/)
   assert.throws(() => readProgress(sheet('x', []), [sheet('z', [['สวัสดี']])], sheet('y', [])), /NOT_PLAN_FILE/)
 })
+
+// ---- ว.124 ข้อ 2.2
+import { W124, w124Offset, w124State, withW124 } from '../../src/lib/boq/w124.ts'
+
+test('ว.124: วันที่ตรวจ = วันแรกที่เวลาใช้ไปเกินสัดส่วน · ครบสัญญา = วันสุดท้าย', () => {
+  assert.equal(w124Offset(180, 0.5), 90) // ใช้ไป 91 วัน > 90
+  assert.equal(w124Offset(181, 0.5), 90) // ใช้ไป 91 วัน > 90.5
+  assert.equal(w124Offset(180, 0.75), 135)
+  assert.equal(w124Offset(180, 1), 179)
+})
+
+test('ว.124: ผ่านเมื่อถึงเกณฑ์ · ยังไม่ถึงวันตรวจ = รอ · ถึงแล้วต่ำกว่าเกณฑ์ = ไม่ผ่าน', () => {
+  const [r221, r222, r223] = W124
+  assert.equal(w124State(r221, true, 0.25, null), 'pass')
+  assert.equal(w124State(r221, true, 0.2385, null), 'fail') // ตัวอย่างในสิ่งที่ส่งมาด้วย 4 (23.85%)
+  assert.equal(w124State(r221, false, 0.2, null), 'pending')
+  assert.equal(w124State(r223, true, 0.7, null), 'pass')
+  // 2.2.2 ไม่ผ่านเมื่อต่ำกว่าครึ่งของแผน *และ* สะสมไม่ถึง 50%
+  assert.equal(w124State(r222, true, 0.2, 0.3), 'pass')
+  assert.equal(w124State(r222, true, 0.2, 0.5), 'fail')
+  assert.equal(w124State(r222, true, 0.0, null), 'fail') // ไม่มีงวดก่อนวันตรวจ
+  assert.equal(w124State(r222, true, 0.55, 1), 'pass')
+})
+
+test('ว.124: ผลงาน ณ วันตรวจ = งวดล่าสุดที่ส่งไม่เกินวันตรวจ', () => {
+  const base = { projectName: '', labels: [], sublabels: [], planWeekly: [], planCum: [], actualCum: [], tasks: [], w124: [] }
+  const r = withW124({
+    ...base, w124Enabled: true, start: '2026-03-01', days: 180, asOf: '2026-07-10',
+    installments: [
+      { no: 1, date: '2026-05-15', week: 11, plan: 0.13, actual: 0.2 },
+      { no: 2, date: '2026-07-10', week: 19, plan: 0.64, actual: 0.35 },
+    ],
+  })
+  assert.deepEqual(r.w124.map((c) => [c.clause, c.date, c.period, c.state]), [
+    ['2.2.1', '2026-05-30', 1, 'fail'],
+    ['2.2.2', '2026-05-30', 1, 'pass'],
+    ['2.2.3', '2026-07-14', 2, 'pending'],
+    ['2.2.4', '2026-08-27', 2, 'pending'],
+  ])
+  assert.equal(r.w124[0].x, 13)
+})

@@ -68,5 +68,8 @@ export function monthBands(start: Date, weeks: number) {
   }
   return out
 }
+/** `13 ก.ย. 69` */
+export const thDateShort = (d: Date) =>
+  `${d.getUTCDate()} ${TH_MON[d.getUTCMonth()]} ${String((d.getUTCFullYear() + 543) % 100).padStart(2, '0')}`
 export const monthLabel = (d: Date) =>
   `${TH_MON[d.getUTCMonth()]} ${String((d.getUTCFullYear() + 543) % 100).padStart(2, '0')}`
