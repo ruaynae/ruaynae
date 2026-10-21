@@ -7,13 +7,15 @@ import JSZip from 'jszip'
  * 🔴 ชีตเป้าหมายต้องยังไม่มี drawing (ไม่ใส่รูปด้วย exceljs ในชีตนั้น) — ไม่งั้นต้องรวมสอง drawing
  */
 
-export type LineSeries = { name: string; ref: string; color: string; dash?: boolean }
+/** กราฟ XY: แกน X เป็นตัวเลข (สัปดาห์ที่ · ทศนิยมได้) ทุกเส้นวางจุดตามค่า x ของตัวเอง
+ *  — เส้นผลงานจริงจึงวางจุดตรงวันส่งงวดได้ ไม่ต้องมีค่าทุกสัปดาห์เหมือนกราฟเส้นธรรมดา */
+export type LineSeries = { name: string; x: string; y: string; color: string; dash?: boolean }
 export type ChartSpec = {
   /** ลำดับชีตใน workbook นับจาก 1 */
   sheet: number
   title: string
-  /** ช่วงป้ายแกน X เช่น `'แผน'!$G$8:$AF$8` */
-  cats: string
+  xTitle: string
+  xMax: number
   series: LineSeries[]
   /** มุมบนซ้าย/ล่างขวา (คอลัมน์/แถวนับจาก 0) */
   from: { col: number; row: number }
@@ -29,20 +31,22 @@ function chartXml(c: ChartSpec) {
     .map((s, i) => `<c:ser><c:idx val="${i}"/><c:order val="${i}"/><c:tx><c:v>${esc(s.name)}</c:v></c:tx>
 <c:spPr><a:ln w="${s.dash ? 22225 : 31750}" cap="rnd"><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill>${s.dash ? '<a:prstDash val="dash"/>' : ''}<a:round/></a:ln></c:spPr>
 <c:marker><c:symbol val="circle"/><c:size val="4"/><c:spPr><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill><a:ln><a:noFill/></a:ln></c:spPr></c:marker>
-<c:cat><c:strRef><c:f>${esc(c.cats)}</c:f></c:strRef></c:cat><c:val><c:numRef><c:f>${esc(s.ref)}</c:f></c:numRef></c:val><c:smooth val="0"/></c:ser>`)
+<c:xVal><c:numRef><c:f>${esc(s.x)}</c:f></c:numRef></c:xVal><c:yVal><c:numRef><c:f>${esc(s.y)}</c:f></c:numRef></c:yVal><c:smooth val="0"/></c:ser>`)
     .join('')
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <c:roundedCorners val="0"/>
 <c:chart><c:title>${rich(c.title, 1400, true)}<c:overlay val="0"/></c:title><c:autoTitleDeleted val="0"/>
 <c:plotArea><c:layout/>
-<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>${ser}<c:marker val="1"/><c:axId val="5001"/><c:axId val="5002"/></c:lineChart>
-<c:catAx><c:axId val="5001"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:numFmt formatCode="General" sourceLinked="0"/><c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="5002"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx>
+<c:scatterChart><c:scatterStyle val="lineMarker"/><c:varyColors val="0"/>${ser}<c:axId val="5001"/><c:axId val="5002"/></c:scatterChart>
+<c:valAx><c:axId val="5001"/><c:scaling><c:orientation val="minMax"/><c:max val="${c.xMax}"/><c:min val="0"/></c:scaling><c:delete val="0"/><c:axPos val="b"/>
+<c:title>${rich(c.xTitle, 900, false)}<c:overlay val="0"/></c:title>
+<c:numFmt formatCode="&quot;W&quot;0" sourceLinked="0"/><c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="5002"/><c:crosses val="autoZero"/><c:crossBetween val="midCat"/><c:majorUnit val="${c.xMax > 30 ? 4 : 2}"/></c:valAx>
 <c:valAx><c:axId val="5002"/><c:scaling><c:orientation val="minMax"/><c:max val="1"/><c:min val="0"/></c:scaling><c:delete val="0"/><c:axPos val="l"/>
 <c:majorGridlines><c:spPr><a:ln w="6350"><a:solidFill><a:srgbClr val="D9DEE4"/></a:solidFill></a:ln></c:spPr></c:majorGridlines>
-<c:numFmt formatCode="0%" sourceLinked="0"/><c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="5001"/><c:crosses val="autoZero"/><c:crossBetween val="between"/><c:majorUnit val="0.25"/></c:valAx>
+<c:numFmt formatCode="0%" sourceLinked="0"/><c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="5001"/><c:crosses val="autoZero"/><c:crossBetween val="midCat"/><c:majorUnit val="0.25"/></c:valAx>
 </c:plotArea><c:legend><c:legendPos val="b"/><c:overlay val="0"/></c:legend>
-<c:plotVisOnly val="0"/><c:dispBlanksAs val="gap"/></c:chart>
+<c:plotVisOnly val="0"/><c:dispBlanksAs val="span"/></c:chart>
 <c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="1000"><a:latin typeface="Tahoma"/><a:cs typeface="Tahoma"/></a:defRPr></a:pPr><a:endParaRPr lang="th-TH"/></a:p></c:txPr>
 </c:chartSpace>`
 }

@@ -38,6 +38,7 @@ export function PlanBuilder() {
   const [start, setStart] = useState(() => addIso(todayInBangkok(), 14))
   const [days, setDays] = useState(180)
   const [daysText, setDaysText] = useState('180')
+  const [periods, setPeriods] = useState('5')
   const [exporting, setExporting] = useState(false)
   const canvas = useRef<HTMLCanvasElement>(null)
 
@@ -117,7 +118,8 @@ export function PlanBuilder() {
     setExporting(true)
     try {
       const { buildPlanXlsx } = await import('@/lib/boq/workbook')
-      const buf = await buildPlanXlsx({ project, factor: model.factor, vat: model.vat, categories: cats, days, start })
+      const n = Math.min(24, Math.max(1, Math.round(Number(periods)) || 5))
+      const buf = await buildPlanXlsx({ project, factor: model.factor, vat: model.vat, categories: cats, days, start, periods: n })
       const a = document.createElement('a')
       a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
       a.download = `แผนงานก่อสร้าง_${(project.name || 'โครงการ').slice(0, 60).replace(/[\\/:*?"<>|]/g, '')}.xlsx`
@@ -168,7 +170,7 @@ export function PlanBuilder() {
             <li>อ่านแบบ ปร.6 → ปร.5 → ปร.4 แยกหมวดและรายการงาน (ชีตของโครงการอื่นในไฟล์ถูกข้ามให้)</li>
             <li>คิดน้ำหนักงานจากค่างานต้นทุน แล้วจัดลำดับตามขั้นตอนก่อสร้าง (รื้อถอน → งานระบบ → ผนัง พื้น ฝ้า → ตกแต่ง → ครุภัณฑ์)</li>
             <li>แก้วันเริ่ม/จำนวนวันของแต่ละงานได้ แล้วดาวน์โหลดแผนงาน Excel พร้อม S-Curve ไปยื่นหน่วยงาน</li>
-            <li>ในไฟล์มีชีต &quot;ปริมาณงานที่แล้วเสร็จ&quot; ทุกรายการจาก ปร.4 — กรอก % แล้วเสร็จรายสัปดาห์ตามหน้างาน แล้วไฟล์เทียบกับแผนให้ว่าเร็ว ตามแผน หรือช้ากว่าแผน</li>
+            <li>ในไฟล์มีชีต &quot;ปริมาณงานที่แล้วเสร็จ&quot; ทุกรายการจาก ปร.4 — ส่งงวดงานเมื่อไหร่ กรอกวันที่ส่งงวดกับ % แล้วเสร็จตามหน้างาน แล้วไฟล์เทียบกับแผน ณ วันนั้นว่าเร็ว ตามแผน หรือช้ากว่าแผน</li>
           </ol>
         </div>
       </div>
@@ -255,6 +257,16 @@ export function PlanBuilder() {
               onChange={(e) => setDaysText(e.target.value.replace(/\D/g, ''))}
               onBlur={commitDays}
               onKeyDown={(e) => e.key === 'Enter' && commitDays()}
+            />
+          </label>
+          <label>
+            <span className="label-base">จำนวนงวดงาน (ช่องกรอกผลงาน)</span>
+            <input
+              className="input-base tabular-nums"
+              inputMode="numeric"
+              value={periods}
+              onChange={(e) => setPeriods(e.target.value.replace(/\D/g, '').slice(0, 2))}
+              onBlur={() => setPeriods(String(Math.min(24, Math.max(1, Number(periods) || 5))))}
             />
           </label>
         </div>
@@ -371,7 +383,7 @@ export function PlanBuilder() {
       <section className="card-surface flex flex-wrap items-center gap-4 p-4">
         <div className="min-w-0 flex-1 text-sm text-muted-token">
           ไฟล์มี 3 ชีต: <b className="text-ink">แผนงานก่อสร้าง</b> (แท่งรายสัปดาห์ · S-Curve · ค่าใช้จ่ายรายเดือน) ·{' '}
-          <b className="text-ink">ปริมาณงานที่แล้วเสร็จ</b> (แบบฟอร์มกรอก % ตามหน้างาน ผูกกับแถว Actual และบอกว่าเร็ว/ช้ากว่าแผน) ·{' '}
+          <b className="text-ink">ปริมาณงานที่แล้วเสร็จ</b> (ส่งงวดเมื่อไหร่กรอกวันที่และ % แล้วเสร็จครั้งเดียว ผูกกับแผนและบอกว่าเร็ว/ช้ากว่าแผน) ·{' '}
           <b className="text-ink">ที่มาจาก BOQ</b>
         </div>
         <button type="button" className="btn-primary" disabled={exporting || !dist.plan.length} onClick={() => void onExport()}>

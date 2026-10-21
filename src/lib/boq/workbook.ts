@@ -10,7 +10,7 @@ import {
 } from './core'
 import { addLineCharts } from './chart-xml'
 import { readProgress } from './progress-core'
-import { LW, addProgressSheet, progressLayout } from './progress-sheet'
+import { LW, ROW, addProgressSheet, periodRange, progressLayout } from './progress-sheet'
 import {
   BOX, C, DATE_FMT, FONT, PCT, SHEET, addDays, baht, col, f, isoToDate, kit, monthBands, monthLabel, ref, type Style,
 } from './xlsx-kit'
@@ -32,11 +32,11 @@ function rawValue(cell: Cell): unknown {
   const v = cell.value as CellValue | { result?: unknown } | null
   if (v == null) return null
   if (typeof v === 'number' || typeof v === 'string') return v
-  if (v instanceof Date) return null
+  if (v instanceof Date) return v
   if (typeof v === 'object') {
     if ('result' in v) {
       const r = (v as { result?: unknown }).result
-      return typeof r === 'number' || typeof r === 'string' ? r : null
+      return typeof r === 'number' || typeof r === 'string' || r instanceof Date ? r : null
     }
     if ('richText' in v) return v.richText.map((t) => t.text).join('')
     if ('text' in v && typeof v.text === 'string') return v.text
@@ -86,6 +86,8 @@ export type PlanInput = {
   days: number
   /** `YYYY-MM-DD` (ค.ศ.) */
   start: string
+  /** จำนวนงวดงานในแบบฟอร์มปริมาณงานที่แล้วเสร็จ */
+  periods: number
 }
 
 export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
@@ -99,6 +101,8 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
   const cProg = cBud + 2
   const cResp = cBud + 3
   const wl = (k: number) => col(W0 + k)
+  /** สัปดาห์ของแต่ละงวดที่ส่งแล้ว (ชีตคำนวณ แถว 5) — ว่าง = ยังไม่ส่ง/ไม่มีวันที่ */
+  const periodWeeks = ref(SHEET.calc, periodRange(ROW.calcWeek, p.periods))
 
   const wb: Workbook = new ExcelJS.Workbook()
   wb.creator = 'RUAYNAE'
@@ -213,9 +217,10 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
         // 🔴 สูตรเดียวกับ distribute() ใน core.ts — วันที่ตกในสัปดาห์ ÷ ระยะเวลา × น้ำหนัก
         put(`${x}${a}`, f(`IF($C${a}>0,MAX(0,MIN($E${a},${x}$9+6)-MAX($D${a},${x}$9)+1)/$C${a}*$${col(cW)}${a},0)`, dist.plan[ti][k]), cell)
         // ผลงานจริงของสัปดาห์ = น้ำหนักงาน × (% สะสมสัปดาห์นี้ − สัปดาห์ก่อน) จากชีตปริมาณงานที่แล้วเสร็จ
-        const cur = ref(SHEET.progress, `${x}${tr}`)
-        const prev = k === 0 ? '0' : ref(SHEET.progress, `${wl(k - 1)}${tr}`)
-        put(`${x}${b}`, f(`IF(${k + 1}>${LW},"",$${col(cW)}${a}*(${cur}-${prev}))`, ''), cell)
+        // ผลงานจริงขึ้นที่สัปดาห์ของวันส่งงวด = น้ำหนักงาน × (% งวดนี้ − % งวดก่อน)
+        const m = `MATCH(${k + 1},${periodWeeks},0)`
+        const taskRow = ref(SHEET.progress, periodRange(tr, p.periods))
+        put(`${x}${b}`, f(`IFERROR($${col(cW)}${a}*(INDEX(${taskRow},${m})-IF(${m}=1,0,INDEX(${taskRow},${m}-1))),"")`, ''), cell)
       }
       put(`${col(cBud)}${a}`, t.amount, { fmt: '#,##0.00' })
       put(`${col(cW)}${a}`, f(`IFERROR(${col(cBud)}${a}/$${col(cBud)}$${T},0)`, dist.weights[ti]), { fmt: '0.00%', align: { horizontal: 'center' } })
@@ -278,14 +283,14 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
   }
   group('แผนงานตามสัญญา', 'Plan', 'FF2D5A8A')
   group('ผลงานจริง', 'Actual', 'FF9A6215')
-  put(`${col(cProg)}${T}`, f(ref(SHEET.progress, '$D$7'), 0), { ...H, fmt: '0.00%' })
+  put(`${col(cProg)}${T}`, f(ref(SHEET.progress, '$D$8'), 0), { ...H, fmt: '0.00%' })
   merge(s, 1, s, 2)
   put(`A${s}`, 'เปรียบเทียบ', { fill: C.sum, font: { bold: true }, align: { horizontal: 'center' } })
   merge(s, 3, s, 6)
   put(`C${s}`, 'เร็ว (+) / ช้า (−) กว่าแผน สะสม (%)', { fill: C.sum })
   for (let k = 0; k < nW; k += 1) {
     const x = wl(k)
-    put(`${x}${s}`, f(`IF(${k + 1}>${LW},"",${x}${cumRow.Actual}-${x}${cumRow.Plan})`, ''),
+    put(`${x}${s}`, f(`IFERROR(INDEX(${ref(SHEET.progress, periodRange(ROW.diff, p.periods))},MATCH(${k + 1},${periodWeeks},0)),"")`, ''),
       { fmt: '+0.00%;-0.00%;0.00%', font: { size: 7 }, align: { horizontal: 'center', wrapText: false } })
   }
   ws.addConditionalFormatting({
@@ -296,7 +301,7 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
   const notes = [
     `* หมายเหตุ มูลค่างานเป็นค่างานต้นทุน ไม่รวม Factor F${p.factor ? ` ${p.factor}` : ''} และภาษีมูลค่าเพิ่ม ${p.vat ? Math.round(p.vat * 100) : 7}%`,
     '* แก้ "ระยะเวลา" และ "เริ่ม" (ช่องสีเหลือง) แล้วแท่งแผนงานกับ S-Curve คำนวณใหม่เอง',
-    `* แถว Actual ดึงจากชีต "${SHEET.progress}" — กรอก % แล้วเสร็จของแต่ละรายการที่ชีตนั้น ไม่ต้องกรอกที่นี่`,
+    `* แถว Actual และแถวเปรียบเทียบดึงจากชีต "${SHEET.progress}" — ส่งงวดเมื่อไหร่กรอกวันที่และ % แล้วเสร็จที่ชีตนั้น ผลจะขึ้นที่สัปดาห์ของวันส่งงวด`,
     '* เปลี่ยนวันที่เริ่มสัญญา ให้สร้างไฟล์ใหม่จากระบบ เพื่อให้หัวเดือนตรงกับวันที่',
   ]
   notes.forEach((t, i) => {
@@ -320,8 +325,8 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
   ws.pageSetup.printTitlesRow = '7:9'
 
   addProgressSheet(wb, {
-    categories: p.categories, dist, start, projectName: P.name, layout, planRows,
-    planWeightCol: col(cW), planCumRow: cumRow.Plan, planTotal: ref(SHEET.plan, `$${col(cBud)}$${T}`),
+    categories: p.categories, dist, periods: p.periods, projectName: P.name, layout, planRows,
+    planTotal: ref(SHEET.plan, `$${col(cBud)}$${T}`),
   })
 
   // ---- ชีตที่มาของทุกยอดในไฟล์ BOQ
@@ -349,22 +354,34 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
   ws2.getColumn(3).numFmt = '#,##0.00'
   ws2.getColumn(4).numFmt = '0.00%'
 
-  // ชุดข้อมูลของเส้นผลงานจริงในกราฟ: หลังสัปดาห์ล่าสุดเป็น #N/A เพื่อให้เส้นหยุด
-  // (ช่องที่เป็นข้อความว่าง "" ถูกกราฟวาดเป็น 0 แล้วเส้นดิ่งลงพื้น)
+  // ข้อมูลกราฟในชีตคำนวณ (คอลัมน์ F = จุดเริ่มสัญญา 0,0):
+  //  แถว 6/7 = แผน (x = สิ้นสัปดาห์ที่ w · y = แผนสะสม) · แถว 8/9 = ผลงานจริงของแต่ละงวด (x = วันส่งงวดเป็นสัปดาห์ทศนิยม)
+  //  งวดที่ยังไม่ส่ง = #N/A — กราฟข้ามจุดนั้น (ช่องข้อความว่าง "" ถูกวาดเป็น 0)
   const calc = wb.getWorksheet(SHEET.calc)!
-  calc.getCell('A3').value = 'actual-for-chart'
+  const startCell = ref(SHEET.plan, '$C$2')
+  for (const r of [6, 7, 8, 9]) calc.getCell(`F${r}`).value = 0
   for (let k = 0; k < nW; k += 1) {
-    calc.getCell(`${wl(k)}3`).value = f(`IF(${k + 1}>${LW},NA(),${ref(SHEET.plan, `${wl(k)}${cumRow.Actual}`)})`, '')
+    calc.getCell(`${wl(k)}6`).value = k + 1
+    calc.getCell(`${wl(k)}7`).value = f(ref(SHEET.plan, `${wl(k)}${cumRow.Plan}`), dist.cum[k])
   }
+  for (let k = 0; k < p.periods; k += 1) {
+    const x = wl(k)
+    const dd = ref(SHEET.progress, `${x}$${ROW.date}`)
+    const sent = `${ref(SHEET.calc, `${x}$${ROW.calcWeek}`)}=""`
+    calc.getCell(`${x}8`).value = f(`IF(${sent},NA(),(${dd}-${startCell}+1)/7)`, '')
+    calc.getCell(`${x}9`).value = f(`IF(${sent},NA(),${ref(SHEET.progress, `${x}$${ROW.actual}`)})`, '')
+  }
+  const lastP = wl(p.periods - 1)
 
   const buf = (await wb.xlsx.writeBuffer()) as ArrayBuffer
   return addLineCharts(buf, [{
     sheet: 1,
     title: 'S-Curve แผนงาน เทียบ ผลงานจริง (ความคืบหน้าสะสม)',
-    cats: ref(SHEET.plan, `$${wl(0)}$8:$${wl(nW - 1)}$8`),
+    xTitle: 'สัปดาห์ที่ (จุดส้ม = วันส่งงวด)',
+    xMax: nW,
     series: [
-      { name: 'แผนงานตามสัญญา', ref: ref(SHEET.plan, `$${wl(0)}$${cumRow.Plan}:$${wl(nW - 1)}$${cumRow.Plan}`), color: '2F5F94' },
-      { name: 'ผลงานจริง', ref: ref(SHEET.calc, `$${wl(0)}$3:$${wl(nW - 1)}$3`), color: 'E08A1E' },
+      { name: 'แผนงานตามสัญญา', x: ref(SHEET.calc, `$F$6:$${wl(nW - 1)}$6`), y: ref(SHEET.calc, `$F$7:$${wl(nW - 1)}$7`), color: '2F5F94' },
+      { name: 'ผลงานจริง (รายงวด)', x: ref(SHEET.calc, `$F$8:$${lastP}$8`), y: ref(SHEET.calc, `$F$9:$${lastP}$9`), color: 'E08A1E' },
     ],
     from: { col: 1, row: chartRow },
     to: { col: Math.min(cResp, W0 + 18), row: chartRow + 20 },
