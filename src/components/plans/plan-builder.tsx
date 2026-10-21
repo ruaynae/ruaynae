@@ -13,7 +13,7 @@ import { useSCurve, type CurveData } from './s-curve'
  * ไม่มีเหตุให้ส่งขึ้นเซิร์ฟเวอร์)
  */
 
-type Contract = { contractor: string; contractNo: string; contractDate: string }
+type Contract = { contractor: string; contractNo: string; contractDate: string; contractorRep: string }
 type Project = BoqModel['project'] & Contract
 
 const DAY = 864e5
@@ -69,7 +69,7 @@ export function PlanBuilder() {
       const m = await readBoqFile(await file.arrayBuffer())
       setModel(m)
       setFileName(file.name)
-      setProject({ ...m.project, contractor: project?.contractor ?? '', contractNo: '', contractDate: '' })
+      setProject({ ...m.project, contractor: project?.contractor ?? '', contractorRep: project?.contractorRep ?? '', contractNo: '', contractDate: '' })
       setCats(autoSchedule(m.categories, days))
       toast.success(`อ่าน BOQ แล้ว · ${m.categories.reduce((s, c) => s + c.tasks.length, 0)} งาน`)
     } catch (e) {
@@ -170,7 +170,7 @@ export function PlanBuilder() {
             <li>อ่านแบบ ปร.6 → ปร.5 → ปร.4 แยกหมวดและรายการงาน (ชีตของโครงการอื่นในไฟล์ถูกข้ามให้)</li>
             <li>คิดน้ำหนักงานจากค่างานต้นทุน แล้วจัดลำดับตามขั้นตอนก่อสร้าง (รื้อถอน → งานระบบ → ผนัง พื้น ฝ้า → ตกแต่ง → ครุภัณฑ์)</li>
             <li>แก้วันเริ่ม/จำนวนวันของแต่ละงานได้ แล้วดาวน์โหลดแผนงาน Excel พร้อม S-Curve ไปยื่นหน่วยงาน</li>
-            <li>ในไฟล์มีชีต &quot;ปริมาณงานที่แล้วเสร็จ&quot; ทุกรายการจาก ปร.4 — ส่งงวดงานเมื่อไหร่ กรอกวันที่ส่งงวดกับ % แล้วเสร็จตามหน้างาน แล้วไฟล์เทียบกับแผน ณ วันนั้นว่าเร็ว ตามแผน หรือช้ากว่าแผน</li>
+            <li>ในไฟล์มีแบบ &quot;ปริมาณงาน และราคา ที่แล้วเสร็จ&quot; แยกชีตตามหมวด ทุกรายการจาก ปร.4 — ส่งงวดงานเมื่อไหร่ กรอกวันที่ส่งงวดกับ % แล้วเสร็จตามหน้างาน แล้วไฟล์คิดมูลค่างานที่ได้ (รวม Factor F/VAT) และเทียบกับแผน ณ วันนั้นว่าเร็ว ตามแผน หรือช้ากว่าแผน</li>
           </ol>
         </div>
       </div>
@@ -232,6 +232,7 @@ export function PlanBuilder() {
           {field('loc1', 'สถานที่ (บรรทัด 1)')}
           {field('loc2', 'สถานที่ (บรรทัด 2)')}
           {field('contractor', 'ผู้รับจ้าง', { placeholder: 'เช่น ห้างหุ้นส่วนจำกัด …' })}
+          {field('contractorRep', 'ตัวแทนผู้รับจ้าง', { placeholder: 'ชื่อ-นามสกุล' })}
           {field('contractNo', 'สัญญาเลขที่', { placeholder: 'เช่น 5/2569' })}
           {field('contractDate', 'ลงวันที่สัญญา', { placeholder: 'เช่น 16 มิถุนายน 2569' })}
           <label>
@@ -382,9 +383,9 @@ export function PlanBuilder() {
 
       <section className="card-surface flex flex-wrap items-center gap-4 p-4">
         <div className="min-w-0 flex-1 text-sm text-muted-token">
-          ไฟล์มี 3 ชีต: <b className="text-ink">แผนงานก่อสร้าง</b> (แท่งรายสัปดาห์ · S-Curve · ค่าใช้จ่ายรายเดือน) ·{' '}
-          <b className="text-ink">ปริมาณงานที่แล้วเสร็จ</b> (ส่งงวดเมื่อไหร่กรอกวันที่และ % แล้วเสร็จครั้งเดียว ผูกกับแผนและบอกว่าเร็ว/ช้ากว่าแผน) ·{' '}
-          <b className="text-ink">ที่มาจาก BOQ</b>
+          ในไฟล์: <b className="text-ink">แผนงานก่อสร้าง</b> (แท่งรายสัปดาห์ · S-Curve แผนเทียบจริง) ·{' '}
+          <b className="text-ink">รายละเอียด</b> · <b className="text-ink">สรุปผลเบิกจ่าย</b> (ระยะเวลา · มูลค่าตามสัญญาเทียบที่ได้จริง · ผลงานรายงวด · งบประมาณรายปี) ·{' '}
+          <b className="text-ink">แบบปริมาณงานที่แล้วเสร็จแยกหมวด</b> (กรอก % ในคอลัมน์ &quot;งวดที่&quot;)
         </div>
         <button type="button" className="btn-primary" disabled={exporting || !dist.plan.length} onClick={() => void onExport()}>
           {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
