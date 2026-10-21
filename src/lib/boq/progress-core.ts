@@ -1,4 +1,5 @@
 import type { Grid } from './core'
+import type { W124State } from './w124'
 
 /**
  * อ่านไฟล์แผนงานที่เจ้าของกรอกผลงานรายงวดกลับมา — ส่วนคำนวณล้วน (ไม่ผูก exceljs)
@@ -27,6 +28,21 @@ export type Installment = {
   plan: number | null
   actual: number
 }
+export type W124Check = {
+  clause: string
+  when: string
+  rule: string
+  min: number
+  /** วันที่ตรวจ `YYYY-MM-DD` */
+  date: string
+  /** ตำแหน่งบนแกนสัปดาห์ (ทศนิยม · สิ้นวันตรวจ) */
+  x: number
+  /** ผลงานสะสมของงวดล่าสุดที่ส่งไม่เกินวันตรวจ */
+  actual: number
+  /** งวดที่ใช้ประเมิน · null = ไม่มีงวดก่อนวันตรวจ */
+  period: number | null
+  state: W124State
+}
 export type ProgressReport = {
   projectName: string
   /** วันเริ่มสัญญาในไฟล์ `YYYY-MM-DD` */
@@ -41,6 +57,12 @@ export type ProgressReport = {
   actualCum: (number | null)[]
   installments: Installment[]
   tasks: TaskProgress[]
+  /** ระยะเวลาสัญญา (วัน) ในชีตแผนงาน */
+  days: number | null
+  /** ข้อมูล ณ วันที่ `YYYY-MM-DD` — ตรงกับชีตสรุป */
+  asOf: string
+  /** ประเมินตาม ว.124 ข้อ 2.2 — `withW124()` เติมให้ · ว่างถ้าไฟล์ไม่มีวันเริ่ม/ระยะเวลา */
+  w124: W124Check[]
 }
 
 export type Status = 'ahead' | 'on' | 'behind'
@@ -153,7 +175,13 @@ export function readProgress(summary: Grid, sheets: Grid[], plan: Grid): Progres
   for (const p of installments) if (p.week) actualCum[p.week - 1] = p.actual
 
   const lastDate = lastPeriod ? dates[lastPeriod - 1] : null
+  // ข้อมูลสำหรับประเมิน ว.124 (คำนวณใน w124.ts) — ข้อมูล ณ วันที่ = ช่อง E4 · ว่าง = วันส่งงวดล่าสุด · ยังไม่มี = วันนี้
+  const now = new Date()
+  const asOf = dayOf(summary.v(3, 4)) ?? lastDate ?? Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
   return {
+    days: n(plan.v(4, 3)),
+    asOf: iso(asOf),
+    w124: [],
     projectName: summary.w(2, 0),
     start: start == null ? null : iso(start),
     labels: Array.from({ length: weeks }, (_, k) => `W${k + 1}`),

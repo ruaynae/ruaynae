@@ -12,6 +12,10 @@ export type CurveData = {
   actual?: (number | null)[]
   labels: string[]
   sublabels?: string[]
+  /** เส้นประเทา = แผนสะสม ÷ 2 (ว.124 ข้อ 2.2.2) */
+  planHalf?: boolean
+  /** เส้นประแดงแนวตั้งที่วันตรวจ ว.124 — x เป็นสัปดาห์ทศนิยม · หมุดที่ระดับเกณฑ์ */
+  checks?: { x: number; marks: { y: number; text: string }[] }[]
 }
 
 function palette() {
@@ -25,6 +29,7 @@ function palette() {
     grid: v('--line', '#dce7e0'),
     bar: v('--status-info-ring', '#c6d6fb'),
     bg: v('--surface', '#ffffff'),
+    urgent: v('--urgent', '#b42318'),
   }
 }
 
@@ -80,7 +85,7 @@ export function drawSCurve(cv: HTMLCanvasElement, d: CurveData) {
     if (d.sublabels) g.fillText(d.sublabels[i] ?? '', x, m.t + ph + fs * 2.3)
   }
 
-  const line = (vals: (number | null)[], color: string, width: number) => {
+  const line = (vals: (number | null)[], color: string, width: number, dots = true) => {
     g.strokeStyle = color
     g.lineWidth = width
     g.lineJoin = 'round'
@@ -94,6 +99,7 @@ export function drawSCurve(cv: HTMLCanvasElement, d: CurveData) {
     })
     if (last < 0) return
     g.stroke()
+    if (!dots) return
     g.fillStyle = color
     vals.forEach((v, i) => {
       if (v == null) return
@@ -101,6 +107,42 @@ export function drawSCurve(cv: HTMLCanvasElement, d: CurveData) {
       g.arc(m.l + (i + 1) * bw, m.t + ph - ph * v, 2.6, 0, Math.PI * 2)
       g.fill()
     })
+  }
+  if (d.planHalf) {
+    g.setLineDash([5, 4])
+    line(d.plan.map((v) => v / 2), c.muted, 1.5, false)
+    g.setLineDash([])
+  }
+  for (const k of d.checks ?? []) {
+    const x = m.l + Math.min(n, k.x) * bw
+    g.strokeStyle = c.urgent
+    g.lineWidth = 1.5
+    g.setLineDash([6, 4])
+    g.beginPath()
+    g.moveTo(x, m.t)
+    g.lineTo(x, m.t + ph)
+    g.stroke()
+    g.setLineDash([])
+    g.font = `${fs * 0.85}px "IBM Plex Sans Thai", Tahoma, sans-serif`
+    for (const mk of k.marks) {
+      const y = m.t + ph - ph * mk.y
+      g.fillStyle = c.urgent
+      g.beginPath()
+      g.moveTo(x, y - 5)
+      g.lineTo(x + 5, y)
+      g.lineTo(x, y + 5)
+      g.lineTo(x - 5, y)
+      g.closePath()
+      g.fill()
+      const tw = g.measureText(mk.text).width
+      const left = x - tw - 10 >= m.l
+      g.fillStyle = c.bg
+      g.fillRect(left ? x - tw - 11 : x + 7, y - fs * 0.6, tw + 4, fs * 1.2)
+      g.fillStyle = c.urgent
+      g.textAlign = 'left'
+      g.fillText(mk.text, left ? x - tw - 9 : x + 9, y)
+    }
+    g.font = `${fs}px "IBM Plex Sans Thai", Tahoma, sans-serif`
   }
   line(d.plan, c.plan, 2.5)
   if (d.actual) line(d.actual, c.actual, 3)

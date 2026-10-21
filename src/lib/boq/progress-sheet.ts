@@ -2,6 +2,7 @@ import type { CellValue, PaperSize, Workbook, Worksheet } from 'exceljs'
 import { bahtText } from '@/lib/baht-text'
 import type { BoqCategory, Distribution } from './core'
 import { C, SHEET, addDays, col, f, kit, ref, type Style } from './xlsx-kit'
+import { W124, W124_LABEL, w124Offset } from './w124'
 
 /**
  * ชุดชีต "ปริมาณงานที่แล้วเสร็จ" ตามแบบฟอร์มที่ห้างใช้ยื่นจริง (คำสั่งเจ้าของ 21 ต.ค. 2569)
@@ -45,7 +46,12 @@ export type ProgressLayout = {
   /** ต่องานที่ติ๊กอยู่ (เรียงเหมือนชีตแผนงาน): ชีตและแถวในตารางสรุปหัวชีต */
   tasks: { sheet: string; top: number }[]
   groups: { label: string; cats: CatLayout[] }[]
-  summary: { groupRow0: number; groupTotal: number; periodHead: number; period0: number; status: number; fyHead: number; fy0: number; fyTotal: number }
+  summary: {
+    groupRow0: number; groupTotal: number; periodHead: number; period0: number; status: number
+    /** ตารางประเมินตาม ว.124: หัวตาราง · แถวแรกของเกณฑ์ (เรียงตาม `W124`) */
+    w124Head: number; w124Row0: number
+    fyHead: number; fy0: number; fyTotal: number
+  }
   itemCount: number
   /** ปีงบประมาณ (พ.ศ.) ที่สัญญาคร่อม */
   fiscalYears: number[]
@@ -98,10 +104,12 @@ export function progressLayout(categories: BoqCategory[], periods: number, start
   const periodHead = groupTotal + 3
   const period0 = periodHead + 1
   const status = period0 + periods + 1
-  const fyHead = status + 3
+  const w124Head = status + 3
+  const w124Row0 = w124Head + 1
+  const fyHead = w124Row0 + W124.length + 3
   return {
     periods, cats, tasks, groups, itemCount, fiscalYears,
-    summary: { groupRow0, groupTotal, periodHead, period0, status, fyHead, fy0: fyHead + 2, fyTotal: fyHead + 2 + fiscalYears.length },
+    summary: { groupRow0, groupTotal, periodHead, period0, status, w124Head, w124Row0, fyHead, fy0: fyHead + 2, fyTotal: fyHead + 2 + fiscalYears.length },
   }
 }
 
@@ -298,6 +306,7 @@ export function addProgressSheets(wb: Workbook, a: ProgressArgs) {
   calc.set('B1', f(`MAX(${kc(0)}2:${kc(nP - 1)}2)`, 0))
   calc.set('A1', f(`IF(B1=0,0,N(INDEX(${kc(0)}${CALC_WEEK_ROW}:${kc(nP - 1)}${CALC_WEEK_ROW},B1)))`, 0))
 
+  w124CalcCells(a.layout).forEach((v, k) => calc.set(k, v))
   return { calc, chart }
 }
 
@@ -465,6 +474,8 @@ function addSummarySheet(
     { type: 'containsText', operator: 'containsText', text: 'เร็วกว่าแผน', priority: 31, style: { font: { color: { argb: C.good }, bold: true } } },
   ] })
 
+  addW124Table(ws, a, { asOf, start, days, p0, p1 })
+
   // ---- งบประมาณรายปี
   const fh = S.fyHead
   merge(fh, 1, fh + 1, 4); put(`A${fh}`, 'สรุปการใช้จ่ายตามปีงบประมาณ', head)
@@ -507,6 +518,63 @@ function addSummarySheet(
     from: { col: 0, row: FT + 2 },
     to: { col: 13, row: FT + 20 },
   }
+}
+
+/**
+ * ตารางประเมินตาม ว.124 ข้อ 2.2 — วันที่ตรวจคิดจากวันเริ่ม/ระยะเวลาในชีตแผนงาน (แก้แล้วตามเอง)
+ * ผลงาน ณ วันตรวจ = งวดล่าสุดที่วันส่งงวดไม่เกินวันตรวจ (ลำดับงวดอยู่ในชีตคำนวณ แถว 18)
+ */
+function addW124Table(ws: Worksheet, a: ProgressArgs, x: { asOf: string; start: string; days: string; p0: number; p1: number }) {
+  const { put, merge } = kit(ws)
+  const S = a.layout.summary
+  const head: Style = { fill: 'FFFFCCFF', font: { bold: true }, align: { horizontal: 'center' } }
+  const cell: Style = { align: { horizontal: 'center' } }
+  const h = S.w124Head
+  merge(h - 1, 1, h - 1, 13)
+  put(`A${h - 1}`, 'ประเมินผลการทำงานตามหนังสือกรมบัญชีกลาง ที่ กค (กวจ) 0405.2/ว 124 ลงวันที่ 1 มี.ค. 2566 ข้อ 2.2', { border: false, font: { bold: true } })
+  ;([['ข้อ', 1, 2], ['เงื่อนไข', 3, 5], ['วันที่ตรวจ', 6, 7], ['เกณฑ์', 8, 8], ['ผลงาน ณ วันตรวจ', 9, 10], ['ผลประเมิน', 11, 13]] as const)
+    .forEach(([t, c0, c1]) => { merge(h, c0, h, c1); put(`${col(c0)}${h}`, t, head) })
+  W124.forEach((rule, i) => {
+    const r = S.w124Row0 + i
+    const date = rule.frac >= 1 ? ref(SHEET.plan, '$C$4') : `${x.start}+INT(${x.days}*${rule.frac})`
+    const idx = ref(SHEET.calc, `$${col(1 + i)}$18`)
+    ws.getRow(r).height = 30
+    merge(r, 1, r, 2); put(`A${r}`, `ว.124 ข้อ ${rule.clause}`, { ...cell, font: { bold: true } })
+    merge(r, 3, r, 5); put(`C${r}`, `${rule.when} · ${rule.rule}`, { font: { size: 8 } })
+    merge(r, 6, r, 7); put(`F${r}`, f(date, addDays(a.start, w124Offset(a.days, rule.frac))), { ...cell, fmt: '[$-1070000]d mmm yy' })
+    put(`H${r}`, rule.min, { ...cell, fmt: '0%' })
+    merge(r, 9, r, 10); put(`I${r}`, f(`IF(${idx}=0,0,N(INDEX($H$${x.p0}:$H$${x.p1},${idx})))`, 0), { ...cell, fmt: '0.00%', font: { bold: true } })
+    const ok = rule.halfPlan
+      ? `OR(I${r}>=H${r},AND(${idx}>0,I${r}>=N(INDEX($F$${x.p0}:$F$${x.p1},MAX(1,${idx})))/2))`
+      : `I${r}>=H${r}`
+    merge(r, 11, r, 13)
+    put(`K${r}`, f(`IF(${ok},"${W124_LABEL.pass}",IF(${x.asOf}>=F${r},"${W124_LABEL.fail}","${W124_LABEL.pending}"))`, W124_LABEL.pending), { ...cell, font: { bold: true } })
+  })
+  const r0 = S.w124Row0
+  const r1 = r0 + W124.length - 1
+  ws.addConditionalFormatting({ ref: `K${r0}:K${r1}`, rules: [
+    { type: 'containsText', operator: 'containsText', text: W124_LABEL.fail, priority: 40, style: { font: { color: { argb: C.bad }, bold: true }, fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFFDE8E7' } } } },
+    { type: 'containsText', operator: 'containsText', text: W124_LABEL.pass, priority: 41, style: { font: { color: { argb: C.good }, bold: true } } },
+  ] })
+  merge(r1 + 1, 1, r1 + 1, 13)
+  put(`A${r1 + 1}`,
+    '* ต่ำกว่าเกณฑ์ และความล่าช้าเป็นความผิดของผู้รับจ้าง = หน่วยงานใช้ดุลพินิจบอกเลิกสัญญาได้ (ม.103 วรรคหนึ่ง (2)) · ข้อ 2.2.2 เทียบผลงานสะสมกับครึ่งหนึ่งของแผน ณ วันส่งงวด แทนผลงานรายเดือน · ไม่ใช้กับงานก่อสร้างบำรุงทาง',
+    { border: false, font: { size: 8, color: { argb: C.muted } } })
+  ws.getRow(r1 + 1).height = 24
+}
+
+/** ลำดับงวดล่าสุดที่วันส่งงวดไม่เกินวันตรวจของเกณฑ์ข้อ i (0 = ไม่มี) — ชีตคำนวณแถว 18 */
+export function w124CalcCells(layout: ProgressLayout): Map<string, CellValue> {
+  const out = new Map<string, CellValue>()
+  const S = layout.summary
+  const p0 = S.period0
+  const p1 = p0 + layout.periods - 1
+  const C_ = ref(SHEET.summary, `$C$${p0}:$C$${p1}`)
+  W124.forEach((_, i) => {
+    const d = ref(SHEET.summary, `$F$${S.w124Row0 + i}`)
+    out.set(`${col(1 + i)}18`, f(`SUMPRODUCT(MAX(ISNUMBER(${C_})*(${C_}<=${d})*(ROW(${C_})-${p0 - 1}<=${LP})*(ROW(${C_})-${p0 - 1})))`, 0))
+  })
+  return out
 }
 
 /** ช่วงคอลัมน์งวดของแถวงานในชีตหมวด เช่น `'1 งานสถาปัตยกรรม'!$M$11:$Q$11` */

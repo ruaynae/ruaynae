@@ -9,7 +9,11 @@ import JSZip from 'jszip'
 
 /** กราฟ XY: แกน X เป็นตัวเลข (สัปดาห์ที่ · ทศนิยมได้) ทุกเส้นวางจุดตามค่า x ของตัวเอง
  *  — เส้นผลงานจริงจึงวางจุดตรงวันส่งงวดได้ ไม่ต้องมีค่าทุกสัปดาห์เหมือนกราฟเส้นธรรมดา */
-export type LineSeries = { name: string; x: string; y: string; color: string; dash?: boolean; marker?: boolean; width?: number }
+export type LineSeries = {
+  name: string; x: string; y: string; color: string; dash?: boolean; marker?: boolean; width?: number
+  /** จุดที่มีหมุด + ป้ายข้อความของตัวเอง (บรรทัดละย่อหน้า) วางทางซ้ายของจุด — ใช้กับเส้นเกณฑ์ ว.124 */
+  points?: { idx: number; lines: string[] }[]
+}
 export type BarSeries = { name: string; y: string; color: string }
 type Base = {
   /** ลำดับชีตใน workbook นับจาก 1 */
@@ -78,12 +82,25 @@ function chartXml(c: ChartSpec) {
 </c:chartSpace>`
 }
 
+const SHOW = (val: 0 | 1) =>
+  `<c:showLegendKey val="0"/><c:showVal val="${val}"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="0"/><c:showBubbleSize val="0"/>`
+
+/** หมุดสี่เหลี่ยมข้าวหลามตัด + ป้ายพื้นขาวกรอบสีเส้น เฉพาะจุดที่ระบุ — จุดอื่นของเส้นไม่มีป้าย */
+function pointLabels(s: LineSeries) {
+  const pts = s.points ?? []
+  const dPt = pts.map((p) => `<c:dPt><c:idx val="${p.idx}"/><c:marker><c:symbol val="diamond"/><c:size val="7"/><c:spPr><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill><a:ln><a:noFill/></a:ln></c:spPr></c:marker><c:bubble3D val="0"/></c:dPt>`).join('')
+  const lbl = pts.map((p) => `<c:dLbl><c:idx val="${p.idx}"/><c:tx><c:rich><a:bodyPr wrap="none"/><a:lstStyle/>${p.lines
+    .map((t, i) => `<a:p><a:pPr><a:defRPr sz="700" b="${i ? 0 : 1}"/></a:pPr><a:r><a:rPr lang="th-TH" sz="700" b="${i ? 0 : 1}"><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill></a:rPr><a:t>${esc(t)}</a:t></a:r></a:p>`)
+    .join('')}</c:rich></c:tx><c:spPr><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:ln w="6350"><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill></a:ln></c:spPr><c:dLblPos val="l"/>${SHOW(1)}</c:dLbl>`).join('')
+  return `${dPt}<c:dLbls>${lbl}${SHOW(0)}</c:dLbls>`
+}
+
 function scatterPlot(c: Extract<ChartSpec, { kind: 'scatter' }>) {
   const ser = c.series
     .map((s, i) => `<c:ser><c:idx val="${i}"/><c:order val="${i}"/><c:tx><c:v>${esc(s.name)}</c:v></c:tx>
 <c:spPr><a:ln w="${s.width ?? (s.dash ? 22225 : 31750)}" cap="rnd"><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill>${s.dash ? '<a:prstDash val="dash"/>' : ''}<a:round/></a:ln></c:spPr>
 ${s.marker === false ? '<c:marker><c:symbol val="none"/></c:marker>' : `<c:marker><c:symbol val="circle"/><c:size val="4"/><c:spPr><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill><a:ln><a:noFill/></a:ln></c:spPr></c:marker>`}
-<c:xVal><c:numRef><c:f>${esc(s.x)}</c:f></c:numRef></c:xVal><c:yVal><c:numRef><c:f>${esc(s.y)}</c:f></c:numRef></c:yVal><c:smooth val="0"/></c:ser>`)
+${s.points ? pointLabels(s) : ''}<c:xVal><c:numRef><c:f>${esc(s.x)}</c:f></c:numRef></c:xVal><c:yVal><c:numRef><c:f>${esc(s.y)}</c:f></c:numRef></c:yVal><c:smooth val="0"/></c:ser>`)
     .join('')
   const chart = `<c:scatterChart><c:scatterStyle val="lineMarker"/><c:varyColors val="0"/>${ser}<c:axId val="5001"/><c:axId val="5002"/></c:scatterChart>`
   if (c.overlay) {

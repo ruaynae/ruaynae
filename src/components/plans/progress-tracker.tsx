@@ -1,9 +1,10 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import { FileCheck2, Loader2, Upload } from 'lucide-react'
+import { FileCheck2, Loader2, Scale, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { statusOf, type ProgressReport, type Status } from '@/lib/boq/progress-core'
+import { W124_LABEL, type W124State } from '@/lib/boq/w124'
 import { fmtMoney } from '@/lib/format'
 import { Badge, type BadgeTone } from '@/components/ui/badge'
 import { useSCurve, type CurveData } from './s-curve'
@@ -18,6 +19,7 @@ const STATUS: Record<Status, { label: string; tone: BadgeTone }> = {
   on: { label: 'ตามแผน', tone: 'info' },
   behind: { label: 'ช้ากว่าแผน', tone: 'urgent' },
 }
+const W124_TONE: Record<W124State, BadgeTone> = { pass: 'done', pending: 'info', fail: 'urgent' }
 const thDate = (iso: string) =>
   new Date(`${iso}T00:00:00Z`).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', timeZone: 'UTC' })
 const p1 = (x: number) => `${(x * 100).toFixed(1)}%`
@@ -45,7 +47,14 @@ export function ProgressTracker() {
   const canvas = useRef<HTMLCanvasElement>(null)
 
   const curve = useMemo<CurveData | null>(
-    () => (report ? { weekly: report.planWeekly, plan: report.planCum, actual: report.actualCum, labels: report.labels, sublabels: report.sublabels } : null),
+    () => (report ? {
+      weekly: report.planWeekly, plan: report.planCum, actual: report.actualCum, labels: report.labels, sublabels: report.sublabels,
+      planHalf: report.w124.length > 0,
+      checks: [...new Set(report.w124.map((c) => c.x))].map((x) => ({
+        x,
+        marks: report.w124.filter((c) => c.x === x).map((c) => ({ y: c.min, text: `ว.124 ข้อ ${c.clause} ≥ ${Math.round(c.min * 100)}%` })),
+      })),
+    } : null),
     [report],
   )
   useSCurve(canvas, curve)
@@ -159,10 +168,50 @@ export function ProgressTracker() {
           <span className="count flex gap-3">
             <span><i className="mr-1 inline-block h-0.5 w-4 bg-bar-time align-middle" />แผน</span>
             <span><i className="mr-1 inline-block h-1 w-4 bg-bar-cost-material align-middle" />จริง</span>
+            {report.w124.length > 0 && <span><i className="mr-1 inline-block h-3 w-0 border-l-2 border-dashed border-urgent align-middle" />วันตรวจ ว.124</span>}
           </span>
         </h2>
         <canvas ref={canvas} className="block h-[300px] w-full max-w-full" role="img" aria-label="กราฟ S-Curve แผนงานเทียบผลงานจริง" />
       </section>
+
+      {report.w124.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-ink">
+            <Scale className="size-5 text-urgent" />
+            ประเมินตามหนังสือกรมบัญชีกลาง ว.124 ข้อ 2.2
+          </h2>
+          <div className="panel overflow-x-auto">
+            <table className="w-full min-w-[680px] border-collapse text-sm">
+              <thead>
+                <tr className="bg-surface-2 text-left text-xs text-muted-token">
+                  <th className="px-3 py-2">ข้อ</th>
+                  <th className="px-3 py-2">เงื่อนไข</th>
+                  <th className="px-3 py-2">วันที่ตรวจ</th>
+                  <th className="px-3 py-2 text-right">ผลงาน ณ วันตรวจ</th>
+                  <th className="px-3 py-2">ผลประเมิน</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.w124.map((c) => (
+                  <tr key={c.clause} className="border-t border-line-soft">
+                    <td className="px-3 py-2 font-semibold text-ink">{c.clause}</td>
+                    <td className="px-3 py-2">{c.when} · {c.rule}</td>
+                    <td className="px-3 py-2 tabular-nums">{thDate(c.date)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      <span className="font-semibold text-ink">{p1(c.actual)}</span>
+                      <div className="text-xs text-muted-token">{c.period ? `งวดที่ ${c.period}` : 'ยังไม่มีงวดก่อนวันตรวจ'}</div>
+                    </td>
+                    <td className="px-3 py-2"><Badge tone={W124_TONE[c.state]} dot>{W124_LABEL[c.state]}</Badge></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-muted-token">
+            ต่ำกว่าเกณฑ์และความล่าช้าเป็นความผิดของผู้รับจ้าง = หน่วยงานใช้ดุลพินิจบอกเลิกสัญญาได้ · ข้อ 2.2.2 เทียบผลงานสะสมกับครึ่งหนึ่งของแผน (เส้นประเทา) ณ วันส่งงวด แทนผลงานรายเดือน · ไม่ใช้กับงานก่อสร้างบำรุงทาง
+          </p>
+        </section>
+      )}
 
       {report.installments.length > 0 && (
         <section className="panel overflow-x-auto">
