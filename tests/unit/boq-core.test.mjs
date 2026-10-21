@@ -108,3 +108,40 @@ test('รายการย่อยจากส่วนรายละเอ�
   // ยอดไม่ตรง (123 ≠ 500,000) → งานทั้งก้อนเป็นรายการเดียว
   assert.deepEqual(floor.items.map((i) => [i.name, i.amount]), [['งานพื้น', 500000]])
 })
+
+import { readProgress, statusOf } from '../../src/lib/boq/progress-core.ts'
+
+test('อ่านไฟล์ที่กรอก % แล้ว: ช่องว่างยกค่าสัปดาห์ก่อน · สัปดาห์ล่าสุด · แผนของงาน', () => {
+  const form = sheet('ปริมาณงานที่แล้วเสร็จ', [
+    ['ปริมาณงานที่แล้วเสร็จ'], [PROJECT], [],
+    ['No.', 'รายการ', 'ปริมาณ', 'หน่วย', 'มูลค่า (บาท)', 'น้ำหนัก', 'W1 1/6', 'W2 8/6', 'W3 15/6', 'ล่าสุด (%)'],
+    ['1', 'หมวดงานสถาปัตยกรรม'],
+    ['1.1', 'หมวดงานรื้อถอน', null, null, 100],
+    [null, 'รื้อฝ้า', 10, 'ตร.ม.', 40, null, 0.5, null, 1],
+    [null, 'รื้อพื้น', 10, 'ตร.ม.', 60, null, 20, 40],
+    ['1.2', 'งานพื้น', null, null, 300],
+    [null, 'ปูกระเบื้อง', 10, 'ตร.ม.', 300],
+    ['รวมทั้งโครงการ'],
+  ])
+  const plan = sheet('แผนงานก่อสร้าง', [
+    [null, null, null, null, null, 'Plan', 0.1, 0.15, 0],
+    [null, null, null, null, null, 'Actual'],
+    [null, null, null, null, null, 'Plan', 0, 0.25, 0.5],
+  ])
+  const r = readProgress(form, plan)
+  assert.equal(r.lastWeek, 3)
+  assert.deepEqual(r.labels, ['W1 1/6', 'W2 8/6', 'W3 15/6'])
+  const [demo, floor] = r.tasks
+  // W3: รื้อฝ้า 100% (40) · รื้อพื้นยก 40% จาก W2 (24) → 64/100
+  assert.ok(Math.abs(demo.actual - 0.64) < 1e-9)
+  assert.equal(floor.actual, 0)
+  assert.ok(Math.abs(demo.plan - 1) < 1e-9) // (0.1+0.15)/0.25
+  assert.ok(Math.abs(r.actualCum[2] - 64 / 400) < 1e-9)
+  assert.ok(Math.abs(r.planCum[2] - 1) < 1e-9)
+  assert.equal(statusOf(-0.02, 0.01), 'behind')
+  assert.equal(statusOf(0.004, 0.005), 'on')
+})
+
+test('ไฟล์ที่ไม่ใช่แผนงานจากระบบ → NOT_PLAN_FILE', () => {
+  assert.throws(() => readProgress(sheet('x', [['สวัสดี']]), sheet('y', [])), /NOT_PLAN_FILE/)
+})
