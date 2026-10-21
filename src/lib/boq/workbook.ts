@@ -100,7 +100,9 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
   const start = isoToDate(p.start)
   const nW = dist.weeks
   const W0 = 7
-  const cBud = W0 + nW
+  /** คอลัมน์ป้ายแกน % ของ S-Curve ที่วางทับตาราง (ต่อจากสัปดาห์สุดท้าย) */
+  const cPct = W0 + nW
+  const cBud = cPct + 1
   const cW = cBud + 1
   const cProg = cBud + 2
   const cResp = cBud + 3
@@ -120,6 +122,7 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
 
   ;[6, 40, 8, 11, 11, 7.5].forEach((w, i) => { ws.getColumn(i + 1).width = w })
   for (let k = 0; k < nW; k += 1) ws.getColumn(W0 + k).width = 6.2
+  ws.getColumn(cPct).width = 5.5
   ws.getColumn(cBud).width = 15
   ws.getColumn(cW).width = 9
   ws.getColumn(cProg).width = 9
@@ -162,7 +165,7 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
   // ---- หัวตาราง (แถว 7–9)
   const H: Style = { fill: C.head, font: { bold: true }, align: { horizontal: 'center' } }
   ;([['No.', 1], ['รายละเอียดงาน', 2], ['ระยะเวลา\n(วัน)', 3], ['เริ่ม\n(วันที่)', 4], ['เสร็จ\n(วันที่)', 5],
-    ['แผนงาน\n/ผลงาน', 6], ['งบประมาณ\n(บาท)', cBud], ['น้ำหนัก\n(%)', cW], ['คืบหน้า\n(%)', cProg], ['ผู้รับผิดชอบ', cResp]] as const)
+    ['แผนงาน\n/ผลงาน', 6], ['%', cPct], ['งบประมาณ\n(บาท)', cBud], ['น้ำหนัก\n(%)', cW], ['คืบหน้า\n(%)', cProg], ['ผู้รับผิดชอบ', cResp]] as const)
     .forEach(([t, c]) => { merge(7, c, 9, c); put(`${col(c)}7`, t, H) })
   const weekStart = (k: number) => addDays(start, 7 * k)
   const months = monthBands(start, nW)
@@ -195,6 +198,7 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
     merge(cr, 2, cr, 6)
     put(`B${cr}`, cat.name, { ...catFill, font: { bold: true } })
     for (let k = 0; k < nW; k += 1) put(`${wl(k)}${cr}`, null, catFill)
+    put(`${col(cPct)}${cr}`, null, catFill)
     const amt = tasks.reduce((s, t) => s + t.amount, 0)
     put(`${col(cBud)}${cr}`, f(`SUM(${col(cBud)}${cr + 1}:${col(cBud)}${cr + tasks.length * 2})`, amt), { ...catFill, fmt: '#,##0.00' })
     put(`${col(cW)}${cr}`, f(`SUM(${col(cW)}${cr + 1}:${col(cW)}${cr + tasks.length * 2})`, dist.total ? amt / dist.total : 0),
@@ -207,7 +211,8 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
       const b = r + 1
       planRows.push(a)
       const lt = layout.tasks[ti]
-      ;[1, 2, 3, 4, 5, cBud, cW, cProg, cResp].forEach((c) => merge(a, c, b, c))
+      ;[1, 2, 3, 4, 5, cPct, cBud, cW, cProg, cResp].forEach((c) => merge(a, c, b, c))
+      put(`${col(cPct)}${a}`, null)
       put(`A${a}`, `${ci}.${j + 1}`, { align: { horizontal: 'center' } })
       put(`B${a}`, t.name, { align: { indent: 1 } })
       put(`C${a}`, t.dur, { fill: C.input, align: { horizontal: 'center' } })
@@ -238,7 +243,12 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
   const rngF = `$F$${first}:$F$${lastRow}`
   merge(T, 1, T, 6)
   put(`A${T}`, 'รวม', { ...H })
-  for (let k = 0; k < nW; k += 1) put(`${wl(k)}${T}`, null, { fill: C.head })
+  // ป้ายงวดใต้สัปดาห์ที่ส่งงวด (คู่กับเส้นประแนวตั้งของกราฟ)
+  for (let k = 0; k < nW; k += 1) {
+    put(`${wl(k)}${T}`, f(`IFERROR("งวด "&MATCH(${k + 1},${periodWeeks},0),"")`, ''),
+      { fill: C.head, font: { size: 7, bold: true, color: { argb: 'FF1F7A4D' } }, align: { horizontal: 'center', wrapText: false } })
+  }
+  put(`${col(cPct)}${T}`, null, { fill: C.head })
   put(`${col(cBud)}${T}`, f(`SUMIF(${rngF},"Plan",${col(cBud)}${first}:${col(cBud)}${lastRow})`, dist.total), { ...H, fmt: '#,##0.00', align: {} })
   put(`${col(cW)}${T}`, f(`SUMIF(${rngF},"Plan",${col(cW)}${first}:${col(cW)}${lastRow})`, 1), { ...H, fmt: '0.00%' })
   put(`${col(cResp)}${T}`, null, { fill: C.head })
@@ -305,6 +315,7 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
   const notes = [
     `* หมายเหตุ มูลค่างานเป็นค่างานต้นทุน ไม่รวม Factor F${p.factor ? ` ${p.factor}` : ''} และภาษีมูลค่าเพิ่ม ${p.vat ? Math.round(p.vat * 100) : 7}%`,
     '* แก้ "ระยะเวลา" และ "เริ่ม" (ช่องสีเหลือง) แล้วแท่งแผนงานกับ S-Curve คำนวณใหม่เอง',
+    '* S-Curve บนตาราง: เส้นน้ำเงิน = แผนงานสะสม · เส้นส้ม = ผลงานจริงสะสม (จุดตรงวันส่งงวด) · เส้นประเขียว = วันส่งงวด · แกน % อยู่คอลัมน์ "%"',
     `* แถว Actual และแถวเปรียบเทียบดึงจากผลงานรายงวด — ส่งงวดเมื่อไหร่กรอกวันที่ที่ชีต "${SHEET.summary}" และ % แล้วเสร็จที่ชีตหมวด ผลจะขึ้นที่สัปดาห์ของวันส่งงวด`,
     '* เปลี่ยนวันที่เริ่มสัญญา ให้สร้างไฟล์ใหม่จากระบบ เพื่อให้หัวเดือนตรงกับวันที่',
   ]
@@ -324,8 +335,7 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
         style: { fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: C.act } } } },
     ],
   })
-  const chartRow = s - 1
-  ws.pageSetup.printArea = `A1:${col(cResp)}${s + 20}`
+  ws.pageSetup.printArea = `A1:${col(cResp)}${s}`
   ws.pageSetup.printTitlesRow = '7:9'
 
   const progress = addProgressSheets(wb, {
@@ -377,21 +387,42 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
     calc.getCell(`${x}9`).value = f(`IF(${sent},NA(),${summaryPeriodCell(layout, 'H', k)})`, '')
   }
   const lastP = wl(p.periods - 1)
+  // เส้นประแนวตั้งที่วันส่งงวด: งวดละหนึ่งชุด x = (วันส่ง, วันส่ง) · y = (0, 1) — แถว 10–13
+  for (let k = 0; k < p.periods; k += 1) {
+    const x = wl(k)
+    calc.getCell(`${x}10`).value = f(`${x}8`, '')
+    calc.getCell(`${x}11`).value = f(`${x}8`, '')
+    // งวดที่ยังไม่ส่ง: ทั้ง x และ y เป็น #N/A ไม่งั้นบางโปรแกรมวาดจุดที่ x = 0 เป็นเส้นเฉียงลอย ๆ
+    calc.getCell(`${x}12`).value = f(`IF(ISNA(${x}8),NA(),0)`, '')
+    calc.getCell(`${x}13`).value = f(`IF(ISNA(${x}8),NA(),1)`, '')
+  }
 
   const buf = (await wb.xlsx.writeBuffer()) as ArrayBuffer
   const bar = progress.chart
+  // 🔴 กราฟวางทับช่องสัปดาห์ของตาราง: กรอบวาดเริ่มขอบซ้าย W1 · แถวแรกของงาน → ขอบล่างแถวสุดท้าย
+  //    และกินคอลัมน์ % ไว้เป็นที่ของป้ายแกน · พื้นที่วาด = nW/(nW+1) ของความกว้าง (คอลัมน์สัปดาห์กว้างเท่ากันหมด
+  //    แต่คอลัมน์ % แคบกว่า จึงคิดจากความกว้างจริงของคอลัมน์)
+  const weekW = 6.2
+  const pctW = 5.5
   return addLineCharts(buf, [{
     kind: 'scatter',
     sheet: 1,
-    title: 'S-Curve แผนงาน เทียบ ผลงานจริง (ความคืบหน้าสะสม)',
-    xTitle: 'สัปดาห์ที่ (จุดส้ม = วันส่งงวด)',
+    title: 'S-Curve',
+    xTitle: '',
     xMax: nW,
+    overlay: { plotW: (weekW * nW) / (weekW * nW + pctW) },
     series: [
-      { name: 'แผนงานตามสัญญา', x: ref(SHEET.calc, `$F$6:$${wl(nW - 1)}$6`), y: ref(SHEET.calc, `$F$7:$${wl(nW - 1)}$7`), color: '2F5F94' },
-      { name: 'ผลงานจริง (รายงวด)', x: ref(SHEET.calc, `$F$8:$${lastP}$8`), y: ref(SHEET.calc, `$F$9:$${lastP}$9`), color: 'E08A1E' },
+      { name: 'แผนงานสะสม', x: ref(SHEET.calc, `$F$6:$${wl(nW - 1)}$6`), y: ref(SHEET.calc, `$F$7:$${wl(nW - 1)}$7`), color: '2F5F94', width: 22225 },
+      { name: 'ผลงานจริงสะสม', x: ref(SHEET.calc, `$F$8:$${lastP}$8`), y: ref(SHEET.calc, `$F$9:$${lastP}$9`), color: 'E08A1E', width: 22225 },
+      ...Array.from({ length: p.periods }, (_, k) => ({
+        name: `งวดที่ ${k + 1}`,
+        x: ref(SHEET.calc, `$${wl(k)}$10:$${wl(k)}$11`),
+        y: ref(SHEET.calc, `$${wl(k)}$12:$${wl(k)}$13`),
+        color: '2E9E5B', dash: true, marker: false, width: 15875,
+      })),
     ],
-    from: { col: 1, row: chartRow },
-    to: { col: Math.min(cResp, W0 + 18), row: chartRow + 20 },
+    from: { col: W0 - 1, row: first - 1 },
+    to: { col: cPct, row: T - 1 },
   }, {
     kind: 'bar',
     sheet: bar.sheetIndex,
