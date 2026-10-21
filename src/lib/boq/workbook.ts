@@ -8,6 +8,8 @@ import {
   type BoqProject,
   type Grid,
 } from './core'
+import { addLineCharts } from './chart-xml'
+import { readProgress } from './progress-core'
 import { LW, addProgressSheet, progressLayout } from './progress-sheet'
 import {
   BOX, C, DATE_FMT, FONT, PCT, SHEET, addDays, baht, col, f, isoToDate, kit, monthBands, monthLabel, ref, type Style,
@@ -22,7 +24,7 @@ export { isoToDate }
  *   · สรุปความคืบหน้าและค่าใช้จ่ายรายเดือน (S-Curve)
  */
 
-const loadExcel = async () => (await import('exceljs')).default
+export const loadExcel = async () => (await import('exceljs')).default
 
 /** ค่าของช่องจาก exceljs → ค่าดิบ · ช่องลูกของช่องที่ผสาน = ว่าง (ไม่งั้นป้ายซ้ำไปทั้งแถว) */
 function rawValue(cell: Cell): unknown {
@@ -42,7 +44,7 @@ function rawValue(cell: Cell): unknown {
   return null
 }
 
-function toGrid(ws: Worksheet): Grid {
+export function toGrid(ws: Worksheet): Grid {
   const rows = Math.min(ws.rowCount, 3000)
   const cols = Math.min(ws.columnCount, 40)
   const data: unknown[][] = []
@@ -63,6 +65,17 @@ export async function readBoqFile(buf: ArrayBuffer) {
   return parseBoq(wb.worksheets.map(toGrid))
 }
 
+/** ไฟล์แผนงานที่สร้างจากระบบนี้ + กรอก % แล้วเสร็จแล้ว → รายงานแผนเทียบจริง */
+export async function readPlanFile(buf: ArrayBuffer) {
+  const ExcelJS = await loadExcel()
+  const wb = new ExcelJS.Workbook()
+  await wb.xlsx.load(buf)
+  const form = wb.getWorksheet(SHEET.progress)
+  const plan = wb.getWorksheet(SHEET.plan)
+  if (!form || !plan) throw new Error('NOT_PLAN_FILE')
+  return readProgress(toGrid(form), toGrid(plan))
+}
+
 // ---------------------------------------------------------------------------
 
 export type PlanInput = {
@@ -75,7 +88,7 @@ export type PlanInput = {
   start: string
 }
 
-export async function buildPlanXlsx(p: PlanInput, chartPngBase64?: string): Promise<ArrayBuffer> {
+export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
   const ExcelJS = await loadExcel()
   const dist = distribute(p.categories, p.days)
   const start = isoToDate(p.start)
@@ -239,7 +252,8 @@ export async function buildPlanXlsx(p: PlanInput, chartPngBase64?: string): Prom
     const small: Style = { fmt: '0.00%', font: { size: 7 }, align: { horizontal: 'center', wrapText: false } }
     for (let k = 0; k < nW; k += 1) {
       const x = wl(k)
-      put(`${x}${w}`, f(`SUMIF(${rngF},"${kind}",${x}$${first}:${x}$${lastRow})`, pv[k]), small)
+      const weekly = `SUMIF(${rngF},"${kind}",${x}$${first}:${x}$${lastRow})`
+      put(`${x}${w}`, kind === 'Plan' ? f(weekly, pv[k]) : f(`IF(${k + 1}>${LW},"",${weekly})`, ''), small)
       const cum = k === 0 ? `${x}${w}` : `${wl(k - 1)}${c}+${x}${w}`
       // ผลงานจริงหยุดวาดหลังสัปดาห์ล่าสุดที่กรอก — ไม่งั้นเส้นจริงลากแบนไปจนจบสัญญา
       put(`${x}${c}`, kind === 'Plan' ? f(cum, cv[k]) : f(`IF(${k + 1}>${LW},"",${cum})`, ''), { ...small, font: { size: 7, bold: true } })
@@ -251,7 +265,8 @@ export async function buildPlanXlsx(p: PlanInput, chartPngBase64?: string): Prom
       merge(mc, W0 + mo.from, mc, W0 + mo.to)
       const sum = pv.slice(mo.from, mo.to + 1).reduce((q, y) => q + y, 0)
       const money: Style = { fmt: '#,##0', font: { size: 8 }, align: { horizontal: 'center' } }
-      put(`${a}${m}`, f(`SUM(${a}${w}:${b}${w})*$${col(cBud)}$${T}`, sum * dist.total), money)
+      const monthly = `SUM(${a}${w}:${b}${w})*$${col(cBud)}$${T}`
+      put(`${a}${m}`, kind === 'Plan' ? f(monthly, sum * dist.total) : f(`IF(${mo.from + 1}>${LW},"",${monthly})`, ''), money)
       // ผลงานจริงของเดือนที่ยังไม่จบ = ยอดสะสม ณ สัปดาห์ล่าสุดที่กรอก
       const cumAt = kind === 'Plan'
         ? `${b}${c}*$${col(cBud)}$${T}`
@@ -300,11 +315,8 @@ export async function buildPlanXlsx(p: PlanInput, chartPngBase64?: string): Prom
         style: { fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: C.act } } } },
     ],
   })
-  if (chartPngBase64) {
-    const id = wb.addImage({ base64: chartPngBase64, extension: 'png' })
-    ws.addImage(id, { tl: { col: 1, row: s - 1 }, ext: { width: 900, height: 340 } })
-  }
-  ws.pageSetup.printArea = `A1:${col(cResp)}${s + 18}`
+  const chartRow = s - 1
+  ws.pageSetup.printArea = `A1:${col(cResp)}${s + 20}`
   ws.pageSetup.printTitlesRow = '7:9'
 
   addProgressSheet(wb, {
@@ -337,5 +349,24 @@ export async function buildPlanXlsx(p: PlanInput, chartPngBase64?: string): Prom
   ws2.getColumn(3).numFmt = '#,##0.00'
   ws2.getColumn(4).numFmt = '0.00%'
 
-  return (await wb.xlsx.writeBuffer()) as ArrayBuffer
+  // ชุดข้อมูลของเส้นผลงานจริงในกราฟ: หลังสัปดาห์ล่าสุดเป็น #N/A เพื่อให้เส้นหยุด
+  // (ช่องที่เป็นข้อความว่าง "" ถูกกราฟวาดเป็น 0 แล้วเส้นดิ่งลงพื้น)
+  const calc = wb.getWorksheet(SHEET.calc)!
+  calc.getCell('A3').value = 'actual-for-chart'
+  for (let k = 0; k < nW; k += 1) {
+    calc.getCell(`${wl(k)}3`).value = f(`IF(${k + 1}>${LW},NA(),${ref(SHEET.plan, `${wl(k)}${cumRow.Actual}`)})`, '')
+  }
+
+  const buf = (await wb.xlsx.writeBuffer()) as ArrayBuffer
+  return addLineCharts(buf, [{
+    sheet: 1,
+    title: 'S-Curve แผนงาน เทียบ ผลงานจริง (ความคืบหน้าสะสม)',
+    cats: ref(SHEET.plan, `$${wl(0)}$8:$${wl(nW - 1)}$8`),
+    series: [
+      { name: 'แผนงานตามสัญญา', ref: ref(SHEET.plan, `$${wl(0)}$${cumRow.Plan}:$${wl(nW - 1)}$${cumRow.Plan}`), color: '2F5F94' },
+      { name: 'ผลงานจริง', ref: ref(SHEET.calc, `$${wl(0)}$3:$${wl(nW - 1)}$3`), color: 'E08A1E' },
+    ],
+    from: { col: 1, row: chartRow },
+    to: { col: Math.min(cResp, W0 + 18), row: chartRow + 20 },
+  }])
 }

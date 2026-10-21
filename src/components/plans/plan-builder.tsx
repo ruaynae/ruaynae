@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Download, FileSpreadsheet, Loader2, RotateCcw, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { autoSchedule, distribute, type BoqCategory, type BoqModel } from '@/lib/boq/core'
 import { fmtMoney, todayInBangkok } from '@/lib/format'
-import { drawSCurve } from './s-curve'
+import { useSCurve, type CurveData } from './s-curve'
 
 /**
  * แผนงานก่อสร้างจาก BOQ — อัปโหลด → ตรวจ/แก้ → ดาวน์โหลด Excel
@@ -21,6 +21,7 @@ const isoToDate = (iso: string) => new Date(`${iso}T00:00:00Z`)
 const addIso = (iso: string, n: number) => new Date(isoToDate(iso).getTime() + n * DAY).toISOString().slice(0, 10)
 const thShort = (iso: string) =>
   isoToDate(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', timeZone: 'UTC' })
+const thDay = (iso: string) => isoToDate(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: 'UTC' })
 const pct = (x: number) => `${(x * 100).toFixed(2)}%`
 
 const MESSAGES: Record<string, string> = {
@@ -42,23 +43,18 @@ export function PlanBuilder() {
 
   const dist = useMemo(() => distribute(cats, days), [cats, days])
 
-  useEffect(() => {
-    const cv = canvas.current
-    if (!cv || !cats.length) return
-    const draw = () => drawSCurve(cv, dist, isoToDate(start))
-    draw()
-    window.addEventListener('resize', draw)
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    mq.addEventListener('change', draw)
-    // ธีมของแอปสลับด้วยคลาสบน <html> (next-themes) — สีของกราฟต้องตามด้วย
-    const mo = new MutationObserver(draw)
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
-    return () => {
-      window.removeEventListener('resize', draw)
-      mq.removeEventListener('change', draw)
-      mo.disconnect()
-    }
-  }, [dist, start, cats.length])
+  const curve = useMemo<CurveData | null>(
+    () => (cats.length
+      ? {
+          weekly: dist.perWeek,
+          plan: dist.cum,
+          labels: dist.cum.map((_, i) => `W${i + 1}`),
+          sublabels: dist.cum.map((_, i) => thDay(addIso(start, i * 7))),
+        }
+      : null),
+    [dist, start, cats.length],
+  )
+  useSCurve(canvas, curve)
 
   async function onFile(file: File | undefined) {
     if (!file) return
@@ -121,11 +117,7 @@ export function PlanBuilder() {
     setExporting(true)
     try {
       const { buildPlanXlsx } = await import('@/lib/boq/workbook')
-      await document.fonts?.ready
-      const cv = document.createElement('canvas')
-      drawSCurve(cv, dist, isoToDate(start), true)
-      const png = cv.toDataURL('image/png').split(',')[1]
-      const buf = await buildPlanXlsx({ project, factor: model.factor, vat: model.vat, categories: cats, days, start }, png)
+      const buf = await buildPlanXlsx({ project, factor: model.factor, vat: model.vat, categories: cats, days, start })
       const a = document.createElement('a')
       a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
       a.download = `แผนงานก่อสร้าง_${(project.name || 'โครงการ').slice(0, 60).replace(/[\\/:*?"<>|]/g, '')}.xlsx`
