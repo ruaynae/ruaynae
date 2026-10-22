@@ -1,4 +1,5 @@
 import { AppHeader } from '@/components/shell/app-header'
+import { BuddhistYearFix } from '@/components/buddhist-year-fix'
 import { PwaRegister } from '@/components/shell/pwa-register'
 import { BottomNav } from '@/components/shell/bottom-nav'
 import { InstallBanner } from '@/components/shell/install-banner'
@@ -107,6 +108,7 @@ export default async function AppLayout({ children }: LayoutProps<'/'>) {
     <div className="flex min-h-svh">
       {/* ลงทะเบียน service worker + ตั้งตัวเลขบนไอคอนแอป · ไม่มี UI */}
       <PwaRegister unread={count ?? 0} />
+      <BuddhistYearFix />
       <Sidebar
         role={user.role}
         userName={user.fullName}
