@@ -149,7 +149,8 @@ export function letterDocumentXml(input: LetterDocxInput) {
   }
   // ต้นฉบับยื่นหน่วยงาน: ไม่มีป้าย ไม่มีกล่องรับเอกสาร · สำเนาคู่ฉบับ: ป้ายกลางบนสุด + กล่องให้เจ้าหน้าที่เซ็นรับ (เจ้าของสั่ง 22 ต.ค. 2569)
   const a = letterBodyXml({ ...input, letter: { ...input.letter, showReceipt: false } }, null)
-  const b = letterBodyXml(input, COPY_LABEL)
+  // รูปแนบไปกับต้นฉบับเท่านั้น — สำเนาคู่ฉบับเก็บกลับมาแค่หน้าที่เจ้าหน้าที่เซ็นรับ (เจ้าของสั่ง 23 ต.ค. 2569)
+  const b = letterBodyXml({ ...input, photos: [] }, COPY_LABEL)
   return { xml: wrapDocument(a.body + asSecondCopy(b.body)), rels: a.rels }
 }
 
