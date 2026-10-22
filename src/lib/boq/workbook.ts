@@ -62,6 +62,15 @@ export function toGrid(ws: Worksheet): Grid {
   return { name: ws.name, rows, cols, v, w: (r, c) => norm(v(r, c)) }
 }
 
+/** ชีตทั้งหมดของไฟล์ BOQ (.xlsx/.xls) — ใช้ทั้งแผนงาน (`parseBoq`) และแผนวัสดุในประเทศ (R22) */
+export async function readBoqGrids(buf: ArrayBuffer) {
+  if (isXls(buf)) return readXlsGrids(buf)
+  const ExcelJS = await loadExcel()
+  const wb = new ExcelJS.Workbook()
+  await wb.xlsx.load(buf)
+  return wb.worksheets.map(toGrid)
+}
+
 /** BOQ .xlsx หรือ .xls (ดูจากไบต์แรกของไฟล์ ไม่ใช่นามสกุล) */
 export async function readBoqFile(buf: ArrayBuffer) {
   if (isXls(buf)) return parseBoq(await readXlsGrids(buf))
