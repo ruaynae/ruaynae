@@ -16,7 +16,7 @@ import type { SiteContract } from '@/components/letters/letter-contract-picker'
  */
 export async function loadLetterFormContext() {
   const sb = await getSupabaseServer()
-  const [seriesRes, entriesRes, letterhead, branding, sitesRes, financeRes] = await Promise.all([
+  const [seriesRes, entriesRes, letterhead, branding, sitesRes, fullRes, financeRes] = await Promise.all([
     sb
       .from('letter_series')
       .select('id, label, prefix, site_id, recipient, contract_ref, intro, signer_title, is_active')
@@ -31,15 +31,21 @@ export async function loadLetterFormContext() {
     currentLetterhead(),
     getBranding(),
     // "อ้างถึงสัญญาของโครงการ" — เลขที่/วันที่สัญญาอยู่ที่ `site_finance` (เจ้าของเท่านั้น เหมือนเมนูนี้)
-    sb.from('sites').select('id, name, status').order('name', { ascending: true }).range(0, 499),
+    sb.from('sites').select('id, name, status, address').order('name', { ascending: true }).range(0, 499),
+    // ชื่อเต็มอ่านแยก — ยังไม่รัน migration `20261022120000` ฟอร์มหนังสือต้องไม่พัง (ใช้ชื่อย่อแทน)
+    sb.from('sites').select('id, full_name').order('id').range(0, 499),
     sb.from('site_finance').select('site_id, contract_no, contract_date').order('site_id').range(0, 499),
   ])
   if (sitesRes.error) console.error('[letters] อ่านรายชื่อโครงการไม่ได้', sitesRes.error.message)
   if (financeRes.error) console.error('[letters] อ่านสัญญาโครงการไม่ได้', financeRes.error.message)
+  if (fullRes.error) console.error('[letters] อ่านชื่อโครงการเต็มไม่ได้', fullRes.error.message)
+  const fullNames = new Map((fullRes.data ?? []).map((r) => [r.id, r.full_name]))
   const finance = new Map((financeRes.data ?? []).map((f) => [f.site_id, f]))
   const contracts: SiteContract[] = (sitesRes.data ?? []).map((s) => ({
     siteId: s.id,
     name: s.name,
+    fullName: fullNames.get(s.id)?.trim() || null,
+    address: s.address?.trim() || null,
     active: s.status !== 'done' && s.status !== 'cancelled',
     contractNo: finance.get(s.id)?.contract_no?.trim() || null,
     contractDate: finance.get(s.id)?.contract_date ?? null,

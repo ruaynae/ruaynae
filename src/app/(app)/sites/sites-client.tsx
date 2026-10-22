@@ -28,6 +28,7 @@ export const siteError = (code?: string) => SITE_ERRORS[code ?? ''] ?? 'ทำ�
 
 const EMPTY = {
   name: '',
+  fullName: '',
   clientName: '',
   clientPhone: '',
   address: '',
@@ -103,7 +104,7 @@ export function NewSiteButton() {
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2">
-              <label htmlFor="site-name" className="label-base">ชื่อโครงการ</label>
+              <label htmlFor="site-name" className="label-base">ชื่อย่อโครงการ (ใช้เลือกในระบบ)</label>
               <input
                 id="site-name"
                 value={form.name}
@@ -113,6 +114,19 @@ export function NewSiteButton() {
                 autoFocus
               />
               {fieldError && <p className="mt-1 text-sm text-urgent">{fieldError}</p>}
+            </div>
+            <div className="sm:col-span-2">
+              <label htmlFor="site-fullname" className="label-base">
+                ชื่อโครงการเต็ม <span className="text-xs font-normal text-muted-token">— ตามสัญญา ใช้ในหนังสือบริษัท · เว้นว่างได้</span>
+              </label>
+              <textarea
+                id="site-fullname"
+                rows={2}
+                maxLength={500}
+                value={form.fullName}
+                onChange={(e) => set('fullName', e.target.value)}
+                className="input-base"
+              />
             </div>
 
             <div>

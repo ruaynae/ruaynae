@@ -48,11 +48,17 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
   const [me, { id }] = await Promise.all([getCurrentUser(), params])
   const sb = await getSupabaseServer()
 
-  const { data: site, error } = await sb
-    .from('sites')
-    .select('id, name, client_name, client_phone, address, start_date, end_date, status')
-    .eq('id', id)
-    .maybeSingle()
+  const [{ data: siteRow, error }, { data: fullRow, error: fullErr }] = await Promise.all([
+    sb
+      .from('sites')
+      .select('id, name, client_name, client_phone, address, start_date, end_date, status')
+      .eq('id', id)
+      .maybeSingle(),
+    // ชื่อเต็มอ่านแยก — ยังไม่รัน migration `20261022120000` หน้าโครงการต้องไม่พังทั้งหน้า
+    sb.from('sites').select('full_name').eq('id', id).maybeSingle(),
+  ])
+  if (fullErr) console.error('[sites] อ่านชื่อโครงการเต็มไม่ได้', fullErr.message)
+  const site = siteRow ? { ...siteRow, full_name: fullRow?.full_name ?? null } : null
 
   if (error) {
     console.error('[sites] อ่านโครงการไม่ได้', error.message)
@@ -388,6 +394,12 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
       <section className="panel mb-4">
         <div className="panel-head">ข้อมูลสัญญา</div>
         <dl className="grid gap-x-6 gap-y-3 p-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <dt className="text-xs font-medium text-muted-token">ชื่อโครงการเต็ม (ตามสัญญา)</dt>
+            <dd className="mt-0.5 break-words text-base text-ink">
+              {site.full_name || <span className="text-muted-token">ยังไม่ได้ระบุ — หนังสือบริษัทจะใช้ชื่อย่อแทน</span>}
+            </dd>
+          </div>
           <div>
             <dt className="text-xs font-medium text-muted-token">ช่วงเวลางาน</dt>
             <dd className="mt-0.5 flex items-center gap-1.5 text-base text-ink">

@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { getCurrentUserOrNull } from '@/lib/auth/current-user'
 import { getSupabaseServer } from '@/lib/supabase/server'
-import { parseSiteFields } from '@/lib/sites'
+import { isFullNameMissing, parseSiteFields, withoutFullName } from '@/lib/sites'
 
 export const runtime = 'nodejs'
 
@@ -29,11 +29,10 @@ export async function POST(req: NextRequest) {
   // client ที่ผูกกับเซสชัน ไม่ใช่ secret key — RLS จึงเป็นด่านจริง ไม่ใช่ if ข้างบน
   // และ audit_log จะได้ actor เป็นคนที่กดจริง (secret key ทำให้ auth.uid() เป็น null)
   const sb = await getSupabaseServer()
-  const { data, error } = await sb
-    .from('sites')
-    .insert({ ...parsed.fields, created_by: me.id })
-    .select('id, name')
-    .maybeSingle()
+  const insert = (fields: typeof parsed.fields | ReturnType<typeof withoutFullName>) =>
+    sb.from('sites').insert({ ...fields, created_by: me.id }).select('id, name').maybeSingle()
+  let { data, error } = await insert(parsed.fields)
+  if (isFullNameMissing(error)) ({ data, error } = await insert(withoutFullName(parsed.fields)))
 
   if (error) {
     // 42501 = RLS ปฏิเสธ · ไม่ควรเกิดเพราะเช็ค role ไปแล้ว แต่ถ้าเกิดแปลว่า

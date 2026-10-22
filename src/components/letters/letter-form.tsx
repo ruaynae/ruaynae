@@ -17,7 +17,7 @@ import { LetterContractPicker, putContractRef, type SiteContract } from '@/compo
 import { LetterPhotos, type LetterPhoto } from '@/components/letters/letter-photos'
 import { LETTER_TEMPLATES, findLetterTemplate } from '@/lib/letter-templates'
 import {
-  CLOSING_OPTIONS, DEFAULT_CLOSING, autoFieldValue, bumpCounters, fillCompany, formatLetterNo,
+  CLOSING_OPTIONS, DEFAULT_CLOSING, autoFieldValue, bumpCounters, fillCompany, fillProject, formatLetterNo,
   generateFromTemplate, letterFileName, letterMessage, nextSeq, splitLines, stripItemNo, yearCeOf,
   type GeneratedText, type Letterhead, type LetterPaperData, type RegisterEntry,
 } from '@/lib/letters'
@@ -77,11 +77,15 @@ type Draft = {
 const GEN_KEYS = ['subject', 'attachments', 'body', 'closing'] as const
 const EMPTY_GEN: GeneratedText = { subject: '', attachments: '', body: '', closing: '', photoTitle: '' }
 
-function seriesDefaults(s: SeriesOption | undefined, companyName: string) {
+/** โครงการที่ผูกกับชุดเลข → ย่อหน้าแนะนำเติมชื่อเต็ม/ที่ตั้งให้ */
+const seriesProject = (s: SeriesOption | undefined, contracts: SiteContract[]) =>
+  contracts.find((c) => c.siteId === s?.siteId) ?? null
+
+function seriesDefaults(s: SeriesOption | undefined, companyName: string, contracts: SiteContract[]) {
   return {
     recipient: s?.recipient ?? '',
     refs: s?.contractRef ?? '',
-    intro: s ? fillCompany(s.intro, companyName) : '',
+    intro: s ? fillProject(fillCompany(s.intro, companyName), seriesProject(s, contracts)) : '',
     useIntro: Boolean(s?.intro.trim()),
     signerTitle: s?.signerTitle ?? '',
   }
@@ -139,7 +143,7 @@ export function LetterForm({
         body: initial.body,
         closing: initial.closing || DEFAULT_CLOSING,
         useIntro: initial.intro !== null,
-        intro: initial.intro ?? seriesDefaults(s, company).intro,
+        intro: initial.intro ?? seriesDefaults(s, company, contracts).intro,
         signerTitle: initial.signerTitle,
         showReceipt: initial.showReceipt,
         templateId: initial.templateId,
@@ -167,7 +171,7 @@ export function LetterForm({
       seqManual: false,
       date: today,
       subject: '',
-      ...seriesDefaults(s, company),
+      ...seriesDefaults(s, company, contracts),
       attachments: '',
       body: '',
       closing: DEFAULT_CLOSING,
@@ -230,7 +234,7 @@ export function LetterForm({
     setD((p) => ({
       ...p,
       seriesId: id,
-      ...seriesDefaults(s, company),
+      ...seriesDefaults(s, company, contracts),
       seq: p.seqManual ? p.seq : nextSeq(entries, id, yearCeOf(p.date)),
     }))
   }
@@ -534,6 +538,23 @@ export function LetterForm({
                 <input type="checkbox" checked={d.useIntro} onChange={(e) => set('useIntro', e.target.checked)} className="mt-1 size-4 accent-brand" />
                 <span>ใส่ย่อหน้าแนะนำโครงการ (&ldquo;ข้าพเจ้า … ตามหนังสือที่อ้างถึง (1)&rdquo;) ไว้ก่อนเนื้อความ</span>
               </label>
+              {d.useIntro && (() => {
+                const proj = seriesProject(cur, contracts)
+                return proj ? (
+                  <p className="mt-1.5 pl-6 text-xs text-muted-token">
+                    ชื่อโครงการและที่ตั้งดึงจากโครงการ &ldquo;{proj.name}&rdquo;
+                    {!proj.fullName && ' (ยังไม่ได้กรอกชื่อเต็ม — ใช้ชื่อย่อ · กรอกได้ที่หน้าโครงการ → แก้ไข)'}
+                    {' · '}
+                    <button type="button" className="font-medium text-brand hover:underline" onClick={() => set('intro', seriesDefaults(cur, company, contracts).intro)}>
+                      เติมจากโครงการใหม่
+                    </button>
+                  </p>
+                ) : (
+                  <p className="mt-1.5 pl-6 text-xs text-status-progress">
+                    ชุดเลขนี้ยังไม่ได้ผูกโครงการ — ผูกที่ ตั้งค่า → ชุดเลขหนังสือ แล้วระบบเติมชื่อโครงการเต็มและที่ตั้งให้
+                  </p>
+                )
+              })()}
               {d.useIntro && (
                 <details className="mt-2">
                   <summary className="cursor-pointer text-xs font-medium text-brand">แก้ย่อหน้าแนะนำเฉพาะฉบับนี้</summary>

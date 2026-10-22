@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { getCurrentUserOrNull } from '@/lib/auth/current-user'
 import { getSupabaseServer } from '@/lib/supabase/server'
-import { parseSiteFields } from '@/lib/sites'
+import { isFullNameMissing, parseSiteFields, withoutFullName } from '@/lib/sites'
 
 export const runtime = 'nodejs'
 
@@ -43,12 +43,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const parsed = parseSiteFields(body)
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 })
 
-  const { data, error } = await sb
-    .from('sites')
-    .update(parsed.fields)
-    .eq('id', id)
-    .select('id, name, status')
-    .maybeSingle()
+  const update = (fields: typeof parsed.fields | ReturnType<typeof withoutFullName>) =>
+    sb.from('sites').update(fields).eq('id', id).select('id, name, status').maybeSingle()
+  let { data, error } = await update(parsed.fields)
+  if (isFullNameMissing(error)) ({ data, error } = await update(withoutFullName(parsed.fields)))
 
   if (error) {
     console.error('[sites] แก้โครงการไม่สำเร็จ', error.message)
