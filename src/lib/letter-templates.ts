@@ -16,7 +16,8 @@ export type LetterAuto = 'materialNext' | 'deliveryNext' | 'prevMonth'
 export type LetterField = {
   k: string
   label: string
-  type?: 'text' | 'number' | 'select' | 'money'
+  /** `date` = ปฏิทิน แต่ค่าที่เก็บ/ลงกระดาษยังเป็นข้อความ "3 พฤศจิกายน 2569" (`thaiDate`) */
+  type?: 'text' | 'number' | 'select' | 'money' | 'date'
   def?: string
   ph?: string
   /** ตัวเลือกช่วยพิมพ์ (datalist) */
@@ -115,10 +116,10 @@ export const LETTER_TEMPLATES: readonly LetterTemplate[] = [
   },
   {
     id: 'start', name: 'แจ้งเข้าดำเนินการ', match: /แจ้งเข้าดำเนินการ/,
-    fields: [{ k: 'start', label: 'เริ่มเข้าดำเนินการวันที่', ph: '17 มิถุนายน 2569' }],
+    fields: [{ k: 'start', label: 'เริ่มเข้าดำเนินการวันที่', type: 'date', ph: '17 มิถุนายน 2569' }],
     subject: 'แจ้งเข้าดำเนินการก่อสร้างปรับปรุง',
     atts: [],
-    body: 'ทาง{ห้างฯ} ขอเรียนให้ทางหน่วยงานทราบว่า ทาง{ห้างฯ} จะเริ่มเข้าดำเนินการก่อสร้างปรับปรุงตามโครงการดังกล่าวข้างต้น ในวันที่ {start} เป็นต้นไป และขอเข้าดำเนินการวันเสาร์, วันอาทิตย์',
+    body: 'ทาง{ห้างฯ} ขอเรียนให้ทางหน่วยงานทราบว่า ทาง{ห้างฯ} จะเริ่มเข้าดำเนินการก่อสร้างปรับปรุงตามโครงการดังกล่าวข้างต้น ในวันที่ {start} เป็นต้นไป และขอเข้าดำเนินการในวันหยุดราชการ',
   },
   {
     id: 'utility', name: 'ขอใช้ไฟฟ้า-ประปา ชั่วคราว', match: /ไฟฟ้า-ประปา/,

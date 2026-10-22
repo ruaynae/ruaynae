@@ -107,10 +107,39 @@ export type LetterDocxInput = {
   photos: DocxPhoto[]
   photoTitle: string
   photoLayout: '1' | '2'
+  /** 2 ฉบับ = "ต้นฉบับ" + "สำเนา" ต่อกันในไฟล์เดียว (ให้เจ้าหน้าที่เซ็นรับในสำเนาแล้วเก็บกลับมา) */
+  copies?: 1 | 2
+}
+
+/**
+ * ฉบับที่สอง = เนื้อเดียวกันทุกตัวอักษร · ขึ้นหน้าใหม่ด้วย `pageBreakBefore` ที่ย่อหน้าแรก (ไม่เพิ่มบรรทัดว่างหัวหน้า)
+ * · id ของรูป/กล่องต้องไม่ซ้ำฉบับแรก ไม่งั้น Word ขึ้น "ไฟล์เสีย ต้องซ่อม"
+ */
+function asSecondCopy(xml: string) {
+  return xml
+    .replace('<w:pStyle w:val="Header"/>', '<w:pStyle w:val="Header"/><w:pageBreakBefore/>')
+    .replace(/(<wp:docPr id=")(\d+)/g, (_, a: string, n: string) => `${a}${Number(n) + 1000}`)
+    .replace(/(<pic:cNvPr id=")(\d+)/g, (_, a: string, n: string) => `${a}${Number(n) + 1000}`)
+    .replace(/ wp14:anchorId="[^"]*" wp14:editId="[^"]*"/g, '')
+    .replace(/ w14:anchorId="[^"]*"/g, '')
+    .replace(/o:spid="_x0000_s(\d+)"/g, (_, n: string) => `o:spid="_x0000_s${Number(n) + 1000}"`)
 }
 
 /** เนื้อ `word/document.xml` + ความสัมพันธ์ของรูป */
-export function letterDocumentXml({ letter, logo, photos, photoTitle, photoLayout }: LetterDocxInput) {
+export function letterDocumentXml(input: LetterDocxInput) {
+  if (input.copies !== 2) {
+    const { body, rels } = letterBodyXml(input, null)
+    return { xml: wrapDocument(body), rels }
+  }
+  const a = letterBodyXml(input, 'ต้นฉบับ')
+  const b = letterBodyXml(input, 'สำเนา')
+  return { xml: wrapDocument(a.body + asSecondCopy(b.body)), rels: a.rels }
+}
+
+const wrapDocument = (body: string) =>
+  `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n${DOC_OPEN}${body}${SECTION}</w:body></w:document>`
+
+function letterBodyXml({ letter, logo, photos, photoTitle, photoLayout }: LetterDocxInput, copyLabel: string | null) {
   const lh = letter.letterhead
   const x: string[] = []
 
@@ -124,7 +153,10 @@ export function letterDocumentXml({ letter, logo, photos, photoTitle, photoLayou
   x.push(para(spacing(), '', { b: true, sz: 30 }))
 
   // ── เลขที่ · วันที่ ──────────────────────────────────────────────────
-  x.push(para(spacing(), runs(`เลขที่ ${letter.letterNo}`, { b: true }), { b: true }))
+  // ป้าย "ต้นฉบับ"/"สำเนา" ชิดขวาบรรทัดเลขที่ (แท็บขวา) — ไม่เพิ่มบรรทัด หนังสือจึงไม่ล้นไปหน้า 2 เพราะป้าย
+  x.push(copyLabel
+    ? para('<w:tabs><w:tab w:val="right" w:pos="9026"/></w:tabs>' + spacing(), runs(`เลขที่ ${letter.letterNo}\t${copyLabel}`, { b: true }), { b: true })
+    : para(spacing(), runs(`เลขที่ ${letter.letterNo}`, { b: true }), { b: true }))
   x.push(para(spacing() + '<w:jc w:val="right"/>', runs(letterDateLine(letter.date), { b: true }), { b: true }))
   x.push(para(spacing(), '', { b: true }))
 
@@ -198,7 +230,7 @@ export function letterDocumentXml({ letter, logo, photos, photoTitle, photoLayou
     }
   }
 
-  return { xml: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n${DOC_OPEN}${x.join('')}${SECTION}</w:body></w:document>`, rels }
+  return { body: x.join(''), rels }
 }
 
 export async function buildLetterDocx(input: LetterDocxInput): Promise<Buffer> {

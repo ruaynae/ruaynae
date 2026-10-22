@@ -47,6 +47,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const photos: DocxPhoto[] = []
   let photoTitle = ''
   let photoLayout: '1' | '2' = '1'
+  let copies: 1 | 2 = 1
   if ((req.headers.get('content-type') ?? '').includes('multipart/form-data')) {
     let form: FormData
     try {
@@ -66,6 +67,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     }
     photoTitle = String(form.get('photoTitle') ?? '').trim().slice(0, 200)
     photoLayout = form.get('photoLayout') === '2' ? '2' : '1'
+    copies = form.get('copies') === '2' ? 2 : 1
 
     for (const [i, f] of files.entries()) {
       if (f.size > LETTER_LIMITS.photoBytes) {
@@ -105,7 +107,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   try {
     const branding = await getBranding()
     const logo = await loadLogo(branding.logoObjectKey)
-    const file = await buildLetterDocx({ letter, logo, photos, photoTitle, photoLayout })
+    const file = await buildLetterDocx({ letter, logo, photos, photoTitle, photoLayout, copies })
     const name = letterFileName(prefix, row.seq, row.subject)
     return new NextResponse(new Uint8Array(file), {
       headers: {

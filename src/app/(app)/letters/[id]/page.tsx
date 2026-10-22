@@ -35,6 +35,7 @@ export default async function LetterPage({ params }: { params: Promise<{ id: str
       mode="edit"
       series={ctx.series}
       entries={ctx.entries}
+      contracts={ctx.contracts}
       letterhead={stored.companyName ? stored : ctx.letterhead}
       logoUrl={ctx.logoUrl}
       today={ctx.today}

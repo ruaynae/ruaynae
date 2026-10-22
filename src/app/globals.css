@@ -571,6 +571,9 @@
   .letter-sheet .lt-sig { margin: 0; padding-left: 18pt; line-height: 1.496; text-align: center; }
 
   /* กล่อง "รับเอกสารแล้ว" — ลอยเหมือน text box ของ Word ไม่ดันเนื้อหา */
+  .letter-sheet .lt-copy { float: right; font-weight: 700; }
+  /* ฉบับสำเนาโผล่เฉพาะตอนพิมพ์ — ฉบับบนจอคือต้นฉบับ */
+  .letter-copy { display: none; }
   .letter-sheet .lt-receipt-anchor { position: relative; height: 24pt; margin: 0; }
   .letter-sheet .lt-receipt {
     position: absolute; left: 364.2pt; top: 3.6pt; width: 139.1pt; height: 77pt;
@@ -610,6 +613,7 @@
     overflow: visible !important;
   }
   .paper.letter-sheet + .paper.letter-sheet { break-before: page; }
+  .letter-copy { display: block; break-before: page; }
   .letter-sheet .lt-blank-mark { background: none; }
   .letter-sheet .lt-break { display: none; }
 }

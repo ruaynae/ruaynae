@@ -6,6 +6,7 @@ import { todayInBangkok } from '@/lib/format'
 import { currentLetterhead } from '@/lib/letters-server'
 import type { RegisterEntry } from '@/lib/letters'
 import type { FormLetter, SeriesOption } from '@/components/letters/letter-form'
+import type { SiteContract } from '@/components/letters/letter-contract-picker'
 
 /**
  * ข้อมูลที่ฟอร์มหนังสือต้องใช้ — โหลดพร้อมกันทั้งก้อน (หน้า `/letters/new` และ `/letters/[id]`)
@@ -15,10 +16,10 @@ import type { FormLetter, SeriesOption } from '@/components/letters/letter-form'
  */
 export async function loadLetterFormContext() {
   const sb = await getSupabaseServer()
-  const [seriesRes, entriesRes, letterhead, branding] = await Promise.all([
+  const [seriesRes, entriesRes, letterhead, branding, sitesRes, financeRes] = await Promise.all([
     sb
       .from('letter_series')
-      .select('id, label, prefix, recipient, contract_ref, intro, signer_title, is_active')
+      .select('id, label, prefix, site_id, recipient, contract_ref, intro, signer_title, is_active')
       .order('label', { ascending: true })
       .range(0, 199),
     sb
@@ -29,7 +30,20 @@ export async function loadLetterFormContext() {
       .range(0, 999),
     currentLetterhead(),
     getBranding(),
+    // "อ้างถึงสัญญาของโครงการ" — เลขที่/วันที่สัญญาอยู่ที่ `site_finance` (เจ้าของเท่านั้น เหมือนเมนูนี้)
+    sb.from('sites').select('id, name, status').order('name', { ascending: true }).range(0, 499),
+    sb.from('site_finance').select('site_id, contract_no, contract_date').order('site_id').range(0, 499),
   ])
+  if (sitesRes.error) console.error('[letters] อ่านรายชื่อโครงการไม่ได้', sitesRes.error.message)
+  if (financeRes.error) console.error('[letters] อ่านสัญญาโครงการไม่ได้', financeRes.error.message)
+  const finance = new Map((financeRes.data ?? []).map((f) => [f.site_id, f]))
+  const contracts: SiteContract[] = (sitesRes.data ?? []).map((s) => ({
+    siteId: s.id,
+    name: s.name,
+    active: s.status !== 'done' && s.status !== 'cancelled',
+    contractNo: finance.get(s.id)?.contract_no?.trim() || null,
+    contractDate: finance.get(s.id)?.contract_date ?? null,
+  }))
   if (seriesRes.error) console.error('[letters] อ่านชุดเลขไม่ได้', seriesRes.error.message)
   if (entriesRes.error) console.error('[letters] อ่านทะเบียนไม่ได้', entriesRes.error.message)
 
@@ -37,6 +51,7 @@ export async function loadLetterFormContext() {
     id: s.id,
     label: s.label,
     prefix: s.prefix,
+    siteId: s.site_id,
     recipient: s.recipient,
     contractRef: s.contract_ref,
     intro: s.intro,
@@ -55,6 +70,7 @@ export async function loadLetterFormContext() {
   return {
     series,
     entries,
+    contracts,
     letterhead,
     logoUrl: branding.logoUrl,
     today: todayInBangkok(),

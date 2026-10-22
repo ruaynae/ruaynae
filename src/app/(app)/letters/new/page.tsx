@@ -32,6 +32,7 @@ export default async function NewLetterPage({
       mode="new"
       series={ctx.series}
       entries={ctx.entries}
+      contracts={ctx.contracts}
       letterhead={ctx.letterhead}
       logoUrl={ctx.logoUrl}
       today={ctx.today}
