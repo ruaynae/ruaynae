@@ -3,6 +3,7 @@ import {
   BarChart3,
   CalendarDays,
   FileText,
+  FolderArchive,
   GanttChart,
   HandCoins,
   Home,
@@ -69,6 +70,14 @@ export const NAV: NavGroup[] = [
         label: 'หนังสือบริษัท',
         sub: 'ออกหนังสือถึงหน่วยงาน · ทะเบียนหนังสือส่ง',
         icon: Mail,
+        ownerOnly: true,
+      },
+      // คลังเอกสาร (R21) — สัญญา แบบ BOQ หนังสือรับรองผลงาน · มีค่างาน/ราคากลาง จึงเป็นของเจ้าของ
+      {
+        href: '/files',
+        label: 'คลังเอกสาร',
+        sub: 'สัญญา แบบ BOQ หนังสือรับรองผลงาน',
+        icon: FolderArchive,
         ownerOnly: true,
       },
       // อัปโหลด BOQ → แผนงานก่อสร้าง + S-Curve (Excel) · มีค่างานทุกหมวด จึงเป็นของเจ้าของ

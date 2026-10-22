@@ -1603,6 +1603,72 @@ export type Database = {
         }
         Relationships: []
       }
+      project_files: {
+        Row: {
+          byte_size: number
+          category: string
+          content_type: string
+          created_at: string
+          created_by: string | null
+          doc_date: string | null
+          doc_no: string | null
+          file_name: string
+          id: string
+          note: string | null
+          object_key: string
+          site_id: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          byte_size: number
+          category: string
+          content_type: string
+          created_at?: string
+          created_by?: string | null
+          doc_date?: string | null
+          doc_no?: string | null
+          file_name: string
+          id?: string
+          note?: string | null
+          object_key: string
+          site_id?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          byte_size?: number
+          category?: string
+          content_type?: string
+          created_at?: string
+          created_by?: string | null
+          doc_date?: string | null
+          doc_no?: string | null
+          file_name?: string
+          id?: string
+          note?: string | null
+          object_key?: string
+          site_id?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_files_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_files_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       push_subscriptions: {
         Row: {
           auth: string

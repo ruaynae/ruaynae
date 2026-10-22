@@ -19,6 +19,7 @@ const ROWS = [
   { key: 'slips', label: 'สลิปและบิล' },
   { key: 'thumbs', label: 'รูปย่อในหน้ารายการ' },
   { key: 'branding', label: 'โลโก้บริษัท' },
+  { key: 'files', label: 'คลังเอกสาร' },
   { key: 'other', label: 'อื่น ๆ' },
 ] as const
 

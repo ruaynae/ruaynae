@@ -392,7 +392,14 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
 
       {/* ── ข้อมูลสัญญา ────────────────────────────────────────────── */}
       <section className="panel mb-4">
-        <div className="panel-head">ข้อมูลสัญญา</div>
+        <div className="panel-head">
+          ข้อมูลสัญญา
+          {isOwner && (
+            <Link href={`/files?site=${site.id}`} className="ml-auto text-xs font-semibold text-brand hover:underline">
+              สัญญา · แบบ · BOQ ในคลังเอกสาร
+            </Link>
+          )}
+        </div>
         <dl className="grid gap-x-6 gap-y-3 p-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <dt className="text-xs font-medium text-muted-token">ชื่อโครงการเต็ม (ตามสัญญา)</dt>
