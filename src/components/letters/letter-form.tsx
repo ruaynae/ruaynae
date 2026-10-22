@@ -580,8 +580,8 @@ export function LetterForm({
             <label className="flex items-start gap-2.5 text-sm text-ink">
               <input type="checkbox" checked={copies === 2} onChange={(e) => setCopies(e.target.checked ? 2 : 1)} className="mt-0.5 size-4 shrink-0 accent-brand" />
               <span>
-                พิมพ์ 2 ฉบับ: <b>ต้นฉบับ</b> + <b>สำเนา</b>
-                <span className="block text-xs text-muted-token">สำเนาให้เจ้าหน้าที่เซ็นรับในกล่อง &ldquo;รับเอกสารแล้ว&rdquo; แล้วนำกลับมาเก็บ · ใช้ทั้งปุ่มพิมพ์และไฟล์ Word</span>
+                พิมพ์ 2 ฉบับ: <b>ต้นฉบับ</b> + <b>สำเนาคู่ฉบับ</b>
+                <span className="block text-xs text-muted-token">ต้นฉบับไม่มีป้ายและไม่มีกล่องรับเอกสาร · สำเนาคู่ฉบับมีป้ายกลางหน้าบนสุดและกล่อง &ldquo;รับเอกสารแล้ว&rdquo; ให้เจ้าหน้าที่เซ็นรับแล้วนำกลับมาเก็บ · ใช้ทั้งปุ่มพิมพ์และไฟล์ Word</span>
               </span>
             </label>
           </section>
