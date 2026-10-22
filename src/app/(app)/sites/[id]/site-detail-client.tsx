@@ -14,6 +14,7 @@ import { siteError } from '../sites-client'
 type Site = {
   id: string
   name: string
+  full_name: string | null
   client_name: string | null
   client_phone: string | null
   address: string | null
@@ -96,6 +97,7 @@ export function SiteDetailActions({
 
   const [form, setForm] = useState({
     name: site.name,
+    fullName: site.full_name ?? '',
     clientName: site.client_name ?? '',
     clientPhone: site.client_phone ?? '',
     address: site.address ?? '',
@@ -202,9 +204,14 @@ export function SiteDetailActions({
         title="แก้ไขโครงการ"
         description="ค่าที่ไม่แก้ให้ปล่อยไว้ ระบบบันทึกทับทั้งชุด"
       >
-        <Field id="e-name" label="ชื่อโครงการ" span>
-          <input id="e-name" value={form.name}
+        <Field id="e-name" label="ชื่อย่อโครงการ (ใช้เลือกในระบบ)" span>
+          <input id="e-name" value={form.name} placeholder="เช่น อ.ก. ปรับปรุงพื้นที่การเรียนรู้"
             onChange={(e) => setForm({ ...form, name: e.target.value })} className="input-base" />
+        </Field>
+        <Field id="e-fullname" label="ชื่อโครงการเต็ม (ตามสัญญา · ใช้ในหนังสือบริษัท)" span>
+          <textarea id="e-fullname" rows={2} value={form.fullName} maxLength={500}
+            placeholder="เช่น โครงการปรับปรุงพื้นที่การเรียนรู้ร่วมกัน คณะอุตสาหกรรมเกษตร มหาวิทยาลัยเชียงใหม่"
+            onChange={(e) => setForm({ ...form, fullName: e.target.value })} className="input-base" />
         </Field>
         <Field id="e-client" label="ชื่อลูกค้า">
           <input id="e-client" value={form.clientName}

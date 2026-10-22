@@ -144,7 +144,10 @@ export function timeProgress(
  * แยกไม่ได้ · ค่าที่คนละบทบาทเห็นไม่เท่ากันต้องอยู่คนละแถว = คนละตาราง
  */
 export type SiteFields = {
+  /** ชื่อย่อ — ใช้เลือกในระบบทุกหน้า */
   name: string
+  /** ชื่อเต็มตามสัญญา — หนังสือบริษัทดึงไปใส่ย่อหน้าแนะนำ · null = ใช้ชื่อย่อ */
+  full_name: string | null
   client_name: string | null
   client_phone: string | null
   address: string | null
@@ -201,6 +204,7 @@ export function parseSiteFields(b: unknown): SiteParse {
     ok: true,
     fields: {
       name,
+      full_name: text(o.fullName ?? o.full_name, 500),
       client_name: text(o.clientName ?? o.client_name),
       client_phone: text(o.clientPhone ?? o.client_phone, 32),
       address: text(o.address ?? null, 400),
@@ -213,4 +217,17 @@ export function parseSiteFields(b: unknown): SiteParse {
     contractAmount: amount.value,
     bond: bond.fields,
   }
+}
+
+/**
+ * คอลัมน์ `full_name` ยังไม่มีในฐานข้อมูล (โค้ดขึ้นเว็บก่อนรัน migration `20261022120000`)
+ * → เขียนซ้ำโดยไม่มีชื่อเต็ม แทนที่จะทำให้บันทึกโครงการไม่ได้ทั้งหน้า
+ */
+export const isFullNameMissing = (e: { code?: string; message?: string } | null) =>
+  !!e && (e.code === 'PGRST204' || e.code === '42703') && /full_name/.test(e.message ?? '')
+
+export function withoutFullName(f: SiteFields): Omit<SiteFields, 'full_name'> {
+  const { full_name: _drop, ...rest } = f
+  void _drop
+  return rest
 }

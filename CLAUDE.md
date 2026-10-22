@@ -87,7 +87,7 @@ create type advance_status as enum ('pending','approved','rejected');
 | `branding` | แถวเดียว: `company_name`, `logo_object_key`, `updated_at` | **`anon` SELECT ได้** (หน้า login ต้องอ่านตอนยังไม่ล็อกอิน) · UPDATE เฉพาะ owner |
 | `app_settings` | แถวเดียว: ที่อยู่, เลขผู้เสียภาษี, ผู้ลงนาม, นโยบายเก็บรูป ฯลฯ | **owner เท่านั้น ทั้งอ่านและเขียน** |
 | `profiles` | `id → auth.users`, `full_name`, `role`, `pin_hash` (HMAC + pepper, unique), `is_active` | อ่านตัวเอง · owner อ่าน/เขียนทั้งหมด · **`role` แก้ได้เฉพาะ owner (guard trigger)** |
-| `sites` | `name`, `client_name`, `contract_amount`, `start_date`, `end_date`, `status` | owner ทั้งหมด · supervisor อ่านเฉพาะโครงการที่ดูแล |
+| `sites` | `name` (**ชื่อย่อ** ใช้เลือกในระบบ), `full_name` (ชื่อเต็มตามสัญญา · หนังสือบริษัทเติม `{โครงการ}` ในย่อหน้าแนะนำ · 22 ต.ค. 2569), `client_name`, `contract_amount`, `start_date`, `end_date`, `status` | owner ทั้งหมด · supervisor อ่านเฉพาะโครงการที่ดูแล |
 | `site_finance` | ค่างานและ**หลักประกันสัญญา** (R11): `contract_amount`, `contract_no`, `contract_date`, `bond_kind` (`cash`/`bank_guarantee`), `bond_amount`, `bond_ref`, `handover_date` (ส่งมอบงวดสุดท้าย — คนละช่องกับ `sites.end_date`), `warranty_months` (24), **`warranty_end` generated**, `bond_returned_at/_amount`, `bond_return_txn_id` · สถานะคิดตอนอ่านใน RPC `bond_status()` / `bond_summary()` ไม่มีคอลัมน์สถานะ | **owner เท่านั้น** |
 | `site_supervisors` | `site_id`, `profile_id`, **`effective_from`, `effective_to`** | owner เขียน · supervisor อ่านแถวตัวเอง |
 | `site_milestones` | แผนงวดล่วงหน้า (ไม่บังคับ): `seq`, `name`, `planned_amount`, `planned_date` — ยังไม่มีคอลัมน์บอกว่างวดไหนเก็บเงินแล้ว (วางแผนไว้เป็น `collected_txn_id` แต่ยังไม่ได้สร้าง รอเฟสหลัง) | ตามโครงการ |

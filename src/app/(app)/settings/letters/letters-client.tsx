@@ -29,7 +29,7 @@ const EMPTY: FormState = {
   siteId: null,
   recipient: 'ประธานคณะกรรมการตรวจการจ้างงาน (ผ่านผู้ควบคุมงาน)',
   contractRef: 'สัญญาจ้างเลขที่ …… ลงวันที่ ……',
-  intro: 'ข้าพเจ้า {บริษัท} เป็นผู้รับจ้างโครงการ …… ณ …… ตามหนังสือที่อ้างถึง (1)',
+  intro: 'ข้าพเจ้า {บริษัท} เป็นผู้รับจ้าง{โครงการ} ณ {สถานที่} ตามหนังสือที่อ้างถึง (1)',
   signerTitle: 'ผู้รับจ้าง',
   isActive: true,
 }
@@ -216,7 +216,7 @@ function SeriesCard({
             </div>
             <div className="sm:col-span-2">
               <label htmlFor={`${id}-intro`} className="label-base">
-                ย่อหน้าแนะนำโครงการ <span className="text-xs font-normal text-muted-token">— {'{บริษัท}'} = ชื่อบริษัท</span>
+                ย่อหน้าแนะนำโครงการ <span className="text-xs font-normal text-muted-token">— {'{บริษัท}'} = ชื่อบริษัท · {'{โครงการ}'} = ชื่อโครงการเต็ม · {'{สถานที่}'} = ที่ตั้งหน้างาน (จากโครงการที่ผูกไว้)</span>
               </label>
               <textarea id={`${id}-intro`} rows={4} value={f.intro} onChange={(e) => set('intro', e.target.value)} className="input-base" />
               {f.intro.includes('{บริษัท}') && companyName && (

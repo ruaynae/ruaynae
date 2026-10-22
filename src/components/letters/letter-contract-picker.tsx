@@ -9,6 +9,9 @@ import { BLANK, thaiDate } from '@/lib/letters'
 export type SiteContract = {
   siteId: string
   name: string
+  /** ชื่อเต็มตามสัญญา + ที่ตั้ง — ย่อหน้าแนะนำของหนังสือดึงไปใช้ */
+  fullName: string | null
+  address: string | null
   /** ยังไม่ปิดงาน/ยกเลิก — โชว์ก่อน */
   active: boolean
   contractNo: string | null

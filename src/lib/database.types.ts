@@ -1884,6 +1884,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           end_date: string | null
+          full_name: string | null
           id: string
           name: string
           start_date: string | null
@@ -1897,6 +1898,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           end_date?: string | null
+          full_name?: string | null
           id?: string
           name: string
           start_date?: string | null
@@ -1910,6 +1912,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           end_date?: string | null
+          full_name?: string | null
           id?: string
           name?: string
           start_date?: string | null

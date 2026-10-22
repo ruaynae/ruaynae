@@ -140,6 +140,29 @@ export function companyShortRef(companyName: string): string {
 export const fillCompany = (text: string, companyName: string) =>
   text.replace(/\{บริษัท\}/g, companyName).replace(/\{ห้างฯ\}/g, companyShortRef(companyName))
 
+export type LetterProject = { name: string; fullName: string | null; address: string | null }
+
+/** ชื่อโครงการบนหนังสือ = ชื่อเต็มตามสัญญา (ไม่มี = ชื่อย่อ) · ขึ้นต้นด้วย "โครงการ" เสมอ ไม่ซ้ำสองคำ */
+export const projectPhrase = (p: LetterProject) => {
+  const n = (p.fullName?.trim() || p.name.trim()).replace(/\s+/g, ' ')
+  return n.startsWith('โครงการ') ? n : `โครงการ${n}`
+}
+
+/**
+ * ย่อหน้าแนะนำ ← โครงการที่ผูกกับชุดเลข (เจ้าของขอ 22 ต.ค. 2569 "ไม่ต้องกรอกข้อมูลใหม่")
+ * · `{โครงการ}` = ชื่อเต็ม · `{สถานที่}` = ที่ตั้งหน้างาน
+ * · ข้อความแบบเดิม "โครงการ …… ณ ……" หรือ "โครงการ ...... ณ ......" (ค่าตั้งต้นก่อนมีช่องเหล่านี้) ถูกเติมด้วย
+ */
+export function fillProject(text: string, p: LetterProject | null): string {
+  if (!p) return text
+  const name = projectPhrase(p)
+  const loc = p.address?.trim() || BLANK
+  return text
+    .replace(/(?:โครงการ\s*)?\{โครงการ\}/g, name)
+    .replace(/\{สถานที่\}/g, loc)
+    .replace(/โครงการ\s*(?:…|\.){2,}\s*ณ\s*(?:…|\.){2,}/g, `${name} ณ ${loc}`)
+}
+
 /** ตัวเลขเงินบนหนังสือ — ทศนิยมสองตำแหน่ง มีคอมมา */
 export function letterMoney(raw: string): string {
   const n = Number(String(raw).replace(/,/g, ''))
