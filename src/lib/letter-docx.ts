@@ -125,6 +125,22 @@ function asSecondCopy(xml: string) {
     .replace(/o:spid="_x0000_s(\d+)"/g, (_, n: string) => `o:spid="_x0000_s${Number(n) + 1000}"`)
 }
 
+/** run ของกล่องรับเอกสาร ย้ายจาก "ใต้ลายเซ็น" ไปชิดขอบล่างขวาของพื้นที่พิมพ์ (ทั้ง DrawingML และ VML สำรอง) */
+const RECEIPT_RUN = (() => {
+  const run = RECEIPT_BOX.slice(RECEIPT_BOX.indexOf('</w:pPr>') + '</w:pPr>'.length, RECEIPT_BOX.lastIndexOf('</w:p>'))
+  const out = run
+    .replace(/<wp:positionH relativeFrom="column"><wp:posOffset>\d+<\/wp:posOffset><\/wp:positionH>/, '<wp:positionH relativeFrom="margin"><wp:align>right</wp:align></wp:positionH>')
+    .replace(/<wp:positionV relativeFrom="paragraph"><wp:posOffset>\d+<\/wp:posOffset><\/wp:positionV>/, '<wp:positionV relativeFrom="margin"><wp:align>bottom</wp:align></wp:positionV>')
+    .replace('margin-left:364.2pt;margin-top:3.6pt;', '')
+    .replace(
+      'mso-position-horizontal:absolute;mso-position-horizontal-relative:text;mso-position-vertical:absolute;mso-position-vertical-relative:text;',
+      'mso-position-horizontal:right;mso-position-horizontal-relative:margin;mso-position-vertical:bottom;mso-position-vertical-relative:margin;',
+    )
+  // แม่แบบ XML เปลี่ยนแล้วแทนที่ไม่ติด = กล่องกลับไปลอยใต้ลายเซ็นเงียบ ๆ — ให้พังตอน build/test แทน
+  if (!out.includes('<wp:align>bottom</wp:align>') || !out.includes('mso-position-vertical:bottom')) throw new Error('RECEIPT_RUN')
+  return out
+})()
+
 /** เนื้อ `word/document.xml` + ความสัมพันธ์ของรูป */
 export function letterDocumentXml(input: LetterDocxInput) {
   if (input.copies !== 2) {
@@ -201,8 +217,9 @@ function letterBodyXml({ letter, logo, photos, photoTitle, photoLayout }: Letter
   x.push(para(KEEP + spacing(0, 276) + sig, runs('ขอแสดงความนับถือ')))
   for (let i = 0; i < 3; i++) x.push(para(KEEP + spacing(0, 276) + sig))
   x.push(para(KEEP + spacing(0, 276) + sig, runs(`(${lh.signerName || BLANK_SIGNER})`)))
-  x.push(para(spacing(0, 276) + sig, runs(letter.signerTitle)))
-  if (letter.showReceipt) x.push(RECEIPT_BOX)
+  // กล่อง "รับเอกสารแล้ว" ลอยชิดมุมล่างขวาของหน้าที่ลงชื่อ — ผูกกับย่อหน้าตำแหน่งผู้ลงนาม
+  // (ไม่ใช่ย่อหน้าของตัวเอง) หนังสือที่เต็มหน้าจึงไม่ถูกดันไปขึ้นหน้าใหม่เพราะกล่อง (เจ้าของแจ้ง 23 ต.ค. 2569)
+  x.push(para(spacing(0, 276) + sig, runs(letter.signerTitle) + (letter.showReceipt ? RECEIPT_RUN : '')))
 
   // ── รูปแนบท้าย (หน้าใหม่) ────────────────────────────────────────────
   const rels: { rid: string; file: string; data: Buffer }[] = []
