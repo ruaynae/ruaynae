@@ -6,7 +6,7 @@ import { isTableMissing } from '@/lib/plans-server'
 
 export const metadata = { title: 'แผนงานก่อสร้าง' }
 
-const TABS = ['saved', 'build', 'track'] as const
+const TABS = ['saved', 'build', 'track', 'domestic'] as const
 type Tab = (typeof TABS)[number]
 
 /**
