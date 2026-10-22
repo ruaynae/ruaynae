@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/ui/page-header'
 import { LetterPreview } from '@/components/letters/letter-preview'
@@ -101,6 +101,7 @@ export function LetterForm({
   today,
   initial,
   initialSeriesId,
+  initialPhotos,
 }: {
   mode: 'new' | 'edit'
   series: SeriesOption[]
@@ -112,6 +113,8 @@ export function LetterForm({
   /** edit = หนังสือฉบับนี้ · new = ฉบับต้นแบบของ "ทำซ้ำ" (หรือ null) */
   initial: FormLetter | null
   initialSeriesId: string | null
+  /** รูปแนบที่เก็บไว้กับหนังสือ (หน้า `/letters/[id]`) */
+  initialPhotos?: { photos: { key: string; url: string; caption: string }[]; title: string; layout: '1' | '2' }
 }) {
   const router = useRouter()
   const company = letterhead.companyName
@@ -123,9 +126,12 @@ export function LetterForm({
   /** พิมพ์/ดาวน์โหลด 2 ฉบับ — ต้นฉบับยื่นหน่วยงาน · สำเนาให้เจ้าหน้าที่เซ็นรับแล้วเก็บกลับมา (เจ้าของขอ 22 ต.ค. 2569) */
   const [copies, setCopies] = useState<1 | 2>(2)
   const [askDelete, setAskDelete] = useState(false)
-  const [photos, setPhotos] = useState<LetterPhoto[]>([])
-  const [photoTitle, setPhotoTitle] = useState('')
-  const [photoLayout, setPhotoLayout] = useState<'1' | '2'>('1')
+  const [photos, setPhotos] = useState<LetterPhoto[]>(initialPhotos?.photos ?? [])
+  const [photoTitle, setPhotoTitle] = useState(initialPhotos?.title ?? '')
+  const [photoLayout, setPhotoLayout] = useState<'1' | '2'>(initialPhotos?.layout ?? '1')
+  /** หนังสือนี้มีรูปเก็บอยู่ในระบบ — ลบรูปหมดแล้วบันทึก ต้องส่งรายการว่างไปลบด้วย */
+  const hadPhotos = useRef(Boolean(initialPhotos?.photos.length))
+  const warnedPhotos = useRef(false)
   const [gen, setGen] = useState<GeneratedText>(EMPTY_GEN)
 
   const [d, setD] = useState<Draft>(() => {
@@ -290,10 +296,50 @@ export function LetterForm({
         // เปลี่ยน URL โดยไม่โหลดหน้าใหม่ — รูปแนบที่เลือกไว้ต้องไม่หาย
         window.history.replaceState(null, '', `/letters/${id}`)
       }
+      await savePhotos(id)
       return id
     } catch {
       toast.error('เชื่อมต่อไม่ได้ ตรวจสอบสัญญาณแล้วลองใหม่')
       return null
+    }
+  }
+
+  /**
+   * รูปแนบ → R2 (เฉพาะรูปที่เพิ่งเลือก) แล้วเก็บรายการทั้งชุดกับหนังสือ · ไม่สำเร็จ = แจ้งเตือน แต่หนังสือบันทึกแล้ว
+   * · ยังไม่รัน migration (503) = เตือนครั้งเดียว ไฟล์ Word ยังได้รูปจากที่ส่งไปกับคำขอ
+   */
+  async function savePhotos(id: string) {
+    if (!photos.length && !hadPhotos.current) return
+    try {
+      const next = [...photos]
+      for (const [i, p] of next.entries()) {
+        if (p.key || !p.file) continue
+        const s = await fetch('/api/uploads/sign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ purpose: 'letter', contentType: p.file.type || 'image/jpeg', byteSize: p.file.size }),
+        })
+        const j = (await s.json().catch(() => ({}))) as { key?: string; url?: string; contentType?: string }
+        if (!s.ok || !j.key || !j.url) throw new Error('SIGN')
+        const put = await fetch(j.url, { method: 'PUT', headers: { 'content-type': j.contentType ?? 'image/jpeg' }, body: p.file })
+        if (!put.ok) throw new Error('PUT')
+        next[i] = { ...p, key: j.key }
+      }
+      setPhotos(next)
+      const r = await fetch(`/api/letters/${id}/photos`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: photoTitle, layout: photoLayout, photos: next.map((p) => ({ key: p.key, caption: p.caption })) }),
+      })
+      if (r.status === 503) {
+        if (!warnedPhotos.current) toast.warning('ยังไม่ได้ติดตั้งที่เก็บรูปแนบในฐานข้อมูล — รูปยังไม่ถูกเก็บกับหนังสือ (รัน migration 20261023120000_letter_photos.sql)')
+        warnedPhotos.current = true
+        return
+      }
+      if (!r.ok) throw new Error('SAVE')
+      hadPhotos.current = next.length > 0
+    } catch {
+      toast.error('บันทึกหนังสือแล้ว แต่เก็บรูปแนบไม่สำเร็จ — ตรวจสัญญาณแล้วกดบันทึกอีกครั้ง')
     }
   }
 
@@ -305,8 +351,9 @@ export function LetterForm({
       const id = await persist()
       if (!id) return
       const fd = new FormData()
-      photos.forEach((p) => fd.append('photo', p.file))
-      fd.append('captions', JSON.stringify(photos.map((p) => p.caption)))
+      // รูปที่เก็บในระบบแล้วเซิร์ฟเวอร์อ่านจาก R2 เอง · ส่งไฟล์ไปด้วยเผื่อยังไม่ได้รัน migration
+      photos.forEach((p) => p.file && fd.append('photo', p.file))
+      fd.append('captions', JSON.stringify(photos.filter((p) => p.file).map((p) => p.caption)))
       fd.append('photoTitle', photoTitle)
       fd.append('photoLayout', photoLayout)
       fd.append('copies', String(copies))

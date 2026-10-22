@@ -107,6 +107,7 @@ create type advance_status as enum ('pending','approved','rejected');
 | `doc_counters` | ตัวนับเลขที่เอกสารต่อชนิด: `kind` (pk), `prefix`, `pad`, **`last_no`** = เลข**ล่าสุดที่ออกไปแล้ว** ไม่ใช่เลขถัดไป (คำสั่งเจ้าของ 20 ก.ย. 2569) · ไม่มีค่าตั้งต้นในโค้ด — ยังไม่ตั้ง = ออกเอกสารไม่ได้ (`DOC_COUNTER_NOT_SET`) | **owner เท่านั้น** |
 | `documents` | ใบเสนอราคา/**ใบแจ้งหนี้**/ใบเสร็จ (R12): `kind` (3 ค่า เรียงตามลำดับงาน), `doc_no` (null จนกว่าจะออกเลข), `status`, `site_id` (null = ไม่ผูกโครงการ), **สำเนาผู้ซื้อ+`seller` jsonb แช่แข็งตอนออกเอกสาร**, `vat_mode`, `vat_rate`, `subtotal`/`vat_amount`/`total` (trigger คิดจากบรรทัด ไม่รับจากหน้าจอ), `amount_words`, `txn_id`, `source_document_id` · ออกเลขผ่าน `issue_document()` ที่ `for update` ก่อนอ่านสถานะ | **owner เท่านั้น** |
 | `document_lines` | บรรทัดรายการ: `seq`, `description`, `qty`, `unit`, `unit_price` (**ตัวเลขที่เจ้าของพิมพ์** — โหมด inclusive คือรวม VAT แล้ว), `line_total` (ยอดก่อน VAT ที่ปัดแล้ว · Σ = `subtotal` เป๊ะ) | **owner เท่านั้น** |
+| `letter_photos` | รูปแนบท้ายหนังสือ (R19 · 23 ต.ค. 2569): `letter_id` (cascade), `seq`, `object_key` (`letters/…` ใน R2), `caption`, `byte_size` · หัวข้อ/การจัดวางอยู่บน `letters.photo_title/photo_layout` · เขียนผ่าน `PUT /api/letters/[id]/photos` (แทนทั้งชุด) | **owner เท่านั้น** |
 | `project_files` | คลังเอกสาร (R21): `category` (`contract`/`drawing`/`boq`/`certificate`/`other`), `title`, `site_id` (on delete set null), `doc_no`, `doc_date`, `note`, `file_name`, `object_key` (`files/…` ใน R2), `content_type`, `byte_size` · ไฟล์ห้ามเปลี่ยน (`guard_project_file`) | **owner เท่านั้น** |
 | `audit_log` | `table_name`, `row_id`, `action`, `actor`, `before` jsonb, `after` jsonb, `at`, **`mcp_key_id`** (มีค่า = AI ทำแทนเจ้าของ · **ไม่มี FK** โดยตั้งใจ ดู §17 ข้อ 19) · **`via_line`** (R16 · มาจาก GUC `app.via_line`) | **อ่านได้เฉพาะ owner · ไม่มี policy ให้ UPDATE/DELETE กับใครทั้งนั้น** |
 | `notifications` | `user_id`, `kind`, `title`, `body`, `link`, `read_at` | ของตัวเอง |
@@ -1074,6 +1075,11 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
    · **แก้:** `BuddhistYearFix` ใน `(app)/layout.tsx` ดัก `input`/`change` ระดับ document ช่วง capture (ก่อน React อ่านค่า)
      แล้วเขียนปี − 543 กลับลงช่องวันที่/เดือนทุกช่อง (`lib/buddhist-year.ts` · ปี 2400–2799) · ด่านที่เซิร์ฟเวอร์ยังอยู่ครบ
    · **บทเรียน:** ข้อความ error ที่บอกวิธีแก้ ต้องลองทำตามจริงหนึ่งรอบ — คำแนะนำที่ทำตามแล้วไม่หายคือทางตัน
+
+42. **`e.target.value = ''` หลังเรียกฟังก์ชัน async ที่ `await` ก่อนอ่าน `FileList` = ได้รายการว่าง** (เจ้าของแจ้ง 23 ต.ค. 2569)
+   · ช่องรูปแนบหนังสือ: `onChange={() => { void add(e.target.files); e.target.value = '' }}` แล้ว `add` ไป `await import(…)` ก่อน `Array.from(files)`
+   · `FileList` เป็นของสดผูกกับช่อง — ล้างช่องแล้วมันว่างตาม · อาการ: เลือกรูปแล้ว "ไม่ขึ้น" ไม่มี error ไม่มี toast
+   · **แก้:** `Array.from(files)` บรรทัดแรกของฟังก์ชัน ก่อน `await` ใด ๆ · ตรวจด้วย Playwright `setInputFiles` (โค้ดเดิม 0 รูป · ใหม่ 2 รูป)
 
 ## 18. ตัวแปรสภาพแวดล้อม
 

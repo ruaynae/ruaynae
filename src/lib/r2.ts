@@ -79,6 +79,16 @@ export function presignGetFile(key: string, fileName: string, contentType: strin
   )
 }
 
+/** อ่านไฟล์ทั้งก้อนจาก R2 (ไฟล์เล็กเท่านั้น เช่นรูปแนบหนังสือ ≤ 0.6 MB) · ไม่มีไฟล์ = null */
+export async function getObjectBytes(key: string): Promise<Uint8Array | null> {
+  try {
+    const r = await r2().send(new GetObjectCommand({ Bucket: r2Bucket(), Key: key }))
+    return r.Body ? await r.Body.transformToByteArray() : null
+  } catch {
+    return null
+  }
+}
+
 export async function deleteObject(key: string) {
   await r2().send(new DeleteObjectCommand({ Bucket: r2Bucket(), Key: key }))
 }
