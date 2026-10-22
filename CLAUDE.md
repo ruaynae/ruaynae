@@ -676,6 +676,8 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
         · `progress-core.ts` ห้าม import ค่าจากไฟล์อื่น (unit test รันด้วย node ตรง ๆ ซึ่ง resolve path ไม่มีนามสกุลไม่ได้) — `withW124` จึงถูกเรียกใน `readPlanFile`
         (แถวงานแรก → ขอบบนแถวรวม · `editAs="twoCell"` ยืด/หดตามแถว) · พื้นโปร่ง · แกน X ซ่อน · แกน % ขวา · plot area manual layout กว้าง `nW·6.2/(nW·6.2+5.5)`
         · เส้นประเขียว = วันส่งงวด (ชีตคำนวณแถว 10–13 · ทั้ง x และ y เป็น `#N/A` เมื่อยังไม่ส่ง) · ป้าย "งวด k" ในแถวรวมใต้สัปดาห์นั้น
+      · **R20g (21 ต.ค. · คำขอเจ้าของ):** อัปโหลด BOQ แบบ **.xls** ได้ — `lib/boq/xls.ts` (SheetJS จาก `cdn.sheetjs.com` · รุ่น npm เก่ามีช่องโหว่)
+        · แยกชนิดจากไบต์แรก (`D0 CF 11 E0`) ไม่ใช่นามสกุล · โหลดเฉพาะตอนเจอ .xls · 🔴 สูตรอ้างช่องเดียวใช้ค่าช่องต้นทาง (เจอ .xls ที่แคชชื่องานเป็น 0)
       · unit test `tests/unit/boq-core.test.mjs` (ชีตจำลอง — ห้ามใส่ BOQ จริงของลูกค้าใน repo public) · ตารางตรวจรับ `docs/test-plan/R20-construction-plan.md`
 - [x] **R9 · รอบคำสั่งเจ้าของ 4 ก.ย. 2569** — เรียกหน่วยงานว่า "โครงการ" ทั้งระบบ · ปิดการ์ด
       "งานวันนี้" · ต้นทุนสะสมแยกสามก้อน (ค่าแรง/ค่าวัสดุ/อื่น ๆ) + ธง `categories.is_material`

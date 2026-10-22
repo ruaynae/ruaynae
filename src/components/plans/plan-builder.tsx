@@ -60,8 +60,8 @@ export function PlanBuilder() {
 
   async function onFile(file: File | undefined) {
     if (!file) return
-    if (!/\.xlsx$/i.test(file.name)) {
-      toast.error('รองรับเฉพาะไฟล์ Excel (.xlsx) — ถ้าเป็น .xls ให้เปิดแล้วบันทึกเป็น .xlsx ก่อน')
+    if (!/\.xlsx?$/i.test(file.name)) {
+      toast.error('รองรับเฉพาะไฟล์ Excel (.xlsx หรือ .xls)')
       return
     }
     setReading(true)
@@ -75,7 +75,7 @@ export function PlanBuilder() {
       toast.success(`อ่าน BOQ แล้ว · ${m.categories.reduce((s, c) => s + c.tasks.length, 0)} งาน`)
     } catch (e) {
       const code = e instanceof Error ? e.message : ''
-      toast.error(MESSAGES[code] ?? 'อ่านไฟล์ไม่ได้ ตรวจว่าเป็นไฟล์ BOQ (.xlsx) ที่เปิดใน Excel ได้')
+      toast.error(MESSAGES[code] ?? 'อ่านไฟล์ไม่ได้ ตรวจว่าเป็นไฟล์ BOQ (.xlsx / .xls) ที่เปิดใน Excel ได้ และไม่ได้ตั้งรหัสผ่าน')
     } finally {
       setReading(false)
     }
@@ -145,7 +145,7 @@ export function PlanBuilder() {
       <div className="min-w-0 flex-1">
         <div className="font-semibold text-ink break-words">{fileName || 'ยังไม่ได้เลือกไฟล์ BOQ'}</div>
         <div className="text-sm text-muted-token">
-          ไฟล์ .xlsx ที่มีแบบ ปร.4 / ปร.5 / ปร.6 · ลากไฟล์มาวางตรงนี้ก็ได้ · ไฟล์ไม่ถูกส่งขึ้นเซิร์ฟเวอร์
+          ไฟล์ .xlsx หรือ .xls ที่มีแบบ ปร.4 / ปร.5 / ปร.6 · ลากไฟล์มาวางตรงนี้ก็ได้ · ไฟล์ไม่ถูกส่งขึ้นเซิร์ฟเวอร์
         </div>
       </div>
       <span className={`btn-primary cursor-pointer ${reading ? 'pointer-events-none opacity-60' : ''}`}>
@@ -154,7 +154,7 @@ export function PlanBuilder() {
       </span>
       <input
         type="file"
-        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
         className="sr-only"
         onChange={(e) => { void onFile(e.target.files?.[0]); e.target.value = '' }}
       />

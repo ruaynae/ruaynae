@@ -9,6 +9,7 @@ import {
   type Grid,
 } from './core'
 import { addLineCharts } from './chart-xml'
+import { isXls, readXlsGrids } from './xls'
 import { readProgress } from './progress-core'
 import {
   LP, LW, addProgressSheets, periodWeeksRange, progressLayout, summaryPeriodCell, summaryPeriodRange, taskPeriodRange,
@@ -61,7 +62,9 @@ export function toGrid(ws: Worksheet): Grid {
   return { name: ws.name, rows, cols, v, w: (r, c) => norm(v(r, c)) }
 }
 
+/** BOQ .xlsx หรือ .xls (ดูจากไบต์แรกของไฟล์ ไม่ใช่นามสกุล) */
 export async function readBoqFile(buf: ArrayBuffer) {
+  if (isXls(buf)) return parseBoq(await readXlsGrids(buf))
   const ExcelJS = await loadExcel()
   const wb = new ExcelJS.Workbook()
   await wb.xlsx.load(buf)
