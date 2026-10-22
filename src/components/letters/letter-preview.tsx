@@ -62,7 +62,7 @@ export function LetterPreview({ copies = 1, ...props }: Omit<ComponentProps<type
         {copies === 2 && (
           <div className="letter-copy">
             <p className="print-hide mb-2 mt-4 text-center text-sm font-semibold text-ink-2">— แผ่นที่ 2 —</p>
-            <LetterPaper {...props} copyLabel="สำเนาคู่ฉบับ" breakAt={null} />
+            <LetterPaper {...props} photos={[]} copyLabel="สำเนาคู่ฉบับ" breakAt={null} />
           </div>
         )}
       </div>
