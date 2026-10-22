@@ -13,6 +13,7 @@ import { LetterPreview } from '@/components/letters/letter-preview'
 import { LetterTemplatePicker } from '@/components/letters/letter-template-picker'
 import { LetterQuickFields } from '@/components/letters/letter-quick-fields'
 import { LetterRefPicker } from '@/components/letters/letter-ref-picker'
+import { LetterContractPicker, putContractRef, type SiteContract } from '@/components/letters/letter-contract-picker'
 import { LetterPhotos, type LetterPhoto } from '@/components/letters/letter-photos'
 import { LETTER_TEMPLATES, findLetterTemplate } from '@/lib/letter-templates'
 import {
@@ -25,6 +26,8 @@ export type SeriesOption = {
   id: string
   label: string
   prefix: string
+  /** โครงการที่ผูกกับชุดเลข — กล่องอ้างถึงสัญญาโชว์โครงการนี้ก่อน */
+  siteId: string | null
   recipient: string
   contractRef: string
   intro: string
@@ -88,6 +91,7 @@ export function LetterForm({
   mode,
   series,
   entries: initialEntries,
+  contracts,
   letterhead,
   logoUrl,
   today,
@@ -97,6 +101,7 @@ export function LetterForm({
   mode: 'new' | 'edit'
   series: SeriesOption[]
   entries: RegisterEntry[]
+  contracts: SiteContract[]
   letterhead: Letterhead
   logoUrl: string | null
   today: string
@@ -110,6 +115,9 @@ export function LetterForm({
   const [savedId, setSavedId] = useState<string | null>(mode === 'edit' ? initial?.id ?? null : null)
   const [busy, setBusy] = useState<null | 'docx' | 'print' | 'delete'>(null)
   const [refOpen, setRefOpen] = useState(false)
+  const [contractOpen, setContractOpen] = useState(false)
+  /** พิมพ์/ดาวน์โหลด 2 ฉบับ — ต้นฉบับยื่นหน่วยงาน · สำเนาให้เจ้าหน้าที่เซ็นรับแล้วเก็บกลับมา (เจ้าของขอ 22 ต.ค. 2569) */
+  const [copies, setCopies] = useState<1 | 2>(2)
   const [askDelete, setAskDelete] = useState(false)
   const [photos, setPhotos] = useState<LetterPhoto[]>([])
   const [photoTitle, setPhotoTitle] = useState('')
@@ -297,6 +305,7 @@ export function LetterForm({
       fd.append('captions', JSON.stringify(photos.map((p) => p.caption)))
       fd.append('photoTitle', photoTitle)
       fd.append('photoLayout', photoLayout)
+      fd.append('copies', String(copies))
       const r = await fetch(`/api/letters/${id}/docx`, { method: 'POST', body: fd })
       if (!r.ok) {
         const j = await r.json().catch(() => ({}))
@@ -501,9 +510,14 @@ export function LetterForm({
               label="อ้างถึง"
               hint="บรรทัดละ 1 รายการ ไม่ต้องใส่เลขข้อ"
               extra={
-                <button type="button" onClick={() => setRefOpen(true)} className="btn-ghost -my-1 px-2 py-1 text-xs text-brand">
-                  <Plus className="size-3.5" /> อ้างถึงหนังสือในทะเบียน
-                </button>
+                <span className="flex flex-wrap justify-end gap-x-1">
+                  <button type="button" onClick={() => setContractOpen(true)} className="btn-ghost -my-1 px-2 py-1 text-xs text-brand">
+                    <Plus className="size-3.5" /> อ้างถึงสัญญาของโครงการ
+                  </button>
+                  <button type="button" onClick={() => setRefOpen(true)} className="btn-ghost -my-1 px-2 py-1 text-xs text-brand">
+                    <Plus className="size-3.5" /> อ้างถึงหนังสือในทะเบียน
+                  </button>
+                </span>
               }
             >
               <textarea id="lf-refs" rows={2} value={d.refs} onChange={(e) => set('refs', e.target.value)} className="input-base" />
@@ -542,6 +556,13 @@ export function LetterForm({
               <input type="checkbox" checked={d.showReceipt} onChange={(e) => set('showReceipt', e.target.checked)} className="size-4 accent-brand" />
               มีกล่อง &ldquo;รับเอกสารแล้ว ลงชื่อ… วันที่…&rdquo; มุมขวาล่าง
             </label>
+            <label className="flex items-start gap-2.5 text-sm text-ink">
+              <input type="checkbox" checked={copies === 2} onChange={(e) => setCopies(e.target.checked ? 2 : 1)} className="mt-0.5 size-4 shrink-0 accent-brand" />
+              <span>
+                พิมพ์ 2 ฉบับ: <b>ต้นฉบับ</b> + <b>สำเนา</b>
+                <span className="block text-xs text-muted-token">สำเนาให้เจ้าหน้าที่เซ็นรับในกล่อง &ldquo;รับเอกสารแล้ว&rdquo; แล้วนำกลับมาเก็บ · ใช้ทั้งปุ่มพิมพ์และไฟล์ Word</span>
+              </span>
+            </label>
           </section>
 
           <details className="card-surface p-4" open={photos.length > 0 || undefined}>
@@ -566,6 +587,7 @@ export function LetterForm({
         <div className="min-w-0 lg:sticky lg:top-4">
           <p className="print-hide mb-2 text-sm font-semibold text-ink-2">ตัวอย่างหนังสือ (A4)</p>
           <LetterPreview
+            copies={copies}
             letter={paper}
             logoUrl={logoUrl}
             photos={photos.map((p) => ({ url: p.url, caption: p.caption }))}
@@ -574,6 +596,14 @@ export function LetterForm({
           />
         </div>
       </div>
+
+      <LetterContractPicker
+        open={contractOpen}
+        onOpenChange={setContractOpen}
+        contracts={contracts}
+        preferSiteId={series.find((x) => x.id === d.seriesId)?.siteId ?? null}
+        onPick={(line) => setD((p) => ({ ...p, refs: putContractRef(p.refs, line) }))}
+      />
 
       <LetterRefPicker
         open={refOpen}

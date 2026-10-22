@@ -2,6 +2,7 @@
 
 import { bahtText } from '@/lib/baht-text'
 import type { LetterTemplate } from '@/lib/letter-templates'
+import { isoFromThaiDate, thaiDate } from '@/lib/letters'
 
 /**
  * ขั้นที่ 2 — ช่องเฉพาะของแบบที่เลือก (ครั้งที่ · งาน · ช่วงวันที่ · จำนวนเงิน …)
@@ -35,7 +36,23 @@ export function LetterQuickFields({
                 </span>
               )}
             </label>
-            {f.type === 'select' ? (
+            {f.type === 'date' ? (
+              <>
+                {/* ปฏิทิน (เจ้าของขอ 22 ต.ค. 2569) — ค่าที่เก็บยังเป็นข้อความไทย "3 พฤศจิกายน 2569" เหมือนเดิม */}
+                <input
+                  id={id}
+                  type="date"
+                  value={isoFromThaiDate(v)}
+                  onChange={(e) => onChange(f.k, e.target.value ? thaiDate(e.target.value) : '')}
+                  className="input-base"
+                />
+                {v.trim() !== '' && (
+                  <p className="mt-1 text-xs text-muted-token">
+                    {isoFromThaiDate(v) ? `ในหนังสือ: ${v}` : `ค่าเดิม "${v}" — เลือกวันจากปฏิทินใหม่`}
+                  </p>
+                )}
+              </>
+            ) : f.type === 'select' ? (
               <select id={id} value={v} onChange={(e) => onChange(f.k, e.target.value)} className="input-base">
                 {(f.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
               </select>

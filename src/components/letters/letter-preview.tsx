@@ -17,7 +17,7 @@ const BOTTOM = 72
  * cascading render ที่ lint ของ React 19 ถือเป็น error (§17 ข้อ 16) · ตัดบรรทัดภาษาไทย
  * รู้ได้จากเบราว์เซอร์เท่านั้น จึงต้องวัดหลังวาดทุกครั้งที่ข้อความเปลี่ยน
  */
-export function LetterPreview(props: Omit<ComponentProps<typeof LetterPaper>, 'breakAt'>) {
+export function LetterPreview({ copies = 1, ...props }: Omit<ComponentProps<typeof LetterPaper>, 'breakAt' | 'copyLabel'> & { copies?: 1 | 2 }) {
   const boxRef = useRef<HTMLDivElement>(null)
   const [zoom, setZoom] = useState(0.6)
   const [breakAt, setBreakAt] = useState<number | null>(null)
@@ -52,8 +52,14 @@ export function LetterPreview(props: Omit<ComponentProps<typeof LetterPaper>, 'b
   return (
     <div ref={boxRef} className="w-full">
       <div className="letter-zoom" style={{ ['--lz' as string]: zoom }}>
-        <LetterPaper {...props} breakAt={breakAt} />
+        <LetterPaper {...props} copyLabel={copies === 2 ? 'ต้นฉบับ' : null} breakAt={breakAt} />
       </div>
+      {/* ฉบับสำเนา — ซ่อนบนจอ (เหมือนฉบับแรกทุกตัวอักษร) โผล่เฉพาะตอนพิมพ์ ขึ้นหน้าใหม่ */}
+      {copies === 2 && (
+        <div className="letter-copy">
+          <LetterPaper {...props} copyLabel="สำเนา" breakAt={null} />
+        </div>
+      )}
     </div>
   )
 }

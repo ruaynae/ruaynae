@@ -71,6 +71,18 @@ export function thaiDate(iso: string): string {
   return p ? `${p.d} ${MONTHS_TH[p.m - 1]} ${p.y + 543}` : ''
 }
 
+/** `20 ตุลาคม 2569` → `2026-10-20` (ช่องปฏิทินของช่องเฉพาะเรื่อง) · อ่านไม่ออก = `''` */
+export function isoFromThaiDate(text: string): string {
+  const m = /^\s*(\d{1,2})\s+(\S+)\s+(\d{4})\s*$/.exec(text)
+  const mi = m ? MONTHS_TH.indexOf(m[2] as (typeof MONTHS_TH)[number]) : -1
+  if (!m || mi < 0) return ''
+  const y = Number(m[3]) - 543
+  const iso = `${y}-${String(mi + 1).padStart(2, '0')}-${m[1].padStart(2, '0')}`
+  // `2026-02-31` แปลงเป็น Date ได้ (เลื่อนไป 3 มี.ค.) — เทียบกลับว่ายังเป็นวันเดิม
+  const ok = new Date(`${iso}T00:00:00Z`).toISOString().startsWith(iso)
+  return ok ? iso : ''
+}
+
 /** บรรทัดวันที่บนกระดาษ — เว้นสองช่องรอบเลขวันตามต้นฉบับ */
 export function letterDateLine(iso: string): string {
   const p = parseIso(iso)

@@ -32,6 +32,7 @@ export function LetterPaper({
   photoTitle = '',
   photoLayout = '1',
   breakAt = null,
+  copyLabel = null,
 }: {
   letter: LetterPaperData
   logoUrl: string | null
@@ -40,6 +41,8 @@ export function LetterPaper({
   photoLayout?: '1' | '2'
   /** ตำแหน่ง (px จากขอบบนกระดาษ) ที่เนื้อหาจะเลยไปหน้า 2 · null = ไม่เลย */
   breakAt?: number | null
+  /** "ต้นฉบับ" / "สำเนา" ชิดขวาบรรทัดเลขที่ — ตรงกับไฟล์ Word · null = ไม่มีป้าย */
+  copyLabel?: string | null
 }) {
   const lh = letter.letterhead
   const rows = [
@@ -61,7 +64,10 @@ export function LetterPaper({
           <p className="lt-addr">{lh.address || ' '}</p>
         </div>
         <p className="lt-gap lt-blank" />
-        <p className="lt-b">เลขที่ {letter.letterNo}</p>
+        <p className="lt-b">
+          เลขที่ {letter.letterNo}
+          {copyLabel && <span className="lt-copy">{copyLabel}</span>}
+        </p>
         <p className="lt-b lt-date">{letterDateLine(letter.date)}</p>
         <p className="lt-b lt-blank" />
 
