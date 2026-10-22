@@ -29,7 +29,8 @@ export function LetterPreview({ copies = 1, ...props }: Omit<ComponentProps<type
       const sheet = box.querySelector<HTMLElement>('[data-letter-page="1"]')
       if (!sheet) return
       const flow = Array.from(sheet.children).filter(
-        (el): el is HTMLElement => el instanceof HTMLElement && !el.classList.contains('lt-break'),
+        (el): el is HTMLElement =>
+          el instanceof HTMLElement && !['lt-break', 'lt-receipt', 'lt-copy'].some((c) => el.classList.contains(c)),
       )
       const last = flow[flow.length - 1]
       const bottom = last ? last.offsetTop + last.offsetHeight : 0

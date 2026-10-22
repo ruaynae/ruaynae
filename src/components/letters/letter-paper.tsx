@@ -100,12 +100,10 @@ export function LetterPaper({
         <p className="lt-sig">({lh.signerName || '……………………………………'})</p>
         <p className="lt-sig">{letter.signerTitle || ' '}</p>
         {letter.showReceipt && (
-          <div className="lt-receipt-anchor">
-            <div className="lt-receipt">
-              <div>รับเอกสารแล้ว</div>
-              <div>ลงชื่อ...................................</div>
-              <div>วันที่ ........................</div>
-            </div>
+          <div className="lt-receipt">
+            <div>รับเอกสารแล้ว</div>
+            <div>ลงชื่อ...................................</div>
+            <div>วันที่ ........................</div>
           </div>
         )}
 

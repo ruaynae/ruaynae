@@ -576,9 +576,10 @@
     position: absolute; top: 24px; left: 0; right: 0; margin: 0;
     text-align: center; font-weight: 700;
   }
-  .letter-sheet .lt-receipt-anchor { position: relative; height: 24pt; margin: 0; }
+  /* กล่อง "รับเอกสารแล้ว" ชิดมุมล่างขวาของพื้นที่พิมพ์ (ขอบล่าง 0.75″ · ขวา 1″) — ไม่กินบรรทัด
+     หนังสือที่เต็มหน้าจึงไม่ล้นไปหน้า 2 เพราะกล่อง · ตรงกับไฟล์ Word (`RECEIPT_RUN`) */
   .letter-sheet .lt-receipt {
-    position: absolute; left: 364.2pt; top: 3.6pt; width: 139.1pt; height: 77pt;
+    position: absolute; right: 96px; bottom: 72px; width: 139.1pt; height: 77pt;
     padding: 3.6pt 7.2pt; border: 0.75pt solid #000; background: #fff;
     font-size: 14pt; line-height: 1.5; white-space: nowrap; overflow: hidden;
   }
