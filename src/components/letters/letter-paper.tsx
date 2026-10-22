@@ -41,7 +41,7 @@ export function LetterPaper({
   photoLayout?: '1' | '2'
   /** ตำแหน่ง (px จากขอบบนกระดาษ) ที่เนื้อหาจะเลยไปหน้า 2 · null = ไม่เลย */
   breakAt?: number | null
-  /** "ต้นฉบับ" / "สำเนา" ชิดขวาบรรทัดเลขที่ — ตรงกับไฟล์ Word · null = ไม่มีป้าย */
+  /** "สำเนาคู่ฉบับ" กลางหน้าบนสุด — ตรงกับไฟล์ Word · null = ไม่มีป้าย */
   copyLabel?: string | null
 }) {
   const lh = letter.letterhead
@@ -55,6 +55,7 @@ export function LetterPaper({
   return (
     <>
       <article className="paper letter-sheet" data-letter-page="1">
+        {copyLabel && <p className="lt-copy">{copyLabel}</p>}
         <div className="lt-head">
           {logoUrl && (
             // eslint-disable-next-line @next/next/no-img-element -- ลิงก์ R2 ที่เซ็นแล้ว ห้ามผ่าน next/image (§9)
@@ -64,10 +65,7 @@ export function LetterPaper({
           <p className="lt-addr">{lh.address || ' '}</p>
         </div>
         <p className="lt-gap lt-blank" />
-        <p className="lt-b">
-          เลขที่ {letter.letterNo}
-          {copyLabel && <span className="lt-copy">{copyLabel}</span>}
-        </p>
+        <p className="lt-b">เลขที่ {letter.letterNo}</p>
         <p className="lt-b lt-date">{letterDateLine(letter.date)}</p>
         <p className="lt-b lt-blank" />
 

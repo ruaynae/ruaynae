@@ -131,10 +131,21 @@ export function letterDocumentXml(input: LetterDocxInput) {
     const { body, rels } = letterBodyXml(input, null)
     return { xml: wrapDocument(body), rels }
   }
-  const a = letterBodyXml(input, 'ต้นฉบับ')
-  const b = letterBodyXml(input, 'สำเนา')
+  // ต้นฉบับยื่นหน่วยงาน: ไม่มีป้าย ไม่มีกล่องรับเอกสาร · สำเนาคู่ฉบับ: ป้ายกลางบนสุด + กล่องให้เจ้าหน้าที่เซ็นรับ (เจ้าของสั่ง 22 ต.ค. 2569)
+  const a = letterBodyXml({ ...input, letter: { ...input.letter, showReceipt: false } }, null)
+  const b = letterBodyXml(input, COPY_LABEL)
   return { xml: wrapDocument(a.body + asSecondCopy(b.body)), rels: a.rels }
 }
+
+export const COPY_LABEL = 'สำเนาคู่ฉบับ'
+
+/**
+ * ป้ายกลางหน้า บนสุดของกระดาษ — ย่อหน้าแบบกรอบ (`framePr`) วางตามพิกัดหน้ากระดาษ ไม่ดันบรรทัดอื่น
+ * หนังสือจึงตัดหน้าเหมือนต้นฉบับทุกบรรทัด · y = 0.25″ จากขอบบน (เหนือหัวกระดาษ)
+ */
+const copyBanner = (label: string) =>
+  para('<w:framePr w:w="9026" w:wrap="around" w:vAnchor="page" w:hAnchor="margin" w:xAlign="center" w:y="360"/>' + CENTER,
+    runs(label, { b: true }), { b: true })
 
 const wrapDocument = (body: string) =>
   `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n${DOC_OPEN}${body}${SECTION}</w:body></w:document>`
@@ -147,16 +158,14 @@ function letterBodyXml({ letter, logo, photos, photoTitle, photoLayout }: Letter
   const [lcx, lcy] = logo ? fit(logo, 1149144 / EMU, 1158843 / EMU) : [0, 0]
   x.push(para('<w:pStyle w:val="Header"/><w:ind w:firstLine="1440"/>',
     (logo ? logoAnchor(lcx, lcy) : '') + runs(lh.companyName, { b: true, sz: 40 }), { b: true, sz: 40 }))
+  if (copyLabel) x.push(copyBanner(copyLabel))
   // ที่อยู่กึ่งกลางด้วยแท็บกลางของสไตล์ Header (4513 = กึ่งกลางพื้นที่พิมพ์) + เส้นใต้เต็มความกว้าง
   x.push(para('<w:pStyle w:val="Header"/><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="auto"/></w:pBdr>',
     runs(`\t${lh.address}`, { sz: 28 }), { sz: 28 }))
   x.push(para(spacing(), '', { b: true, sz: 30 }))
 
   // ── เลขที่ · วันที่ ──────────────────────────────────────────────────
-  // ป้าย "ต้นฉบับ"/"สำเนา" ชิดขวาบรรทัดเลขที่ (แท็บขวา) — ไม่เพิ่มบรรทัด หนังสือจึงไม่ล้นไปหน้า 2 เพราะป้าย
-  x.push(copyLabel
-    ? para('<w:tabs><w:tab w:val="right" w:pos="9026"/></w:tabs>' + spacing(), runs(`เลขที่ ${letter.letterNo}\t${copyLabel}`, { b: true }), { b: true })
-    : para(spacing(), runs(`เลขที่ ${letter.letterNo}`, { b: true }), { b: true }))
+  x.push(para(spacing(), runs(`เลขที่ ${letter.letterNo}`, { b: true }), { b: true }))
   x.push(para(spacing() + '<w:jc w:val="right"/>', runs(letterDateLine(letter.date), { b: true }), { b: true }))
   x.push(para(spacing(), '', { b: true }))
 

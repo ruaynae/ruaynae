@@ -52,14 +52,19 @@ export function LetterPreview({ copies = 1, ...props }: Omit<ComponentProps<type
   return (
     <div ref={boxRef} className="w-full">
       <div className="letter-zoom" style={{ ['--lz' as string]: zoom }}>
-        <LetterPaper {...props} copyLabel={copies === 2 ? 'ต้นฉบับ' : null} breakAt={breakAt} />
+        {/* 2 ฉบับ: ต้นฉบับไม่มีป้ายและไม่มีกล่องรับเอกสาร · สำเนาคู่ฉบับมีป้ายกลางบน + กล่องให้เจ้าหน้าที่เซ็นรับ */}
+        <LetterPaper
+          {...props}
+          letter={copies === 2 ? { ...props.letter, showReceipt: false } : props.letter}
+          breakAt={breakAt}
+        />
+        {copies === 2 && (
+          <div className="letter-copy">
+            <p className="print-hide mb-2 mt-4 text-center text-sm font-semibold text-ink-2">— แผ่นที่ 2 —</p>
+            <LetterPaper {...props} copyLabel="สำเนาคู่ฉบับ" breakAt={null} />
+          </div>
+        )}
       </div>
-      {/* ฉบับสำเนา — ซ่อนบนจอ (เหมือนฉบับแรกทุกตัวอักษร) โผล่เฉพาะตอนพิมพ์ ขึ้นหน้าใหม่ */}
-      {copies === 2 && (
-        <div className="letter-copy">
-          <LetterPaper {...props} copyLabel="สำเนา" breakAt={null} />
-        </div>
-      )}
     </div>
   )
 }
