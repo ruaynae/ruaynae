@@ -438,6 +438,78 @@ export type Database = {
         }
         Relationships: []
       }
+      construction_plans: {
+        Row: {
+          categories: Json
+          created_at: string
+          created_by: string | null
+          days: number
+          factor: number | null
+          id: string
+          name: string
+          periods: number
+          progress: Json
+          project: Json
+          site_id: string | null
+          source_file: string
+          start_date: string
+          updated_at: string
+          vat: number | null
+          w124: boolean
+        }
+        Insert: {
+          categories: Json
+          created_at?: string
+          created_by?: string | null
+          days: number
+          factor?: number | null
+          id?: string
+          name: string
+          periods: number
+          progress?: Json
+          project?: Json
+          site_id?: string | null
+          source_file?: string
+          start_date: string
+          updated_at?: string
+          vat?: number | null
+          w124?: boolean
+        }
+        Update: {
+          categories?: Json
+          created_at?: string
+          created_by?: string | null
+          days?: number
+          factor?: number | null
+          id?: string
+          name?: string
+          periods?: number
+          progress?: Json
+          project?: Json
+          site_id?: string | null
+          source_file?: string
+          start_date?: string
+          updated_at?: string
+          vat?: number | null
+          w124?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "construction_plans_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "construction_plans_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customers: {
         Row: {
           address: string | null

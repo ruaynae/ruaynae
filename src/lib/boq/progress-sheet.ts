@@ -589,3 +589,38 @@ export const summaryPeriodCell = (layout: ProgressLayout, column: 'C' | 'H' | 'J
   ref(SHEET.summary, `$${column}$${layout.summary.period0 + k}`)
 export const summaryPeriodRange = (layout: ProgressLayout, column: 'C' | 'H' | 'J') =>
   ref(SHEET.summary, `$${column}$${layout.summary.period0}:$${column}$${layout.summary.period0 + layout.periods - 1}`)
+
+/**
+ * เติมผลงานที่กรอกบนเว็บ (R20i) ลงช่องกรอกของไฟล์ — วันที่ส่งงวดในชีตสรุป และ % ในคอลัมน์ "งวดที่ k" ของชีตหมวด
+ * · ช่องที่ไม่ได้กรอกปล่อยว่างเหมือนเดิม (= เท่างวดก่อน) · สูตรทั้งไฟล์คำนวณต่อเองตอนเปิดใน Excel
+ * · คีย์รายการ `<หมวด>.<งาน>.<รายการ>` นับจาก `categories` ทั้งก้อน — เหมือน `plan-store.ts`
+ */
+export function fillProgress(
+  wb: Workbook,
+  layout: ProgressLayout,
+  categories: BoqCategory[],
+  progress: { dates: (string | null)[]; items: Record<string, (number | null)[]> },
+) {
+  const summary = wb.getWorksheet(SHEET.summary)
+  progress.dates.slice(0, layout.periods).forEach((d, k) => {
+    if (d && summary) summary.getCell(`C${layout.summary.period0 + k}`).value = new Date(`${d}T00:00:00Z`)
+  })
+  categories.forEach((cat, ci) => {
+    const lc = layout.cats.find((x) => x.cat === cat)
+    const ws = lc && wb.getWorksheet(lc.sheet)
+    if (!lc || !ws) return
+    let j = -1
+    cat.tasks.forEach((t, ti) => {
+      if (!t.on) return
+      j += 1
+      t.items.forEach((_, ii) => {
+        const vals = progress.items[`${ci}.${ti}.${ii}`]
+        const row = lc.items[j]?.[ii]
+        if (!vals || row == null) return
+        vals.slice(0, layout.periods).forEach((v, k) => {
+          if (v != null) ws.getCell(`${col(P0 + k)}${row}`).value = v
+        })
+      })
+    })
+  })
+}

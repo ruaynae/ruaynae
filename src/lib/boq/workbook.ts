@@ -12,7 +12,7 @@ import { addLineCharts } from './chart-xml'
 import { isXls, readXlsGrids } from './xls'
 import { readProgress } from './progress-core'
 import {
-  LP, LW, addProgressSheets, periodWeeksRange, progressLayout, summaryPeriodCell, summaryPeriodRange, taskPeriodRange,
+  LP, LW, addProgressSheets, fillProgress, periodWeeksRange, progressLayout, summaryPeriodCell, summaryPeriodRange, taskPeriodRange,
 } from './progress-sheet'
 import {
   BOX, C, DATE_FMT, FONT, PCT, SHEET, addDays, baht, col, f, isoToDate, kit, monthBands, monthLabel, ref, thDateShort, type Style,
@@ -96,6 +96,8 @@ export type PlanInput = {
   start: string
   /** จำนวนงวดงานในแบบฟอร์มปริมาณงานที่แล้วเสร็จ */
   periods: number
+  /** ผลงานที่กรอกบนเว็บ (R20i) — เติมลงช่องกรอกของไฟล์ · ไม่ส่ง = แบบฟอร์มเปล่า */
+  progress?: { dates: (string | null)[]; items: Record<string, (number | null)[]> }
   /** ใส่การประเมินตาม ว.124 (ตารางในชีตสรุป + เส้นแดง/เส้นเทาในกราฟ) — เจ้าของเลือกต่องาน */
   w124: boolean
 }
@@ -118,6 +120,8 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
 
   const wb: Workbook = new ExcelJS.Workbook()
   wb.creator = 'RUAYNAE'
+  // ค่าที่แคชไว้ในสูตรเป็นของไฟล์เปล่า — ไฟล์ที่เติมผลงานจากเว็บต้องให้ Excel คำนวณใหม่ทั้งไฟล์ตอนเปิด
+  wb.calcProperties.fullCalcOnLoad = true
   const ws = wb.addWorksheet(SHEET.plan, {
     views: [{ state: 'frozen', xSplit: 6, ySplit: 9, showGridLines: false }],
     pageSetup: { orientation: 'landscape', paperSize: 8 as PaperSize /* A3 */, fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
@@ -349,6 +353,7 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
     layout, dist, start, days: p.days, project: P, planRows,
     planTotal: ref(SHEET.plan, `$${col(cBud)}$${T}`),
   })
+  if (p.progress) fillProgress(wb, layout, p.categories, p.progress)
 
   // ---- ชีตที่มาของทุกยอดในไฟล์ BOQ
   const ws2 = wb.addWorksheet('ที่มาจาก BOQ', { views: [{ showGridLines: false }] })

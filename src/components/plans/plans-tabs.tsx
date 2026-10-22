@@ -1,19 +1,21 @@
 'use client'
 
-import { useState } from 'react'
-import { CalendarRange, LineChart } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { CalendarRange, FolderOpen, LineChart } from 'lucide-react'
 import { PlanBuilder } from './plan-builder'
 import { ProgressTracker } from './progress-tracker'
 
 /**
- * สองงานของเมนูแผนงาน: สร้างแผนจาก BOQ (ครั้งเดียวตอนเริ่มโครงการ) · ติดตามผลงาน (ทุกสัปดาห์/ทุกงวด)
- * · ทั้งสองแท็บอยู่ในหน้า ไม่ล้างกันตอนสลับ — งานที่แก้ค้างในแท็บแรกไม่หาย
+ * สามงานของเมนูแผนงาน: แผนที่บันทึกไว้ (เปิดไปกรอกผลงานรายงวด) · สร้างแผนจาก BOQ (ครั้งเดียวตอนเริ่มโครงการ)
+ * · ติดตามผลงานจากไฟล์ Excel ที่กรอกนอกเว็บ
+ * · ทุกแท็บอยู่ในหน้า ไม่ล้างกันตอนสลับ — งานที่แก้ค้างในแท็บสร้างแผนไม่หาย
  */
-export function PlansTabs({ initial }: { initial: 'build' | 'track' }) {
+export function PlansTabs({ initial, saved }: { initial: 'saved' | 'build' | 'track'; saved: ReactNode }) {
   const [tab, setTab] = useState(initial)
   const TABS = [
+    { id: 'saved' as const, label: 'แผนงานที่บันทึกไว้', icon: FolderOpen },
     { id: 'build' as const, label: 'สร้างแผนงานจาก BOQ', icon: CalendarRange },
-    { id: 'track' as const, label: 'ติดตามผลงาน (แผนเทียบจริง)', icon: LineChart },
+    { id: 'track' as const, label: 'ติดตามผลงานจากไฟล์', icon: LineChart },
   ]
   return (
     <div className="min-w-0 space-y-4">
@@ -34,6 +36,7 @@ export function PlansTabs({ initial }: { initial: 'build' | 'track' }) {
           </button>
         ))}
       </div>
+      <div hidden={tab !== 'saved'}>{saved}</div>
       <div hidden={tab !== 'build'}><PlanBuilder /></div>
       <div hidden={tab !== 'track'}><ProgressTracker /></div>
     </div>

@@ -472,7 +472,7 @@ src/
     api/transactions/[id]/attachments/route.ts · api/attachments/[id]/route.ts
     api/uploads/sign/route.ts · api/uploads/[id]/route.ts
     api/cron/sweep-orphans/route.ts · api/cron/daily-digest/route.ts
-    (app)/plans              แผนงานก่อสร้างจาก BOQ (R20) · components/plans/* · lib/boq/{core,workbook,progress-sheet,xlsx-kit}.ts
+    (app)/plans              แผนงานก่อสร้างจาก BOQ (R20) · (list) · [id] · [id]/edit · components/plans/* · lib/boq/{core,workbook,progress-sheet,xlsx-kit,plan-store}.ts · api/plans
     (app)/materials           ใบขอเบิกวัสดุ (หัวหน้า/เจ้าของ) · new/request-form.tsx · (app)/pickup หน้าจอแคชเชียร์ (+ /pickup/done)
     components/materials/*    request-card · request-action · pickup-list · auto-refresh · lib/materials.ts (ชนิด+ข้อความ error)
     (app)/settings/loyverse   โทเคน Loyverse (Vault) · ทดสอบเชื่อมต่อ · เลือกร้าน+วิธีชำระเงิน "เบิกใช้งาน" · ดึงสินค้า (R18)
@@ -681,6 +681,10 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
       · **R20h (22 ต.ค. · BOQ แบบเก่าของเจ้าของ):** ชื่อชีตเชื่อไม่ได้ — แยกชนิดจาก**หัวชีต** (`แบบสรุป…` = แบบสรุปรายหมวด · `แบบแสดงรายการ ปริมาณงาน` = รายละเอียด · `แบบสรุปราคากลาง` = ปร.6)
         · แบบเก่า (ปร.1 (ก)/ปร.2 (ก)): รายละเอียดไม่มีก้อนสรุปหัวชีต · หมวด = ช่วงถึงแถว "รวมกลุ่มงาน…" ที่ยอดตรงแบบสรุป · งาน = หัวข้อเลขจำนวนเต็ม · Factor F/VAT อยู่คอลัมน์ถัดจากค่างานต้นทุนรายแถว
         · ครุภัณฑ์แบบเก่า: แถวแบบสรุป 1 แถว = รายการ 1 แถว → รวมเป็นหมวด "ค่าครุภัณฑ์จัดซื้อ" · 🔴 BOQ เดิม (แบบใหม่) ต้องอ่านได้ผลเดิมทุกไบต์ — เทียบด้วยโค้ดของ main ก่อน merge
+      · **R20i (22 ต.ค. · คำขอเจ้าของ "เซฟไว้ในเว็บ"):** ตาราง `construction_plans` (เจ้าของเท่านั้น · หมวด/งาน/รายการ + ผลงานเป็น jsonb ทั้งก้อน)
+        · ปุ่ม "บันทึกแผนงานไว้ในเว็บ" → `/plans/[id]` กรอก % แล้วเสร็จรายงวด + วันที่ส่งงวดบนเว็บ · S-Curve/ว.124 คิดทันทีด้วย `planReport()` (core.ts) **สูตรเดียวกับ `readProgress`**
+        · ดาวน์โหลด Excel พร้อมผลงานในช่องสีเหลือง (`fillProgress`) · แก้แผนที่ `/plans/[id]/edit` · ผูกโครงการได้ · 🔴 คีย์ผลงาน `หมวด.งาน.รายการ` นับรวมงานที่ปิด — ห้ามเรียงหมวด/งานใหม่ตอนแก้แผน
+        · PATCH ต้องส่ง `expectedUpdatedAt` (409 `PLAN_CHANGED`) · ตารางยังไม่มี = 503 `PLAN_TABLE_MISSING` · ⚠️ **migration `20261022090000_r20_saved_plans.sql` ยังไม่ได้ apply**
       · unit test `tests/unit/boq-core.test.mjs` (ชีตจำลอง — ห้ามใส่ BOQ จริงของลูกค้าใน repo public) · ตารางตรวจรับ `docs/test-plan/R20-construction-plan.md`
 - [x] **R9 · รอบคำสั่งเจ้าของ 4 ก.ย. 2569** — เรียกหน่วยงานว่า "โครงการ" ทั้งระบบ · ปิดการ์ด
       "งานวันนี้" · ต้นทุนสะสมแยกสามก้อน (ค่าแรง/ค่าวัสดุ/อื่น ๆ) + ธง `categories.is_material`
