@@ -107,7 +107,7 @@ type Block = { sheet: string; name: string; children: Child[]; sum: number }
 
 function amountCol(g: Grid): number {
   for (let r = 0; r < Math.min(g.rows, 14); r += 1)
-    for (let c = 0; c < g.cols; c += 1) if (/รวมค่าวัสดุ|รวมเป็นเงิน/.test(g.w(r, c))) return c
+    for (let c = 0; c < g.cols; c += 1) if (/รวมค่าวัสดุ|รวมเป็นเงิน|รวมค่าครุภัณฑ์/.test(g.w(r, c))) return c
   return 8
 }
 
@@ -185,21 +185,38 @@ type Pr5 = {
 function pr5Info(g: Grid): Pr5 {
   let costCol = 2
   let head = -1
-  hunt: for (let r = 0; r < Math.min(g.rows, 20); r += 1)
-    for (let c = 0; c < g.cols; c += 1)
-      if (/^ค่างานต้นทุน/.test(g.w(r, c))) {
-        costCol = c
-        head = r
-        break hunt
-      }
+  // หัวคอลัมน์ "ค่างานต้นทุน" ก่อน · แบบสรุปค่าครุภัณฑ์ (ปร.2 (ก) แบบเก่า) ใช้ "ค่าครุภัณฑ์"
+  for (const re of [/^ค่างานต้นทุน/, /^ค่าครุภัณ/]) {
+    hunt: for (let r = 0; r < Math.min(g.rows, 20); r += 1) {
+      // แถวหัวตารางเท่านั้น (มีช่อง "รายการ") — แบบเก่ามีหัวรอง "ค่างานต้นทุน" ใต้ชื่อแบบด้วย
+      let isHead = false
+      for (let c = 0; c < g.cols; c += 1) if (/^รายการ/.test(g.w(r, c))) isHead = true
+      if (!isHead) continue
+      for (let c = 0; c < g.cols; c += 1)
+        if (re.test(g.w(r, c))) {
+          costCol = c
+          head = r
+          break hunt
+        }
+    }
+    if (head >= 0) break
+  }
   const items: Pr5['items'] = []
   let factor: number | null = null
   let vat: number | null = null
+  let rowFactor: number | null = null
+  let rowVat: number | null = null
   for (let r = head + 1; r < g.rows; r += 1) {
     const a = g.w(r, 0)
     const b = g.w(r, 1)
     const cost = num(g.v(r, costCol))
-    if (/^\d+$/.test(a) && b && cost != null) items.push({ name: b, amount: cost })
+    if (/^\d+$/.test(a) && b && cost != null) {
+      items.push({ name: b.replace(/^[-–•]\s*/, ''), amount: cost })
+      // แบบเก่าไม่มีแถว "รวมค่างานต้นทุน" — Factor F / VAT อยู่คอลัมน์ถัดจากค่างานต้นทุนของแต่ละแถว
+      const d = num(g.v(r, costCol + 1))
+      if (d != null && d > 1 && d < 2) rowFactor = d
+      else if (d != null && d > 0 && d < 1) rowVat = d
+    }
     if (/รวมค่างานต้นทุน|รวมค่าครุภัณฑ์จัดซื้อทั้งหมด/.test(`${a} ${b}`)) {
       const d = num(g.v(r, costCol + 1))
       if (d != null) {
@@ -209,13 +226,57 @@ function pr5Info(g: Grid): Pr5 {
     }
   }
   let label = ''
-  for (let r = 0; r < Math.min(g.rows, 20) && !label; r += 1)
-    if (/^แบบสรุป/.test(g.w(r, 1))) label = g.w(r, 1)
-  return { sheet: g.name, label: label || g.w(0, 0) || g.name, project: projectName(g), items, factor, vat }
+  // คอลัมน์ B ก่อน (แบบ ปร.5 ปัจจุบัน) แล้วค่อยคอลัมน์อื่น (แบบเก่าวางหัวชีตที่คอลัมน์ A)
+  for (const c of [1, 0, 2, 3])
+    for (let r = 0; r < Math.min(g.rows, 20) && !label; r += 1) if (/^แบบสรุป/.test(g.w(r, c))) label = g.w(r, c)
+  return {
+    sheet: g.name, label: label || g.w(0, 0) || g.name, project: projectName(g), items,
+    factor: factor ?? rowFactor, vat: factor == null && vat == null ? rowVat : vat,
+  }
 }
 
 const isPr6 = (n: string) => /ปร\.?\s*6/.test(n)
 const isPr5 = (n: string) => /ปร\.?\s*5/.test(n)
+/** ข้อความหัวชีต (5 แถวแรก) — ชื่อชีตเชื่อไม่ได้: ไฟล์แบบเก่าตั้งชื่อ "ปร.4 (ก)" ให้แบบสรุปค่าก่อสร้าง */
+const headText = (g: Grid) => {
+  const t: string[] = []
+  for (let r = 0; r < Math.min(g.rows, 5); r += 1) for (let c = 0; c < Math.min(g.cols, 8); c += 1) t.push(g.w(r, c))
+  return t.join(' ')
+}
+const isDetailSheet = (g: Grid) => /แบบแสดงรายการ\s*ปริมาณงาน/.test(headText(g))
+const isPr6Sheet = (g: Grid) => isPr6(g.name) || /แบบสรุปราคากลาง/.test(headText(g))
+/** แบบสรุปรายหมวด (ปร.5 / ปร.1 (ก) / ปร.2 (ก) แบบเก่า) — ดูจากหัวชีตก่อนชื่อชีต */
+const isSummarySheet = (g: Grid) =>
+  !isPr6Sheet(g) && !isDetailSheet(g) && (isPr5(g.name) || /แบบสรุป\s*(ค่าก่อสร้าง|ค่าครุภัณฑ์|งานครุภัณฑ์)/.test(headText(g)))
+const stripDash = (s: string) => s.replace(/^[-–•]\s*/, '')
+
+/**
+ * แบบรายละเอียดที่ไม่มีก้อนสรุปหัวชีต (ปร.4 แบบเก่า): "กลุ่มงาน…" → "N งาน…" → รายการ → "รวม…"
+ * · คืนงานในช่วงแถว [from, to) — หัวข้อเลขจำนวนเต็มที่ไม่มีจำนวน = งานหนึ่งงาน · รายการ = แถวที่มีจำนวนและยอดเงิน
+ * · รายการก่อนหัวข้อแรก (ไม่มีหัวข้อเลย) รวมเป็นงานชื่อ `fallback`
+ */
+function sectionTasks(g: Grid, amt: number, from: number, to: number, fallback: string) {
+  const out: { name: string; items: BoqItem[] }[] = []
+  let cur: (typeof out)[number] | null = null
+  for (let r = from; r < to; r += 1) {
+    const code = g.w(r, 0)
+    const name = g.w(r, 1)
+    const qty = num(g.v(r, 2))
+    if (/^\d+$/.test(code) && name && qty == null) {
+      cur = { name: stripDash(name), items: [] }
+      out.push(cur)
+      continue
+    }
+    const a = num(g.v(r, amt))
+    if (!name || qty == null || a == null || a <= 0 || /^รวม/.test(name)) continue
+    if (!cur) {
+      cur = { name: fallback, items: [] }
+      out.push(cur)
+    }
+    cur.items.push({ code: isCode(code) ? code : '', name: stripDash(name), qty, unit: g.w(r, 3), amount: a })
+  }
+  return out.filter((t) => t.items.length)
+}
 const task = (name: string, amount: number, source: string, items: BoqItem[] = []): BoqTask => ({
   name, amount, source, offset: 0, dur: 1, on: true,
   items: items.length ? items : [{ code: '', name, qty: 1, unit: 'งาน', amount }],
@@ -225,8 +286,8 @@ export function parseBoq(sheets: Grid[]): BoqModel {
   const warnings: string[] = []
   const project: BoqProject = { name: '', owner: '', loc1: '', loc2: '', code: '', total: null }
 
-  const pr6 = sheets.find((s) => isPr6(s.name))
-  const info = pr6 ?? sheets.find((s) => isPr5(s.name)) ?? sheets[0]
+  const pr6 = sheets.find((s) => isPr6(s.name)) ?? sheets.find(isPr6Sheet)
+  const info = pr6 ?? sheets.find(isSummarySheet) ?? sheets[0]
   if (info) {
     project.name = projectName(info)
     const loc = findLabel(info, /สถานที่ก่อสร้าง/, 15)
@@ -253,7 +314,7 @@ export function parseBoq(sheets: Grid[]): BoqModel {
   }
 
   // ปร.5 ของโครงการนี้เท่านั้น — ไฟล์จริงมีสำเนา ปร.5 ของโครงการอื่นค้างอยู่
-  let pr5 = sheets.filter((s) => isPr5(s.name)).map(pr5Info).filter((p) => p.items.length)
+  let pr5 = sheets.filter(isSummarySheet).map(pr5Info).filter((p) => p.items.length)
   if (project.name) {
     const mine = pr5.filter((p) => !p.project || similarity(p.project, project.name) > 0.6)
     pr5
@@ -262,7 +323,8 @@ export function parseBoq(sheets: Grid[]): BoqModel {
     pr5 = mine
   }
 
-  const blocks = sheets.filter((s) => !isPr5(s.name) && !isPr6(s.name)).flatMap(pr4Blocks)
+  const details = sheets.filter((s) => !isSummarySheet(s) && !isPr6Sheet(s))
+  const blocks = details.flatMap(pr4Blocks)
   const close = (a: number, b: number) => Math.abs(a - b) <= Math.max(1, Math.abs(b) * 0.002)
   const used = new Set<Block>()
   const categories: BoqCategory[] = []
@@ -286,6 +348,50 @@ export function parseBoq(sheets: Grid[]): BoqModel {
     return best
   }
 
+  // แบบเก่า: ยอดของหมวดในแบบสรุป = แถว "รวมกลุ่มงาน…" ของแบบรายละเอียด · หมวดถัดไปเริ่มต่อจากแถวรวมของหมวดก่อน
+  const totals = details.map((g) => {
+    const amt = amountCol(g)
+    let head = 0
+    for (let r = 0; r < Math.min(g.rows, 15); r += 1) if (/^ลำดับ/.test(g.w(r, 0))) head = r
+    const rows: { r: number; amount: number }[] = []
+    for (let r = head + 1; r < g.rows; r += 1) {
+      const a = num(g.v(r, amt))
+      if (a != null && a > 0 && /^รวม/.test(g.w(r, 1) || g.w(r, 0))) rows.push({ r, amount: a })
+    }
+    return { g, amt, head, rows, used: [] as number[] }
+  })
+  const fromTotal = (amount: number, name: string) => {
+    for (const d of totals)
+      for (const t of d.rows) {
+        if (d.used.includes(t.r) || !close(t.amount, amount)) continue
+        const from = Math.max(d.head, ...d.used.filter((r) => r < t.r)) + 1
+        const secs = sectionTasks(d.g, d.amt, from, t.r, name)
+        const sum = secs.reduce((q, x) => q + x.items.reduce((w, it) => w + it.amount, 0), 0)
+        if (!secs.length || !close(sum, amount)) continue
+        d.used.push(t.r)
+        return { sheet: d.g.name, tasks: secs.map((x) => task(x.name, x.items.reduce((w, it) => w + it.amount, 0), d.g.name, x.items)) }
+      }
+    return null
+  }
+  /** แถวรายการเดียวในแบบรายละเอียดที่มียอดเท่ากับแถวในแบบสรุป (ครุภัณฑ์จัดซื้อแบบเก่า: สรุป 1 แถว = รายการ 1 แถว) */
+  const usedRows = new Set<string>()
+  const fromRow = (amount: number, name: string) => {
+    let best: { g: Grid; r: number; s: number } | null = null
+    for (const d of totals)
+      for (let r = d.head + 1; r < d.g.rows; r += 1) {
+        const nm = d.g.w(r, 1)
+        if (!nm || /^รวม/.test(nm) || num(d.g.v(r, 2)) == null || usedRows.has(`${d.g.name}:${r}`)) continue
+        const a = num(d.g.v(r, d.amt))
+        if (a == null || !close(a, amount)) continue
+        const sc = similarity(stripDash(nm), name)
+        if (!best || sc > best.s) best = { g: d.g, r, s: sc }
+      }
+    if (!best) return null
+    usedRows.add(`${best.g.name}:${best.r}`)
+    const g = best.g
+    return { sheet: g.name, item: { code: '', name: stripDash(g.w(best.r, 1)), qty: num(g.v(best.r, 2)) ?? 1, unit: g.w(best.r, 3), amount } }
+  }
+
   let factor: number | null = null
   let vat: number | null = null
   for (const p of pr5) {
@@ -293,9 +399,13 @@ export function parseBoq(sheets: Grid[]): BoqModel {
     if (p.vat) vat = p.vat
     const meta = { mult: p.factor ?? (p.vat ? 1 + p.vat : 1), group: p.label }
     let group: { block: Block; cat: BoqCategory } | null = null
+    let rowGroup: { sheet: string; cat: BoqCategory } | null = null
     for (const it of p.items) {
       // 1) ทั้งหมวดตรงกับก้อนสรุปของ ปร.4 → ใช้รายการย่อยของก้อนนั้น
-      const blk = pickBlock(it.amount, it.name)
+      // ก้อนที่ไม่มีรายละเอียดของงานเลยสักงาน อาจเป็นหัวข้อ "N งาน…" ของแบบเก่าที่ลูกเป็นรายการ — ลองแบบเก่าก่อน
+      let blk: Block | undefined = pickBlock(it.amount, it.name)
+      const old = blk && blk.children.every((ch) => !ch.items.length) ? fromTotal(it.amount, it.name) : null
+      if (old) blk = undefined
       if (blk) {
         used.add(blk)
         group = null
@@ -307,6 +417,13 @@ export function parseBoq(sheets: Grid[]): BoqModel {
         })
         continue
       }
+      // 1b) แบบเก่า: หมวดจบที่แถว "รวม…" ของแบบรายละเอียด
+      const grp = old ?? fromTotal(it.amount, it.name)
+      if (grp) {
+        group = null
+        categories.push({ ...meta, name: it.name, source: `${p.sheet} → ${grp.sheet}`, tasks: grp.tasks })
+        continue
+      }
       // 2) แถวของ ปร.5 คือรายการย่อยของก้อนหนึ่ง (ปร.5(ข) ครุภัณฑ์) → รวมใต้ชื่อหมวดของก้อน
       const hit = findChild(it.amount, it.name)
       if (hit) {
@@ -315,6 +432,16 @@ export function parseBoq(sheets: Grid[]): BoqModel {
           categories.push(group.cat)
         }
         group.cat.tasks.push(task(it.name, it.amount, hit.b.sheet, hit.ch.items))
+        continue
+      }
+      // 2b) แถวของแบบสรุป = รายการเดียวในแบบรายละเอียด → รวมเป็นหมวดเดียวตามชื่อแบบสรุป
+      const one = fromRow(it.amount, it.name)
+      if (one) {
+        if (!rowGroup || rowGroup.sheet !== p.sheet) {
+          rowGroup = { sheet: p.sheet, cat: { ...meta, name: p.label.replace(/^แบบสรุป\s*/, '') || it.name, source: `${p.sheet} → ${one.sheet}`, tasks: [] } }
+          categories.push(rowGroup.cat)
+        }
+        rowGroup.cat.tasks.push(task(it.name, it.amount, one.sheet, [one.item]))
         continue
       }
       // 3) ไม่มีรายละเอียด → หมวดนั้นเป็นงานเดียว
