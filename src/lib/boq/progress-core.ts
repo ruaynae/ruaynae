@@ -55,6 +55,9 @@ export type ProgressReport = {
   planCum: number[]
   /** มีค่าเฉพาะสัปดาห์ที่ส่งงวด — กราฟลากเส้นต่อจุดของแต่ละงวด */
   actualCum: (number | null)[]
+  /** แผนงานเร่งรัด / แผนการทำงานดำเนินการ สะสมรายสัปดาห์ — ไม่มีแผนเสริม = ไม่มีคีย์ */
+  fastCum?: number[]
+  opsCum?: number[]
   installments: Installment[]
   tasks: TaskProgress[]
   /** ไฟล์นี้สร้างแบบมีการประเมินตาม ว.124 */
@@ -152,6 +155,16 @@ export function readProgress(summary: Grid, sheets: Grid[], plan: Grid): Progres
   const planWeekly = Array.from({ length: weeks }, (_, k) => planRows.reduce((s, r) => s + (n(plan.v(r, 6 + k)) ?? 0), 0))
   let acc = 0
   const planCum = planWeekly.map((x) => (acc += x))
+  // แผนเสริม: แถวที่คอลัมน์ F เป็น "เร่งรัด" / "ดำเนินการ" (ป้ายเดียวกับ ALT_PLANS ใน core.ts)
+  const altCum = (tag: string) => {
+    const rows: number[] = []
+    for (let r = 0; r < plan.rows; r += 1) if (plan.w(r, 5) === tag) rows.push(r)
+    if (!rows.length) return undefined
+    let a = 0
+    return Array.from({ length: weeks }, (_, k) => (a += rows.reduce((s, r) => s + (n(plan.v(r, 6 + k)) ?? 0), 0)))
+  }
+  const fastCum = altCum('เร่งรัด')
+  const opsCum = altCum('ดำเนินการ')
   const weekOf = (t: number) => (start == null ? null : Math.max(1, Math.min(weeks, Math.floor((t - start) / DAY / 7) + 1)))
 
   /** สัดส่วนแผนของงาน ณ วัน t — เสร็จแล้ว 1 · กำลังทำ = วันที่ผ่านไป ÷ ระยะเวลา · ยังไม่เริ่ม 0 */
@@ -193,6 +206,8 @@ export function readProgress(summary: Grid, sheets: Grid[], plan: Grid): Progres
     planWeekly,
     planCum,
     actualCum,
+    ...(fastCum ? { fastCum } : {}),
+    ...(opsCum ? { opsCum } : {}),
     installments,
     tasks: tasks.map((t, ti) => ({
       code: t.code, name: t.name, category: t.category, amount: t.amount, weight: weight(ti),

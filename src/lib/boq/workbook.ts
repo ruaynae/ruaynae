@@ -1,8 +1,11 @@
 import type { Cell, CellValue, Font, PaperSize, Workbook, Worksheet } from 'exceljs'
 import {
+  ALT_PLANS,
   activeTasks,
   distribute,
+  hasAltPlans,
   norm,
+  spanOf,
   parseBoq,
   type BoqCategory,
   type BoqProject,
@@ -20,6 +23,11 @@ import {
 import { W124, w124Offset, withW124 } from './w124'
 
 export { isoToDate }
+
+/** สีของแผนเสริม: พื้นแท่งในตาราง · ตัวหนังสือ/เส้นกราฟ (ARGB) · แถวในชีตคำนวณที่กราฟอ่าน */
+const ALT_FILL = { fast: 'FF8E6CC9', ops: 'FF2A9D9A' } as const
+const ALT_INK = { fast: 'FF6A47A8', ops: 'FF1E7F7C' } as const
+const ALT_CALC_ROW = { fast: 17, ops: 19 } as const
 
 /**
  * อ่าน BOQ และเขียนไฟล์แผนงานด้วย exceljs — ทำในเบราว์เซอร์ทั้งหมด ไฟล์ไม่ออกจากเครื่อง
@@ -114,6 +122,10 @@ export type PlanInput = {
 export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
   const ExcelJS = await loadExcel()
   const dist = distribute(p.categories, p.days)
+  // แผนเสริม (เร่งรัด · ดำเนินการ) — งานละหนึ่งแถวต่อแผน ระหว่างแถว Plan กับ Actual
+  const alts = hasAltPlans(p.categories) ? ALT_PLANS.map((a) => ({ ...a, dist: distribute(p.categories, p.days, a.kind) })) : []
+  /** จำนวนแถวต่องาน: Plan · แผนเสริม · Actual */
+  const h = 2 + alts.length
   const start = isoToDate(p.start)
   const nW = dist.weeks
   const W0 = 7
@@ -167,6 +179,7 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
   put('E2', null, { fill: C.plan }); put('F2', 'แผนงาน', val)
   put('E3', null, { fill: C.act }); put('F3', 'ผลงานจริง', val)
   put('E4', null, { fill: C.input }); put('F4', 'ช่องกรอก', val)
+  alts.forEach((a, i) => { put(`E${5 + i}`, null, { fill: ALT_FILL[a.kind] }); put(`F${5 + i}`, `แผน${a.tag}`, { ...val, align: { wrapText: false } }) })
   const blank = (s: string) => s.trim() || '………………'
   const title: [string, Partial<Font>][] = [
     ['แผนงานก่อสร้าง', { size: 16, bold: true }],
@@ -202,7 +215,7 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
   const first = 10
   const T = first + p.categories.reduce((s, c) => {
     const n = c.tasks.filter((t) => t.on).length
-    return s + (n ? 1 + n * 2 : 0)
+    return s + (n ? 1 + n * h : 0)
   }, 0)
   let r = first
   let ti = 0
@@ -219,18 +232,19 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
     for (let k = 0; k < nW; k += 1) put(`${wl(k)}${cr}`, null, catFill)
     put(`${col(cPct)}${cr}`, null, catFill)
     const amt = tasks.reduce((s, t) => s + t.amount, 0)
-    put(`${col(cBud)}${cr}`, f(`SUM(${col(cBud)}${cr + 1}:${col(cBud)}${cr + tasks.length * 2})`, amt), { ...catFill, fmt: '#,##0.00' })
-    put(`${col(cW)}${cr}`, f(`SUM(${col(cW)}${cr + 1}:${col(cW)}${cr + tasks.length * 2})`, dist.total ? amt / dist.total : 0),
+    put(`${col(cBud)}${cr}`, f(`SUM(${col(cBud)}${cr + 1}:${col(cBud)}${cr + tasks.length * h})`, amt), { ...catFill, fmt: '#,##0.00' })
+    put(`${col(cW)}${cr}`, f(`SUM(${col(cW)}${cr + 1}:${col(cW)}${cr + tasks.length * h})`, dist.total ? amt / dist.total : 0),
       { ...catFill, fmt: '0.00%', align: { horizontal: 'center' } })
     put(`${col(cProg)}${cr}`, null, catFill)
     put(`${col(cResp)}${cr}`, null, catFill)
     r += 1
     tasks.forEach((t, j) => {
       const a = r
-      const b = r + 1
+      const b = r + h - 1
       planRows.push(a)
       const lt = layout.tasks[ti]
-      ;[1, 2, 3, 4, 5, cPct, cBud, cW, cProg, cResp].forEach((c) => merge(a, c, b, c))
+      // ไม่มีแผนเสริม = ระยะเวลา/เริ่ม/เสร็จผสานสองแถวเหมือนเดิม · มีแผนเสริม = ทุกแผนมีวันของตัวเอง แถว Actual เว้นว่าง
+      ;[1, 2, ...(alts.length ? [] : [3, 4, 5]), cPct, cBud, cW, cProg, cResp].forEach((c) => merge(a, c, b, c))
       put(`${col(cPct)}${a}`, null)
       put(`A${a}`, `${ci}.${j + 1}`, { align: { horizontal: 'center' } })
       put(`B${a}`, t.name, { align: { indent: 1 } })
@@ -240,6 +254,20 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
       put(`F${a}`, 'Plan', { align: { horizontal: 'center' }, font: { size: 8, color: { argb: 'FF2D5A8A' } } })
       put(`F${b}`, 'Actual', { align: { horizontal: 'center' }, font: { size: 8, color: { argb: 'FF9A6215' } } })
       const cell: Style = { fmt: PCT, font: { size: 7 }, align: { horizontal: 'center', wrapText: false } }
+      alts.forEach((alt, i) => {
+        const ar = a + 1 + i
+        const sp = spanOf(t, alt.kind)
+        put(`C${ar}`, sp.dur, { fill: C.input, align: { horizontal: 'center' } })
+        put(`D${ar}`, f(`$C$2+${sp.offset}`, addDays(start, sp.offset)), { fill: C.input, fmt: DATE_FMT, align: { horizontal: 'center' } })
+        put(`E${ar}`, f(`D${ar}+C${ar}-1`, addDays(start, sp.offset + sp.dur - 1)), { fmt: DATE_FMT, align: { horizontal: 'center' } })
+        put(`F${ar}`, alt.tag, { align: { horizontal: 'center' }, font: { size: 8, color: { argb: ALT_INK[alt.kind] } } })
+        for (let k = 0; k < nW; k += 1) {
+          const x = wl(k)
+          // สูตรเดียวกับแถว Plan แต่ใช้วันของแผนนี้ · น้ำหนักงานเท่าเดิม
+          put(`${x}${ar}`, f(`IF($C${ar}>0,MAX(0,MIN($E${ar},${x}$9+6)-MAX($D${ar},${x}$9)+1)/$C${ar}*$${col(cW)}${a},0)`, alt.dist.plan[ti][k]), cell)
+        }
+      })
+      if (alts.length) [3, 4, 5].forEach((c) => put(`${col(c)}${b}`, null))
       for (let k = 0; k < nW; k += 1) {
         const x = wl(k)
         // 🔴 สูตรเดียวกับ distribute() ใน core.ts — วันที่ตกในสัปดาห์ ÷ ระยะเวลา × น้ำหนัก
@@ -254,7 +282,7 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
       put(`${col(cW)}${a}`, f(`IFERROR(${col(cBud)}${a}/$${col(cBud)}$${T},0)`, dist.weights[ti]), { fmt: '0.00%', align: { horizontal: 'center' } })
       put(`${col(cProg)}${a}`, f(`IFERROR(SUM(${wl(0)}${b}:${wl(nW - 1)}${b})/${col(cW)}${a},0)`, 0), { fmt: '0%', align: { horizontal: 'center' } })
       put(`${col(cResp)}${a}`, null, { fill: C.input })
-      r += 2
+      r += h
       ti += 1
     })
   }
@@ -274,8 +302,10 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
 
   // ---- สรุป S-Curve: แผนตามสัญญา · ผลงานจริง · เปรียบเทียบ
   let s = T + 2
-  const cumRow: Record<'Plan' | 'Actual', number> = { Plan: 0, Actual: 0 }
-  const group = (titleText: string, kind: 'Plan' | 'Actual', color: string) => {
+  const cumRow: Record<string, number> = {}
+  /** `kind` = ป้ายในคอลัมน์ F ที่ SUMIF รวม · `planned` = ค่าแคชของแผน (ไม่ส่ง = ผลงานจริง) */
+  const group = (titleText: string, kindLabel: string, color: string, planned?: number[]) => {
+    const kind = planned ? 'Plan' : 'Actual'
     const w = s
     const c = s + 1
     const m = s + 2
@@ -284,13 +314,13 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
     put(`A${w}`, titleText, { fill: C.sum, font: { bold: true, color: { argb: color } }, align: { horizontal: 'center' } })
     ;([[w, 'ความคืบหน้า / สัปดาห์ (%)'], [c, 'ความคืบหน้าสะสม / สัปดาห์ (%)'], [m, 'ค่าใช้จ่าย / เดือน (บาท)'], [mc, 'ค่าใช้จ่ายสะสม / เดือน (บาท)']] as const)
       .forEach(([rr, t]) => { merge(rr, 3, rr, 6); put(`C${rr}`, t, { fill: C.sum }) })
-    const pv = kind === 'Plan' ? dist.perWeek : dist.perWeek.map(() => 0)
+    const pv = planned ?? dist.perWeek.map(() => 0)
     let acc = 0
     const cv = pv.map((x) => (acc += x))
     const small: Style = { fmt: '0.00%', font: { size: 7 }, align: { horizontal: 'center', wrapText: false } }
     for (let k = 0; k < nW; k += 1) {
       const x = wl(k)
-      const weekly = `SUMIF(${rngF},"${kind}",${x}$${first}:${x}$${lastRow})`
+      const weekly = `SUMIF(${rngF},"${kindLabel}",${x}$${first}:${x}$${lastRow})`
       put(`${x}${w}`, kind === 'Plan' ? f(weekly, pv[k]) : f(`IF(${k + 1}>${LW},"",${weekly})`, ''), small)
       const cum = k === 0 ? `${x}${w}` : `${wl(k - 1)}${c}+${x}${w}`
       // ผลงานจริงหยุดวาดหลังสัปดาห์ล่าสุดที่กรอก — ไม่งั้นเส้นจริงลากแบนไปจนจบสัญญา
@@ -311,10 +341,11 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
         : `IF(${mo.from + 1}>${LW},"",INDEX(${a}${c}:${b}${c},MIN(${LW},${mo.to + 1})-${mo.from})*$${col(cBud)}$${T})`
       put(`${a}${mc}`, f(cumAt, kind === 'Plan' ? cv[mo.to] * dist.total : ''), { ...money, font: { size: 8, bold: true } })
     }
-    cumRow[kind] = c
+    cumRow[kindLabel] = c
     s += 4
   }
-  group('แผนงานตามสัญญา', 'Plan', 'FF2D5A8A')
+  group('แผนงานตามสัญญา', 'Plan', 'FF2D5A8A', dist.perWeek)
+  for (const a of alts) group(a.label, a.tag, ALT_INK[a.kind], a.dist.perWeek)
   group('ผลงานจริง', 'Actual', 'FF9A6215')
   put(`${col(cProg)}${T}`, f(`IF(${LP}=0,0,N(INDEX(${summaryPeriodRange(layout, 'H')},${LP})))`, 0), { ...H, fmt: '0.00%' })
   merge(s, 1, s, 2)
@@ -334,7 +365,7 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
   const notes = [
     `* หมายเหตุ มูลค่างานเป็นค่างานต้นทุน ไม่รวม Factor F${p.factor ? ` ${p.factor}` : ''} และภาษีมูลค่าเพิ่ม ${p.vat ? Math.round(p.vat * 100) : 7}%`,
     '* แก้ "ระยะเวลา" และ "เริ่ม" (ช่องสีเหลือง) แล้วแท่งแผนงานกับ S-Curve คำนวณใหม่เอง',
-    '* S-Curve บนตาราง: เส้นน้ำเงิน = แผนงานสะสม · เส้นส้ม = ผลงานจริงสะสม (จุดตรงวันส่งงวด) · เส้นประเขียว = วันส่งงวด · แกน % อยู่คอลัมน์ "%"',
+    `* S-Curve บนตาราง: เส้นน้ำเงิน = แผนงานสะสม${alts.length ? ' · เส้นม่วง = แผนงานเร่งรัด · เส้นเขียวน้ำทะเล = แผนการทำงานดำเนินการ' : ''} · เส้นส้ม = ผลงานจริงสะสม (จุดตรงวันส่งงวด) · เส้นประเขียว = วันส่งงวด · แกน % อยู่คอลัมน์ "%"`,
     ...(p.w124 ? [`* เส้นประแดง = วันตรวจตามหนังสือกรมบัญชีกลาง ว.124 ข้อ 2.2 (เวลาเกิน 1/2 ผลงาน ≥ 25% · เกิน 3/4 ≥ 65% · ครบสัญญา ≥ 85%) · เส้นประเทา = แผนงาน ÷ 2 (ข้อ 2.2.2) · ผลประเมินอยู่ที่ชีต "${SHEET.summary}"`] : []),
     `* แถว Actual และแถวเปรียบเทียบดึงจากผลงานรายงวด — ส่งงวดเมื่อไหร่กรอกวันที่ที่ชีต "${SHEET.summary}" และ % แล้วเสร็จที่ชีตหมวด ผลจะขึ้นที่สัปดาห์ของวันส่งงวด`,
     '* เปลี่ยนวันที่เริ่มสัญญา ให้สร้างไฟล์ใหม่จากระบบ เพื่อให้หัวเดือนตรงกับวันที่',
@@ -353,6 +384,10 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
         style: { fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: C.plan } }, font: { color: { argb: 'FFFFFFFF' } } } },
       { type: 'expression', priority: 2, formulae: [`AND($F${first}="Actual",N(${wl(0)}${first})>0)`],
         style: { fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: C.act } } } },
+      ...alts.map((a, i) => ({
+        type: 'expression' as const, priority: 3 + i, formulae: [`AND($F${first}="${a.tag}",N(${wl(0)}${first})>0)`],
+        style: { fill: { type: 'pattern' as const, pattern: 'solid' as const, bgColor: { argb: ALT_FILL[a.kind] } }, font: { color: { argb: 'FFFFFFFF' } } },
+      })),
     ],
   })
   ws.pageSetup.printArea = `A1:${col(cResp)}${s}`
@@ -400,6 +435,12 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
     calc.getCell(`${wl(k)}6`).value = k + 1
     calc.getCell(`${wl(k)}7`).value = f(ref(SHEET.plan, `${wl(k)}${cumRow.Plan}`), dist.cum[k])
   }
+  // แผนเสริมสะสม: แถว 17 = เร่งรัด · แถว 19 = ดำเนินการ (x ใช้แถว 6 · แถว 16/18 เป็นของ ว.124)
+  alts.forEach((a) => {
+    const row = ALT_CALC_ROW[a.kind]
+    calc.getCell(`F${row}`).value = 0
+    for (let k = 0; k < nW; k += 1) calc.getCell(`${wl(k)}${row}`).value = f(ref(SHEET.plan, `${wl(k)}${cumRow[a.tag]}`), a.dist.cum[k])
+  })
   for (let k = 0; k < p.periods; k += 1) {
     const x = wl(k)
     const dd = summaryPeriodCell(layout, 'C', k)
@@ -466,6 +507,10 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
     overlay: { plotW: (weekW * nW) / (weekW * nW + pctW) },
     series: [
       { name: 'แผนงานสะสม', x: ref(SHEET.calc, `$F$6:$${wl(nW - 1)}$6`), y: ref(SHEET.calc, `$F$7:$${wl(nW - 1)}$7`), color: '2F5F94', width: 22225 },
+      ...alts.map((a) => ({
+        name: a.label, x: ref(SHEET.calc, `$F$6:$${wl(nW - 1)}$6`), y: ref(SHEET.calc, `$F$${ALT_CALC_ROW[a.kind]}:$${wl(nW - 1)}$${ALT_CALC_ROW[a.kind]}`),
+        color: ALT_INK[a.kind].slice(2), marker: false, width: 19050,
+      })),
       ...(p.w124 ? [{ name: 'แผนงาน ÷ 2 (ว.124 ข้อ 2.2.2)', x: ref(SHEET.calc, `$F$6:$${wl(nW - 1)}$6`), y: ref(SHEET.calc, `$F$16:$${wl(nW - 1)}$16`), color: '8A939C', dash: true, marker: false, width: 15875 }] : []),
       ...redLines,
       { name: 'ผลงานจริงสะสม', x: ref(SHEET.calc, `$F$8:$${lastP}$8`), y: ref(SHEET.calc, `$F$9:$${lastP}$9`), color: 'E08A1E', width: 22225 },
