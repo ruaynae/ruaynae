@@ -41,6 +41,8 @@ export function ProgressReportView({ report }: { report: ProgressReport }) {
     () => ({
       weekly: report.planWeekly, plan: report.planCum, actual: report.actualCum, labels: report.labels, sublabels: report.sublabels,
       planHalf: report.w124.length > 0,
+      fast: report.fastCum,
+      ops: report.opsCum,
       checks: [...new Set(report.w124.map((c) => c.x))].map((x) => ({
         x,
         marks: report.w124.filter((c) => c.x === x).map((c) => ({ y: c.min, text: `ว.124 ข้อ ${c.clause} ≥ ${Math.round(c.min * 100)}%` })),
@@ -94,6 +96,16 @@ export function ProgressReportView({ report }: { report: ProgressReport }) {
           </span>
         </h2>
         <canvas ref={canvas} className="block h-[300px] w-full max-w-full" role="img" aria-label="กราฟ S-Curve แผนงานเทียบผลงานจริง" />
+        {(report.fastCum || report.opsCum) && (
+          <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-token">
+            {([['bg-bar-time', 'แผนงานตามสัญญา', true], ['bg-bar-plan-fast', 'แผนงานเร่งรัด', !!report.fastCum],
+              ['bg-bar-plan-ops', 'แผนการทำงานดำเนินการ', !!report.opsCum], ['bg-bar-cost-material', 'ผลงานจริง', true]] as const)
+              .filter(([, , on]) => on)
+              .map(([cls, label]) => (
+                <span key={label} className="inline-flex items-center gap-1.5"><span className={`h-1 w-5 rounded-full ${cls}`} />{label}</span>
+              ))}
+          </div>
+        )}
       </section>
 
       {report.w124.length > 0 && (

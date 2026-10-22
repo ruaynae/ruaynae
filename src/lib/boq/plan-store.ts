@@ -1,4 +1,4 @@
-import type { BoqCategory, BoqItem, BoqTask } from './core'
+import type { BoqCategory, BoqItem, BoqTask, Span } from './core'
 
 /**
  * แผนงานที่บันทึกไว้ในเว็บ (R20i · ตาราง `construction_plans`) — รูปร่างข้อมูล + ตัวตรวจ
@@ -69,7 +69,22 @@ function parseTask(v: unknown, days: number): BoqTask | null {
   if (offset < 0 || dur < 1 || offset + dur > days) return null
   const items = v.items.map(parseItem)
   if (items.some((x) => !x)) return null
-  return { name: str(v.name), amount: v.amount, source: str(v.source), offset, dur, on: v.on !== false, items: items as BoqItem[] }
+  const fast = parseSpan(v.fast, days)
+  const ops = parseSpan(v.ops, days)
+  if (fast === false || ops === false) return null
+  return {
+    name: str(v.name), amount: v.amount, source: str(v.source), offset, dur, on: v.on !== false, items: items as BoqItem[],
+    ...(fast ? { fast } : {}), ...(ops ? { ops } : {}),
+  }
+}
+
+/** ช่วงวันของแผนเสริม (เร่งรัด/ดำเนินการ) · ไม่มี = `null` · รูปร่างผิด = `false` */
+function parseSpan(v: unknown, days: number): Span | null | false {
+  if (v == null) return null
+  if (!isObj(v) || !Number.isInteger(v.offset) || !Number.isInteger(v.dur)) return false
+  const offset = v.offset as number
+  const dur = v.dur as number
+  return offset < 0 || dur < 1 || offset + dur > days ? false : { offset, dur }
 }
 
 /** ตรวจหมวด/งาน/รายการทั้งก้อน — ตัวสร้าง Excel เชื่อรูปร่างนี้โดยไม่ตรวจซ้ำ */
