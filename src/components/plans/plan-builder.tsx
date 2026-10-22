@@ -81,16 +81,42 @@ export function PlanBuilder() {
     }
   }
 
+  const okDays = (d: number) => d >= 14 && d <= 1500
+  /** ระยะเวลาเปลี่ยน → จัดลำดับงานใหม่ตามสัดส่วนเดิม */
+  function applyDays(d: number) {
+    setDaysText(String(d))
+    if (d === days) return
+    setDays(d)
+    setCats((c) => autoSchedule(c, d))
+  }
   function commitDays() {
     const d = Math.round(Number(daysText))
-    if (!(d >= 14 && d <= 1500)) {
+    if (!okDays(d)) {
       setDaysText(String(days))
       toast.error('ระยะเวลาก่อสร้างต้องอยู่ระหว่าง 14 ถึง 1,500 วัน')
       return
     }
-    if (d === days) return
-    setDays(d)
-    setCats((c) => autoSchedule(c, d))
+    applyDays(d)
+  }
+  /** วันสิ้นสุดสัญญา → ระยะเวลา = นับทั้งวันเริ่มและวันสิ้นสุด (เริ่ม 1 พ.ย. สิ้นสุด 30 พ.ย. = 30 วัน) */
+  const spanDays = (from: string, to: string) => Math.round((isoToDate(to).getTime() - isoToDate(from).getTime()) / DAY) + 1
+  /** ช่องวันที่ยิง onChange ระหว่างพิมพ์ปีด้วย (เช่น ปี 0002) — ข้ามค่าที่ยังพิมพ์ไม่จบ */
+  const typing = (iso: string) => Number(iso.slice(0, 4)) < 2000
+  function changeEnd(iso: string) {
+    if (typing(iso)) return
+    const d = spanDays(start, iso)
+    if (!okDays(d)) {
+      toast.error(d < 1 ? 'วันสิ้นสุดสัญญาต้องอยู่หลังวันเริ่ม' : 'ระยะเวลาก่อสร้างต้องอยู่ระหว่าง 14 ถึง 1,500 วัน')
+      return
+    }
+    applyDays(d)
+  }
+  /** เลื่อนวันเริ่ม: วันสิ้นสุดสัญญาอยู่ที่เดิม (คิดระยะเวลาใหม่) · ถ้าช่วงใหม่ผิดเงื่อนไข เลื่อนทั้งช่วงไปด้วยกันแทน */
+  function changeStart(iso: string) {
+    if (typing(iso)) return
+    const d = spanDays(iso, addIso(start, days - 1))
+    setStart(iso)
+    if (okDays(d)) applyDays(d)
   }
 
   function editTask(ci: number, ti: number, patch: { on?: boolean; startIso?: string; dur?: number }) {
@@ -247,11 +273,21 @@ export function PlanBuilder() {
             />
           </label>
           <label>
-            <span className="label-base">วันที่เริ่มงาน</span>
-            <input className="input-base" type="date" value={start} onChange={(e) => e.target.value && setStart(e.target.value)} />
+            <span className="label-base">วันเริ่มต้นสัญญา</span>
+            <input className="input-base" type="date" value={start} onChange={(e) => e.target.value && changeStart(e.target.value)} />
           </label>
           <label>
-            <span className="label-base">ระยะเวลาก่อสร้าง (วัน)</span>
+            <span className="label-base">วันสิ้นสุดสัญญา</span>
+            <input
+              className="input-base"
+              type="date"
+              value={addIso(start, days - 1)}
+              min={addIso(start, 13)}
+              onChange={(e) => e.target.value && changeEnd(e.target.value)}
+            />
+          </label>
+          <label>
+            <span className="label-base">ระยะเวลาก่อสร้าง (วัน) · คำนวณจากวันเริ่ม–สิ้นสุด</span>
             <input
               className="input-base tabular-nums"
               inputMode="numeric"
