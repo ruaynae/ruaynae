@@ -63,6 +63,22 @@ export function presignGet(key: string, ttl = SIGNED_URL_TTL_SECONDS) {
   })
 }
 
+/**
+ * ลิงก์เปิด/ดาวน์โหลดไฟล์ในคลังเอกสาร — บังคับชื่อไฟล์ (ไทยได้ · RFC 5987) และชนิดไฟล์ตอนตอบ
+ * · `inline` = เปิดในแท็บ (PDF/รูป) · ไม่งั้นดาวน์โหลด
+ */
+export function presignGetFile(key: string, fileName: string, contentType: string, inline: boolean, ttl = SIGNED_URL_TTL_SECONDS) {
+  const ascii = fileName.replace(/[^\x20-\x7e]+/g, '_').replace(/["\\]/g, '_') || 'file'
+  const disposition = `${inline ? 'inline' : 'attachment'}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(fileName)}`
+  return getSignedUrl(
+    r2(),
+    new GetObjectCommand({
+      Bucket: r2Bucket(), Key: key, ResponseContentDisposition: disposition, ResponseContentType: contentType,
+    }),
+    { expiresIn: ttl },
+  )
+}
+
 export async function deleteObject(key: string) {
   await r2().send(new DeleteObjectCommand({ Bucket: r2Bucket(), Key: key }))
 }
@@ -89,7 +105,7 @@ export async function headObject(
 }
 
 /** หมวดของไฟล์ ตัดสินจากคีย์ — `slips/thumb/…` ต้องเช็คก่อน `slips/…` */
-export type UsageGroup = 'slips' | 'thumbs' | 'branding' | 'other'
+export type UsageGroup = 'slips' | 'thumbs' | 'branding' | 'files' | 'other'
 
 export type BucketUsage = {
   totalBytes: number
@@ -106,7 +122,8 @@ const groupOf = (key: string): UsageGroup =>
   key.startsWith('slips/thumb/') ? 'thumbs'
     : key.startsWith('slips/') ? 'slips'
       : key.startsWith('branding/') ? 'branding'
-        : 'other'
+        : key.startsWith('files/') ? 'files'
+          : 'other'
 
 /**
  * พื้นที่ที่ใช้จริงใน bucket
@@ -124,6 +141,7 @@ export async function bucketUsage(): Promise<BucketUsage> {
     slips: { bytes: 0, files: 0 },
     thumbs: { bytes: 0, files: 0 },
     branding: { bytes: 0, files: 0 },
+    files: { bytes: 0, files: 0 },
     other: { bytes: 0, files: 0 },
   }
   let totalBytes = 0

@@ -107,6 +107,7 @@ create type advance_status as enum ('pending','approved','rejected');
 | `doc_counters` | ตัวนับเลขที่เอกสารต่อชนิด: `kind` (pk), `prefix`, `pad`, **`last_no`** = เลข**ล่าสุดที่ออกไปแล้ว** ไม่ใช่เลขถัดไป (คำสั่งเจ้าของ 20 ก.ย. 2569) · ไม่มีค่าตั้งต้นในโค้ด — ยังไม่ตั้ง = ออกเอกสารไม่ได้ (`DOC_COUNTER_NOT_SET`) | **owner เท่านั้น** |
 | `documents` | ใบเสนอราคา/**ใบแจ้งหนี้**/ใบเสร็จ (R12): `kind` (3 ค่า เรียงตามลำดับงาน), `doc_no` (null จนกว่าจะออกเลข), `status`, `site_id` (null = ไม่ผูกโครงการ), **สำเนาผู้ซื้อ+`seller` jsonb แช่แข็งตอนออกเอกสาร**, `vat_mode`, `vat_rate`, `subtotal`/`vat_amount`/`total` (trigger คิดจากบรรทัด ไม่รับจากหน้าจอ), `amount_words`, `txn_id`, `source_document_id` · ออกเลขผ่าน `issue_document()` ที่ `for update` ก่อนอ่านสถานะ | **owner เท่านั้น** |
 | `document_lines` | บรรทัดรายการ: `seq`, `description`, `qty`, `unit`, `unit_price` (**ตัวเลขที่เจ้าของพิมพ์** — โหมด inclusive คือรวม VAT แล้ว), `line_total` (ยอดก่อน VAT ที่ปัดแล้ว · Σ = `subtotal` เป๊ะ) | **owner เท่านั้น** |
+| `project_files` | คลังเอกสาร (R21): `category` (`contract`/`drawing`/`boq`/`certificate`/`other`), `title`, `site_id` (on delete set null), `doc_no`, `doc_date`, `note`, `file_name`, `object_key` (`files/…` ใน R2), `content_type`, `byte_size` · ไฟล์ห้ามเปลี่ยน (`guard_project_file`) | **owner เท่านั้น** |
 | `audit_log` | `table_name`, `row_id`, `action`, `actor`, `before` jsonb, `after` jsonb, `at`, **`mcp_key_id`** (มีค่า = AI ทำแทนเจ้าของ · **ไม่มี FK** โดยตั้งใจ ดู §17 ข้อ 19) · **`via_line`** (R16 · มาจาก GUC `app.via_line`) | **อ่านได้เฉพาะ owner · ไม่มี policy ให้ UPDATE/DELETE กับใครทั้งนั้น** |
 | `notifications` | `user_id`, `kind`, `title`, `body`, `link`, `read_at` | ของตัวเอง |
 | `push_subscriptions` | `user_id`, `endpoint` (unique), `p256dh`, `auth`, `last_ok_at` | ของตัวเอง |
@@ -472,6 +473,7 @@ src/
     api/transactions/[id]/attachments/route.ts · api/attachments/[id]/route.ts
     api/uploads/sign/route.ts · api/uploads/[id]/route.ts
     api/cron/sweep-orphans/route.ts · api/cron/daily-digest/route.ts
+    (app)/files              คลังเอกสาร (R21) · components/files/files-client.tsx · lib/files.ts · api/files/{sign,[id]}
     (app)/plans              แผนงานก่อสร้างจาก BOQ (R20) · (list) · [id] · [id]/edit · components/plans/* · lib/boq/{core,workbook,progress-sheet,xlsx-kit,plan-store}.ts · api/plans
     (app)/materials           ใบขอเบิกวัสดุ (หัวหน้า/เจ้าของ) · new/request-form.tsx · (app)/pickup หน้าจอแคชเชียร์ (+ /pickup/done)
     components/materials/*    request-card · request-action · pickup-list · auto-refresh · lib/materials.ts (ชนิด+ข้อความ error)
@@ -686,6 +688,10 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
         · ดาวน์โหลด Excel พร้อมผลงานในช่องสีเหลือง (`fillProgress`) · แก้แผนที่ `/plans/[id]/edit` · ผูกโครงการได้ · 🔴 คีย์ผลงาน `หมวด.งาน.รายการ` นับรวมงานที่ปิด — ห้ามเรียงหมวด/งานใหม่ตอนแก้แผน
         · PATCH ต้องส่ง `expectedUpdatedAt` (409 `PLAN_CHANGED`) · ตารางยังไม่มี = 503 `PLAN_TABLE_MISSING` · ⚠️ **migration `20261022090000_r20_saved_plans.sql` ยังไม่ได้ apply**
       · unit test `tests/unit/boq-core.test.mjs` (ชีตจำลอง — ห้ามใส่ BOQ จริงของลูกค้าใน repo public) · ตารางตรวจรับ `docs/test-plan/R20-construction-plan.md`
+- [ ] **R21 · คลังเอกสาร** (22 ต.ค. 2569) — เมนู `/files` (เจ้าของเท่านั้น) เก็บสัญญาจ้าง แบบก่อสร้าง BOQ หนังสือรับรองผลงาน
+      · อัปหลายไฟล์ ≤ 100 MB ตรงเข้า R2 (`/api/files/sign` → PUT → `/api/files`) · ชนิดไฟล์จากนามสกุล เซิร์ฟเวอร์กำหนด content-type (ไม่รับ html/svg)
+      · ค้นหา + กรองหมวด/โครงการ/ปี · เปิด/ดาวน์โหลดผ่าน `/api/files/[id]` (302 presigned · ชื่อไฟล์ไทย RFC 5987)
+      · ⚠️ **migration `20261023090000_project_files.sql` ยังไม่ได้ apply** · ตารางตรวจรับ `docs/test-plan/R21-file-library.md`
 - [x] **R9 · รอบคำสั่งเจ้าของ 4 ก.ย. 2569** — เรียกหน่วยงานว่า "โครงการ" ทั้งระบบ · ปิดการ์ด
       "งานวันนี้" · ต้นทุนสะสมแยกสามก้อน (ค่าแรง/ค่าวัสดุ/อื่น ๆ) + ธง `categories.is_material`
       · ยอดรวมแยกหมวดในหน้าโครงการ · **จ่ายค่าแรงรายคนปุ่มเดียว** (เลิกใช้คำว่า "รอบจ่าย"
