@@ -7,6 +7,8 @@
  * ด้วยสูตรเดียวกับที่เขียนลง Excel (`distribute` ↔ สูตรในแถว Plan ของ `workbook.ts`)
  */
 
+import type { ProgressReport } from './progress-core'
+
 /** ตารางของชีตหนึ่ง — `v` = ค่าดิบ (ตัวเลข/ข้อความ) · `w` = ข้อความที่ตัดช่องว่างแล้ว */
 export type Grid = {
   name: string
@@ -552,4 +554,93 @@ export function distribute(categories: BoqCategory[], days: number): Distributio
   let acc = 0
   const cum = perWeek.map((x) => (acc += x))
   return { weeks, total, weights, plan, perWeek, cum }
+}
+
+// ---------------------------------------------------------------------------
+// R20i · รายงานแผนเทียบจริงจากแผนที่บันทึกในเว็บ — สูตรเดียวกับ `readProgress()` (อ่านไฟล์ Excel)
+// และชีต "สรุปผลเบิกจ่าย": ช่องว่าง = เท่างวดก่อน · งวดล่าสุด = งวดสุดท้ายที่กรอกผลงานอย่างน้อยหนึ่งช่อง
+// · แผน ณ วันส่งงวดคิดรายวันจากวันเริ่ม/ระยะเวลาของงาน · น้ำหนัก = ค่างานต้นทุนของรายการ
+// · ผลประเมิน ว.124 เติมทีหลังด้วย `withW124()` (ไฟล์นี้ไม่ import ค่าจากไฟล์อื่น)
+
+type StoredProgress = { dates: (string | null)[]; items: Record<string, (number | null)[]> }
+
+export function planReport(
+  p: { name: string; categories: BoqCategory[]; start: string; days: number; periods: number; w124: boolean; progress: StoredProgress },
+  todayIso: string,
+): ProgressReport {
+  const DAY = 864e5
+  const t0 = Date.parse(`${p.start}T00:00:00Z`)
+  const dist = distribute(p.categories, p.days)
+  const iso = (t: number) => new Date(t).toISOString().slice(0, 10)
+  const thShort = (t: number) => new Date(t).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+
+  type Row = { code: string; name: string; category: string; amount: number; offset: number; dur: number; items: { amount: number; eff: number[] }[] }
+  const rows: Row[] = []
+  let lastPeriod = 0
+  let catNo = 0
+  p.categories.forEach((c, ci) => {
+    if (!c.tasks.some((t) => t.on)) return
+    catNo += 1
+    let j = 0
+    c.tasks.forEach((t, ti) => {
+      if (!t.on) return
+      j += 1
+      const items = t.items.map((it, ii) => {
+        const vals = p.progress.items[`${ci}.${ti}.${ii}`] ?? []
+        const eff: number[] = []
+        let prev = 0
+        for (let k = 0; k < p.periods; k += 1) {
+          const v = vals[k]
+          if (v != null) {
+            prev = Math.min(1, Math.max(0, v))
+            lastPeriod = Math.max(lastPeriod, k + 1)
+          }
+          eff.push(prev)
+        }
+        return { amount: it.amount, eff }
+      })
+      rows.push({ code: `${catNo}.${j}`, name: t.name, category: c.name, amount: items.reduce((s, x) => s + x.amount, 0), offset: t.offset, dur: t.dur, items })
+    })
+  })
+  const total = rows.reduce((s, r) => s + r.amount, 0) || 1
+  const weekOf = (t: number) => Math.max(1, Math.min(dist.weeks, Math.floor((t - t0) / DAY / 7) + 1))
+  const taskPlan = (r: Row, t: number) => {
+    const d0 = t0 + r.offset * DAY
+    const d1 = d0 + (r.dur - 1) * DAY
+    if (t >= d1) return 1
+    if (t >= d0) return Math.min(1, ((t - d0) / DAY + 1) / r.dur)
+    return 0
+  }
+  const planAt = (t: number) => rows.reduce((s, r) => s + (r.amount / total) * taskPlan(r, t), 0)
+  const actualAt = (k: number) => rows.reduce((s, r) => s + r.items.reduce((q, it) => q + it.amount * it.eff[k], 0), 0) / total
+  const dateOf = (k: number) => {
+    const d = p.progress.dates[k]
+    return d ? Date.parse(`${d}T00:00:00Z`) : null
+  }
+  const installments = Array.from({ length: lastPeriod }, (_, k) => {
+    const t = dateOf(k)
+    return { no: k + 1, date: t == null ? null : iso(t), week: t == null ? null : weekOf(t), plan: t == null ? null : planAt(t), actual: actualAt(k) }
+  })
+  const actualCum: (number | null)[] = new Array(dist.weeks).fill(null)
+  for (const x of installments) if (x.week) actualCum[x.week - 1] = x.actual
+  const lastDate = lastPeriod ? dateOf(lastPeriod - 1) : null
+  return {
+    projectName: p.name,
+    start: p.start,
+    labels: Array.from({ length: dist.weeks }, (_, k) => `W${k + 1}`),
+    sublabels: Array.from({ length: dist.weeks }, (_, k) => thShort(t0 + k * 7 * DAY)),
+    planWeekly: dist.perWeek,
+    planCum: dist.cum,
+    actualCum,
+    installments,
+    tasks: rows.map((r) => ({
+      code: r.code, name: r.name, category: r.category, amount: r.amount, weight: r.amount / total,
+      plan: lastDate == null ? 0 : taskPlan(r, lastDate),
+      actual: lastPeriod && r.amount ? r.items.reduce((q, it) => q + it.amount * it.eff[lastPeriod - 1], 0) / r.amount : 0,
+    })),
+    days: p.days,
+    asOf: lastDate == null ? todayIso : iso(lastDate),
+    w124Enabled: p.w124,
+    w124: [],
+  }
 }

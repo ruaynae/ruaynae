@@ -1,16 +1,19 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Download, FileSpreadsheet, Loader2, RotateCcw, Upload } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { AlertTriangle, Download, FileSpreadsheet, Loader2, RotateCcw, Save, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { autoSchedule, distribute, type BoqCategory, type BoqModel } from '@/lib/boq/core'
+import { planMessage, type SavedPlan, type SavedPlanInput } from '@/lib/boq/plan-store'
 import { fmtMoney, todayInBangkok } from '@/lib/format'
 import { useSCurve, type CurveData } from './s-curve'
 
 /**
  * แผนงานก่อสร้างจาก BOQ — อัปโหลด → ตรวจ/แก้ → ดาวน์โหลด Excel
- * ทุกอย่างคำนวณในเบราว์เซอร์ ไม่บันทึกลงฐานข้อมูล (ไฟล์ BOQ มีราคากลางของหน่วยงาน
- * ไม่มีเหตุให้ส่งขึ้นเซิร์ฟเวอร์)
+ * ไฟล์ BOQ อ่านในเบราว์เซอร์ ไม่ถูกส่งขึ้นเซิร์ฟเวอร์ · กด "บันทึกแผนงาน" = ส่งเฉพาะแผนที่จัดแล้ว
+ * (หมวด/งาน/รายการ + วันเริ่ม/จำนวนวัน) ไปเก็บที่ตาราง `construction_plans` (R20i)
+ * · `saved` = หน้าแก้แผนที่บันทึกไว้ — ไม่มีช่องอัปโหลด (เปลี่ยน BOQ = ผลงานที่กรอกไว้ไม่ตรงรายการ ให้สร้างแผนใหม่)
  */
 
 type Contract = { contractor: string; contractNo: string; contractDate: string; contractorRep: string }
@@ -28,19 +31,23 @@ const MESSAGES: Record<string, string> = {
   BOQ_EMPTY: 'ไม่พบรายการงานในไฟล์ ตรวจว่าเป็นไฟล์ BOQ ที่มีแบบ ปร.4 / ปร.5 / ปร.6',
 }
 
-export function PlanBuilder() {
-  const [fileName, setFileName] = useState('')
+export function PlanBuilder({ saved }: { saved?: SavedPlan }) {
+  const router = useRouter()
+  const [fileName, setFileName] = useState(saved?.sourceFile ?? '')
   const [reading, setReading] = useState(false)
   const [over, setOver] = useState(false)
-  const [model, setModel] = useState<BoqModel | null>(null)
-  const [project, setProject] = useState<Project | null>(null)
-  const [cats, setCats] = useState<BoqCategory[]>([])
-  const [start, setStart] = useState(() => addIso(todayInBangkok(), 14))
-  const [days, setDays] = useState(180)
-  const [daysText, setDaysText] = useState('180')
-  const [periods, setPeriods] = useState('5')
-  const [w124, setW124] = useState(false)
+  const [model, setModel] = useState<BoqModel | null>(
+    saved ? { project: saved.project, factor: saved.factor, vat: saved.vat, categories: saved.categories, warnings: [] } : null,
+  )
+  const [project, setProject] = useState<Project | null>(saved?.project ?? null)
+  const [cats, setCats] = useState<BoqCategory[]>(saved?.categories ?? [])
+  const [start, setStart] = useState(() => saved?.start ?? addIso(todayInBangkok(), 14))
+  const [days, setDays] = useState(saved?.days ?? 180)
+  const [daysText, setDaysText] = useState(String(saved?.days ?? 180))
+  const [periods, setPeriods] = useState(String(saved?.periods ?? 5))
+  const [w124, setW124] = useState(saved?.w124 ?? false)
   const [exporting, setExporting] = useState(false)
+  const [saving, setSaving] = useState(false)
   const canvas = useRef<HTMLCanvasElement>(null)
 
   const dist = useMemo(() => distribute(cats, days), [cats, days])
@@ -140,13 +147,46 @@ export function PlanBuilder() {
     )
   }
 
+  const periodCount = () => Math.min(24, Math.max(1, Math.round(Number(periods)) || 5))
+
+  /** บันทึกแผนลงเว็บ — ใหม่ = POST · แก้แผนเดิม = PATCH พร้อม `expectedUpdatedAt` (กันเขียนทับอีกเครื่อง) */
+  async function onSave() {
+    if (!model || !project) return
+    const plan: SavedPlanInput = {
+      name: project.name.trim(), project, factor: model.factor, vat: model.vat, categories: cats,
+      start, days, periods: periodCount(), w124, sourceFile: fileName,
+    }
+    setSaving(true)
+    try {
+      const res = await fetch(saved ? `/api/plans/${saved.id}` : '/api/plans', {
+        method: saved ? 'PATCH' : 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(saved ? { expectedUpdatedAt: saved.updatedAt, plan } : { plan }),
+      })
+      const j = (await res.json().catch(() => ({}))) as { id?: string; error?: string }
+      if (!res.ok) {
+        toast.error(planMessage(j.error ?? ''))
+        return
+      }
+      toast.success(saved ? 'บันทึกการแก้ไขแล้ว' : 'บันทึกแผนงานแล้ว — กรอกผลงานรายงวดได้ที่หน้านี้')
+      router.push(`/plans/${saved?.id ?? j.id}`)
+      router.refresh()
+    } catch {
+      toast.error('บันทึกไม่สำเร็จ ตรวจการเชื่อมต่อแล้วลองใหม่')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function onExport() {
     if (!model || !project) return
     setExporting(true)
     try {
       const { buildPlanXlsx } = await import('@/lib/boq/workbook')
-      const n = Math.min(24, Math.max(1, Math.round(Number(periods)) || 5))
-      const buf = await buildPlanXlsx({ project, factor: model.factor, vat: model.vat, categories: cats, days, start, periods: n, w124 })
+      const buf = await buildPlanXlsx({
+        project, factor: model.factor, vat: model.vat, categories: cats, days, start, periods: periodCount(), w124,
+        progress: saved?.progress,
+      })
       const a = document.createElement('a')
       a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
       a.download = `แผนงานก่อสร้าง_${(project.name || 'โครงการ').slice(0, 60).replace(/[\\/:*?"<>|]/g, '')}.xlsx`
@@ -237,7 +277,7 @@ export function PlanBuilder() {
 
   return (
     <div className="min-w-0 space-y-5">
-      {upload}
+      {!saved && upload}
 
       <ul className="space-y-1 text-sm text-muted-token">
         {model.categories.map((c) => (
@@ -431,9 +471,13 @@ export function PlanBuilder() {
           <b className="text-ink">รายละเอียด</b> · <b className="text-ink">สรุปผลเบิกจ่าย</b> (ระยะเวลา · มูลค่าตามสัญญาเทียบที่ได้จริง · ผลงานรายงวด · งบประมาณรายปี) ·{' '}
           <b className="text-ink">แบบปริมาณงานที่แล้วเสร็จแยกหมวด</b> (กรอก % ในคอลัมน์ &quot;งวดที่&quot;)
         </div>
-        <button type="button" className="btn-primary" disabled={exporting || !dist.plan.length} onClick={() => void onExport()}>
+        <button type="button" className="btn-secondary" disabled={exporting || !dist.plan.length} onClick={() => void onExport()}>
           {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
           ดาวน์โหลดแผนงาน Excel
+        </button>
+        <button type="button" className="btn-primary" disabled={saving || !dist.plan.length || !project.name.trim()} onClick={() => void onSave()}>
+          {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+          {saved ? 'บันทึกการแก้ไข' : 'บันทึกแผนงานไว้ในเว็บ'}
         </button>
       </section>
     </div>
