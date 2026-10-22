@@ -28,8 +28,11 @@ export type DomItem = {
 export type DomRow =
   | { kind: 'head'; code: string; name: string }
   | DomItem
-  /** บรรทัดคำอธิบายต่อ/รายการย่อยใต้รายการ — ราคาที่ BOQ ใส่ไว้แสดงเฉย ๆ ไม่นับรวม */
-  | { kind: 'text'; name: string; price: number | null }
+  /**
+   * บรรทัดคำอธิบายต่อ/รายการย่อยใต้รายการ — ราคาที่ BOQ ใส่ไว้แสดงเฉย ๆ ไม่นับรวม
+   * · `sub` = หัวข้อย่อยที่ไม่มีเลขลำดับ ("งานหน้าต่าง" · "Built In ตู้…") — BOQ พิมพ์ชิดซ้าย ส่วนคำอธิบายต่อย่อหน้าเข้าไป
+   */
+  | { kind: 'text'; name: string; price: number | null; sub?: boolean }
   /** รวมย่อยของรายการตั้งแต่หัวข้อ/รวมก่อนหน้า */
   | { kind: 'sum'; name: string }
 
@@ -125,8 +128,12 @@ function sheetRows(g: Grid): DomRow[] {
       raw.push({ kind: 'sum', name: `รวม${name}` })
       continue
     }
+    const text = String(g.v(r, 1) ?? g.v(r, 2) ?? name)
+    const sub = /^[^\s\-–•*(]/.test(text)
+    // หัวข้อย่อยชิดซ้ายเริ่มกลุ่มใหม่ ไม่ใช่คำอธิบายต่อของรายการค่าแรงที่ตัดไป
+    if (sub) dropping = false
     if (dropping) continue
-    raw.push({ kind: 'text', name: g.v(r, 1) != null ? String(g.v(r, 1)) : name, price: price != null && price > 0 ? price : null })
+    raw.push({ kind: 'text', name: g.v(r, 1) != null ? text : name, price: price != null && price > 0 ? price : null, ...(sub ? { sub } : {}) })
   }
   return prune(raw)
 }
@@ -134,9 +141,22 @@ function sheetRows(g: Grid): DomRow[] {
 /**
  * ตัดหัวข้อที่ไม่มีรายการค่าวัสดุอยู่ใต้มัน (เช่น "1.1 หมวดงานรื้อถอน") พร้อมบรรทัดของมัน
  * และรวมย่อยที่ไม่มีรายการให้รวม (รวมทั้งหมวดท้ายชีต — ซ้ำกับรวมย่อยด้านบน)
+ * · หัวข้อย่อยไม่มีเลข (`sub`) ที่มีแต่ค่าแรงอยู่ใต้มัน ก็ตัด (คำขอเจ้าของ 23 ต.ค. 2569)
  */
 function prune(rows: DomRow[]): DomRow[] {
   const keep = rows.map(() => true)
+  rows.forEach((row, i) => {
+    if (row.kind !== 'text' || !row.sub) return
+    // ตามด้วยหัวข้อมีเลขทันที = ป้ายกลุ่มงานเหนือหมวด ("กลุ่มงานระบบไฟฟ้า") — ปล่อยให้หัวข้อตัดสินเอง
+    if (rows[i + 1]?.kind === 'head') return
+    let has = false
+    for (let j = i + 1; j < rows.length; j += 1) {
+      const x = rows[j]
+      if (x.kind === 'head' || x.kind === 'sum' || (x.kind === 'text' && x.sub)) break
+      if (x.kind === 'item') { has = true; break }
+    }
+    if (!has) keep[i] = false
+  })
   rows.forEach((row, i) => {
     if (row.kind !== 'head') return
     let has = false
