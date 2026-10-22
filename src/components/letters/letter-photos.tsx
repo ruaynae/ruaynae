@@ -5,13 +5,14 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { LETTER_LIMITS } from '@/lib/letters'
 
-export type LetterPhoto = { file: File; url: string; caption: string }
+/** `file` = เพิ่งเลือก (ยังไม่อัป) · `key` = อยู่ใน R2 แล้ว (เก็บกับหนังสือ) · `url` = blob หรือลิงก์ presigned */
+export type LetterPhoto = { file?: File; key?: string; url: string; caption: string }
 
 /**
  * รูปแนบท้ายหนังสือ (ไม่บังคับ · D9) — เช่นเส้นทางเข้า-ออก แบบป้าย ภาพผลงานงวด
  *
- * 🔴 บีบเป็น JPEG 1600px ที่เบราว์เซอร์ก่อน — คำขอสร้างไฟล์ Word ต้องไม่ชนเพดาน body
- * ของ Vercel · รูปไม่ถูกเก็บ (หายเมื่อปิดหน้า) ต้องแนบใหม่ถ้าจะออกไฟล์ซ้ำ
+ * 🔴 บีบเป็น JPEG 1600px ที่เบราว์เซอร์ก่อน · ตอนบันทึกหนังสือ รูปถูกอัปเข้า R2 แล้วเก็บกับหนังสือ
+ *    (`letter_photos` · 23 ต.ค. 2569) — เปิดหนังสือเดิมอีกครั้งรูปยังอยู่
  * · `accept` ไม่ใส่ `image/*` — iOS จะส่ง HEIC ดิบมาแล้วบีบไม่ได้ (§17 ข้อ 12)
  */
 export function LetterPhotos({
@@ -31,8 +32,11 @@ export function LetterPhotos({
 }) {
   const [busy, setBusy] = useState(false)
 
-  async function add(files: FileList | null) {
-    if (!files?.length) return
+  async function add(input: FileList | null) {
+    // 🔴 คัดลอกรายชื่อไฟล์ก่อน await — ช่องเลือกไฟล์ถูกล้าง (`value = ''`) ทันทีหลังเรียกฟังก์ชันนี้
+    //    และ FileList เป็นของสด: รออะไรสักอย่างแล้วค่อยอ่าน = รายการว่าง → เลือกรูปแล้ว "ไม่ขึ้น" (เจ้าของแจ้ง 23 ต.ค. 2569)
+    const files = input ? Array.from(input) : []
+    if (!files.length) return
     const room = LETTER_LIMITS.photos - photos.length
     if (room <= 0) {
       toast.error(`แนบรูปได้ไม่เกิน ${LETTER_LIMITS.photos} รูปต่อฉบับ`)
@@ -43,7 +47,7 @@ export function LetterPhotos({
       // นำเข้าแบบ dynamic — ไลบรารีบีบรูปหนัก และหนังสือส่วนใหญ่ไม่มีรูป
       const { default: compress } = await import('browser-image-compression')
       const added: LetterPhoto[] = []
-      for (const f of Array.from(files).slice(0, room)) {
+      for (const f of files.slice(0, room)) {
         if (!f.type.startsWith('image/')) {
           toast.error('รองรับเฉพาะไฟล์รูปภาพ')
           continue
@@ -64,7 +68,7 @@ export function LetterPhotos({
   }
 
   const remove = (i: number) => {
-    URL.revokeObjectURL(photos[i].url)
+    if (photos[i].url.startsWith('blob:')) URL.revokeObjectURL(photos[i].url)
     onChange(photos.filter((_, j) => j !== i))
   }
   const moveUp = (i: number) => {
@@ -105,7 +109,7 @@ export function LetterPhotos({
       {photos.length > 0 && (
         <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
           {photos.map((p, i) => (
-            <li key={p.url} className="overflow-hidden rounded-md border border-line bg-surface">
+            <li key={p.key ?? p.url} className="overflow-hidden rounded-md border border-line bg-surface">
               {/* eslint-disable-next-line @next/next/no-img-element -- blob URL ของรูปที่เพิ่งเลือก */}
               <img src={p.url} alt="" className="h-24 w-full object-cover" />
               <input
@@ -128,7 +132,7 @@ export function LetterPhotos({
         </ul>
       )}
       <p className="text-xs text-muted-token">
-        รูปจะอยู่ท้ายหนังสือในไฟล์ Word และตอนพิมพ์ · ไม่ถูกเก็บในทะเบียน — เปิดหนังสือเดิมอีกครั้งต้องแนบใหม่
+        รูปจะอยู่ท้ายหนังสือในไฟล์ Word และตอนพิมพ์ · เก็บไว้กับหนังสือในทะเบียนเมื่อกดบันทึก/ดาวน์โหลด/พิมพ์
       </p>
     </div>
   )

@@ -54,6 +54,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ key, url: await presignPut(key, contentType), contentType })
   }
 
+  // ── รูปแนบท้ายหนังสือบริษัท (เจ้าของ) — ผูกกับหนังสือที่ PUT /api/letters/[id]/photos ──────
+  if (purpose === 'letter') {
+    if (user.role !== 'owner') return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+    const key = objectKey('letters', ext)
+    const sbL = await getSupabaseServer()
+    // thumb_key = object_key — ตัวกวาดลบคีย์เดียวกันสองครั้งได้ (S3 ลบซ้ำไม่ error)
+    const { error: lErr } = await sbL.from('upload_intents').insert({
+      object_key: key,
+      thumb_key: key,
+      created_by: user.id,
+      site_id: null,
+      expires_at: new Date(Date.now() + INTENT_TTL_MINUTES * 60_000).toISOString(),
+    })
+    if (lErr) {
+      console.error('[uploads] บันทึก upload_intents (หนังสือ) ไม่ได้', lErr.message)
+      return NextResponse.json({ error: 'INTENT_FAILED' }, { status: 500 })
+    }
+    return NextResponse.json({ key, url: await presignPut(key, contentType), contentType })
+  }
+
   if (purpose !== 'slip') {
     return NextResponse.json({ error: 'UNSUPPORTED_PURPOSE' }, { status: 400 })
   }

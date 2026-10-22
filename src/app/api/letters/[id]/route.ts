@@ -4,6 +4,8 @@ import { getSupabaseServer } from '@/lib/supabase/server'
 import { isUuid } from '@/lib/transactions'
 import { currentLetterhead, isDuplicateNo, letterRow, parseLetterInput } from '@/lib/letters-server'
 import { asLetterhead } from '@/lib/letters'
+import { loadLetterPhotos } from '@/lib/letter-photos-server'
+import { deleteObject } from '@/lib/r2'
 
 export const runtime = 'nodejs'
 
@@ -71,11 +73,16 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
   if (!isUuid(id)) return NextResponse.json({ error: 'LETTER_NOT_FOUND' }, { status: 404 })
 
   const sb = await getSupabaseServer()
+  // ไฟล์รูปแนบใน R2 — แถวหายตาม cascade แต่ไฟล์ต้องลบเอง (อ่านก่อนลบหนังสือ)
+  const saved = await loadLetterPhotos(sb, id)
   const { data, error } = await sb.from('letters').delete().eq('id', id).select('id')
   if (error) {
     console.error('[letters] ลบไม่สำเร็จ', error.message)
     return NextResponse.json({ error: 'DELETE_FAILED' }, { status: 500 })
   }
   if (!data?.length) return NextResponse.json({ error: 'LETTER_NOT_FOUND' }, { status: 404 })
+  for (const p of saved.photos) {
+    await deleteObject(p.key).catch((e) => console.error('[letters] ลบไฟล์รูปแนบไม่ได้', p.key, e instanceof Error ? e.message : e))
+  }
   return NextResponse.json({ ok: true })
 }

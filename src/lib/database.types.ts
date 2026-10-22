@@ -842,6 +842,44 @@ export type Database = {
           },
         ]
       }
+      letter_photos: {
+        Row: {
+          byte_size: number
+          caption: string
+          created_at: string
+          id: string
+          letter_id: string
+          object_key: string
+          seq: number
+        }
+        Insert: {
+          byte_size?: number
+          caption?: string
+          created_at?: string
+          id?: string
+          letter_id: string
+          object_key: string
+          seq: number
+        }
+        Update: {
+          byte_size?: number
+          caption?: string
+          created_at?: string
+          id?: string
+          letter_id?: string
+          object_key?: string
+          seq?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "letter_photos_letter_id_fkey"
+            columns: ["letter_id"]
+            isOneToOne: false
+            referencedRelation: "letters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       letter_series: {
         Row: {
           contract_ref: string
@@ -904,6 +942,8 @@ export type Database = {
           intro: string | null
           letter_date: string
           letterhead: Json
+          photo_layout: string
+          photo_title: string
           recipient: string
           refs: string[]
           seq: number
@@ -926,6 +966,8 @@ export type Database = {
           intro?: string | null
           letter_date: string
           letterhead?: Json
+          photo_layout?: string
+          photo_title?: string
           recipient: string
           refs?: string[]
           seq: number
@@ -948,6 +990,8 @@ export type Database = {
           intro?: string | null
           letter_date?: string
           letterhead?: Json
+          photo_layout?: string
+          photo_title?: string
           recipient?: string
           refs?: string[]
           seq?: number

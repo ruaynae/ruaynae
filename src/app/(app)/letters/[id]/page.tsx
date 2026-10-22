@@ -5,6 +5,7 @@ import { asLetterhead } from '@/lib/letters'
 import { LETTER_COLUMNS, loadLetterFormContext, toFormLetter } from '@/lib/letters-page'
 import { LetterForm } from '@/components/letters/letter-form'
 import { DataError } from '@/components/ui/data-error'
+import { loadLetterPhotos, withViewUrls } from '@/lib/letter-photos-server'
 
 export const metadata = { title: 'หนังสือบริษัท' }
 
@@ -29,6 +30,7 @@ export default async function LetterPage({ params }: { params: Promise<{ id: str
   }
   if (!row) notFound()
 
+  const saved = await loadLetterPhotos(sb, id)
   const stored = asLetterhead(row.letterhead)
   return (
     <LetterForm
@@ -41,6 +43,7 @@ export default async function LetterPage({ params }: { params: Promise<{ id: str
       today={ctx.today}
       initial={toFormLetter(row)}
       initialSeriesId={null}
+      initialPhotos={{ photos: await withViewUrls(saved.photos), title: saved.title, layout: saved.layout }}
     />
   )
 }

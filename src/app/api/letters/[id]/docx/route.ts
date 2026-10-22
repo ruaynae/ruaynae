@@ -6,6 +6,8 @@ import { isUuid } from '@/lib/transactions'
 import { buildLetterDocx, type DocxPhoto } from '@/lib/letter-docx'
 import { loadLogo, normalizePhoto } from '@/lib/letter-images'
 import { currentLetterhead } from '@/lib/letters-server'
+import { loadLetterPhotos } from '@/lib/letter-photos-server'
+import { getObjectBytes } from '@/lib/r2'
 import {
   LETTER_LIMITS, asLetterhead, formatLetterNo, letterFileName, type LetterPaperData,
 } from '@/lib/letters'
@@ -19,7 +21,7 @@ export const runtime = 'nodejs'
  * `photoTitle` · `photoLayout` ('1' | '2')
  *
  * 🔴 สร้างจากแถวในฐานข้อมูล ไม่ใช่จากที่ฟอร์มส่งมา — ไฟล์ที่ได้จึงตรงกับทะเบียนเสมอ
- * · รูปแนบไม่ถูกเก็บที่ไหน (D9) · โลโก้อ่านจาก R2 ไม่ได้ = ไฟล์ไม่มีโลโก้ ไม่ใช่ 500
+ * · รูปแนบที่เก็บไว้กับหนังสือ (`letter_photos`) ใช้ก่อน · ไม่มี = ใช้รูปที่ส่งมากับคำขอ · โลโก้อ่านจาก R2 ไม่ได้ = ไฟล์ไม่มีโลโก้ ไม่ใช่ 500
  */
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const denied = await denyUnlessOwner()
@@ -79,6 +81,27 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         photos.push({ ...img, caption })
       } catch {
         return NextResponse.json({ error: 'LETTER_PHOTO_INVALID' }, { status: 422 })
+      }
+    }
+  }
+
+  // ── รูปที่เก็บไว้กับหนังสือ (23 ต.ค. 2569) มาก่อนรูปที่ส่งมากับคำขอ ─────────
+  // ไฟล์ Word จึงออกมาเหมือนเดิมทุกครั้งแม้เปิดหนังสือจากเครื่องอื่น · ยังไม่รัน migration = ใช้ที่ส่งมา
+  const saved = await loadLetterPhotos(sb, id)
+  if (saved.photos.length) {
+    photos.length = 0
+    photoTitle = saved.title
+    photoLayout = saved.layout
+    for (const p of saved.photos) {
+      const bytes = await getObjectBytes(p.key)
+      if (!bytes) {
+        console.error('[letters] อ่านรูปแนบจาก R2 ไม่ได้', p.key)
+        continue
+      }
+      try {
+        photos.push({ ...(await normalizePhoto(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer)), caption: p.caption })
+      } catch {
+        console.error('[letters] รูปแนบเสีย', p.key)
       }
     }
   }
