@@ -348,6 +348,79 @@ export type Database = {
           },
         ]
       }
+      attendance_backdate_requests: {
+        Row: {
+          attendance_id: string | null
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          employee_id: string
+          id: string
+          reason: string
+          rejected_reason: string | null
+          requested_by: string
+          site_id: string
+          status: string
+          updated_at: string
+          work_date: string
+          work_units: number
+        }
+        Insert: {
+          attendance_id?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          employee_id: string
+          id?: string
+          reason: string
+          rejected_reason?: string | null
+          requested_by: string
+          site_id: string
+          status?: string
+          updated_at?: string
+          work_date: string
+          work_units: number
+        }
+        Update: {
+          attendance_id?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          employee_id?: string
+          id?: string
+          reason?: string
+          rejected_reason?: string | null
+          requested_by?: string
+          site_id?: string
+          status?: string
+          updated_at?: string
+          work_date?: string
+          work_units?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_backdate_requests_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_backdate_requests_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_backdate_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_log: {
         Row: {
           action: string
@@ -2467,6 +2540,15 @@ export type Database = {
         Returns: number
       }
       is_owner: { Args: never; Returns: boolean }
+      attendance_backdate_cancel: { Args: { p_id: string }; Returns: string }
+      attendance_backdate_decide: {
+        Args: { p_approve: boolean; p_id: string; p_reason?: string | null }
+        Returns: string
+      }
+      attendance_backdate_request: {
+        Args: { p_date: string; p_employee: string; p_reason: string; p_site: string; p_units: number }
+        Returns: string
+      }
       is_cashier: { Args: never; Returns: boolean }
       is_supervisor: { Args: never; Returns: boolean }
       material_request_cancel: { Args: { p_id: string }; Returns: Json }
@@ -2884,6 +2966,9 @@ export type Database = {
         | "advance_approved"
         | "advance_rejected"
         | "material_request"
+        | "backdate_pending"
+        | "backdate_approved"
+        | "backdate_rejected"
       owed_kind: "reimburse" | "bonus"
       pay_method: "cash" | "transfer"
       payroll_status: "open" | "closed"
@@ -3034,7 +3119,10 @@ export const Constants = {
         "advance_pending",
         "advance_approved",
         "advance_rejected",
-        "material_request"
+        "material_request",
+        "backdate_pending",
+        "backdate_approved",
+        "backdate_rejected"
       ],
       owed_kind: ["reimburse", "bonus"],
       pay_method: ["cash", "transfer"],
