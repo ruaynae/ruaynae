@@ -10,7 +10,7 @@ import { bubble, carousel, data, text } from './bot/messages'
 import { MENU_LABEL } from './bot/copy'
 
 /** ชนิดแจ้งเตือนที่ส่งเข้า LINE · หน้าตั้งค่า LINE อ่านค่านี้ไปนับสถานะ ห้ามเขียนสำเนาแยก */
-export const LINE_PUSH_KINDS = ['txn_pending', 'advance_pending'] as const
+export const LINE_PUSH_KINDS = ['txn_pending', 'advance_pending', 'backdate_pending'] as const
 const KINDS = LINE_PUSH_KINDS
 const BATCH = 200
 
@@ -24,19 +24,31 @@ export type LinePushResult = {
 /** เจ้าของหนึ่งคน (profile) + ทุกบัญชี LINE ที่ผูกไว้ */
 type Target = { profileId: string; since: number; lineUserIds: string[] }
 
+/** การ์ดบอกจำนวนคำขอลงชื่อย้อนหลัง — อนุมัติที่เว็บ (ยังไม่มีปุ่มในแชท) */
+const backdateBubble = (n: number) =>
+  bubble({
+    title: `คำขอลงชื่อย้อนหลัง ${n} รายการ`,
+    lines: ['หัวหน้าโครงการขอลงชื่อวันที่ผ่านมา', 'เปิดเว็บ หน้า "รออนุมัติ" เพื่ออนุมัติหรือไม่อนุมัติ'],
+    buttons: [],
+  })
+
 /**
  * การ์ดรายละเอียดของที่รออนุมัติ พร้อมปุ่มอนุมัติ/ตีกลับ — ข้อความเดียว (carousel) = กินโควตา 1 ข้อความ/บัญชี
  * 🔴 ปุ่มใช้ postback ชุดเดียวกับเมนู "รออนุมัติ" ในแชท (`approval-cards.ts`) · ตีกลับจะถามเหตุผลต่อในแชท
  * 🔴 ดึงผ่าน `bot_queue` (สวมสิทธิ์เจ้าของ → กติกาเดิม) · ล้มเหลวคืน null ให้ผู้เรียกถอยไปข้อความสรุป
+ * คำขอลงชื่อย้อนหลัง (R23) ยังไม่อยู่ใน `bot_queue` — แนบเป็นการ์ดบอกจำนวนท้ายชุด (ไม่มีปุ่ม
+ * อนุมัติในแชท ต้องไปกดที่เว็บหน้า "รออนุมัติ") ไม่เพิ่มจำนวนข้อความที่ส่ง
  */
-async function approvalCards(lineUserId: string): Promise<LineMessage | null> {
+async function approvalCards(lineUserId: string, backdateCount: number): Promise<LineMessage | null> {
   try {
     const q = await rpc<Queue>('bot_queue', { p_line_user: lineUserId })
     if (!q) return null
     const total = q.advance_count + q.expense_count
     if (total === 0) return null
     const bubbles = [...q.advances.map(advanceBubble), ...q.expenses.map(expenseBubble)]
-    const shown = Math.min(bubbles.length, bubbles.length < total ? 11 : 12)
+    // Flex carousel ได้ไม่เกิน 12 การ์ด · เผื่อที่ให้การ์ดคำขอย้อนหลัง (ถ้ามี) และการ์ด "ยังมีอีก"
+    const slots = backdateCount > 0 ? 11 : 12
+    const shown = Math.min(bubbles.length, bubbles.length < total ? slots - 1 : slots)
     const cards = bubbles.slice(0, shown)
     if (shown < total) {
       cards.push(
@@ -47,9 +59,11 @@ async function approvalCards(lineUserId: string): Promise<LineMessage | null> {
         }),
       )
     }
+    if (backdateCount > 0) cards.push(backdateBubble(backdateCount))
     const parts: string[] = []
     if (q.advance_count > 0) parts.push(`ใบเบิก ${q.advance_count} ใบ`)
     if (q.expense_count > 0) parts.push(`รายจ่าย ${q.expense_count} รายการ`)
+    if (backdateCount > 0) parts.push(`ลงชื่อย้อนหลัง ${backdateCount} คำขอ`)
     return carousel(`มีรออนุมัติ: ${parts.join(' · ')}`, cards)
   } catch (e) {
     console.error('[line-push] ดึงรายละเอียดรออนุมัติไม่ได้ ถอยไปข้อความสรุป', (e as Error).message)
@@ -117,21 +131,33 @@ export async function dispatchLinePush(admin: SupabaseClient<Database>): Promise
     if (!rows || rows.length === 0) continue
     const ids = rows.map((r) => r.id)
 
-    const [tx, adv] = await Promise.all([
+    const [tx, adv, bd] = await Promise.all([
       admin.from('transactions').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
       admin.from('advances').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+      admin
+        .from('attendance_backdate_requests')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'pending'),
     ])
     if (tx.error || adv.error) return { pushed, marked, error: (tx.error ?? adv.error)!.message }
+    // คำขอย้อนหลังอ่านไม่ได้ (เช่น ยังไม่ apply migration) ต้องไม่ขวางการเตือนรายจ่าย/ใบเบิก
+    if (bd.error) console.error('[line-push] นับคำขอลงชื่อย้อนหลังไม่ได้', bd.error.message)
     const nTx = tx.count ?? 0
     const nAdv = adv.count ?? 0
+    const nBd = bd.error ? 0 : (bd.count ?? 0)
 
-    if (nTx + nAdv > 0) {
+    if (nTx + nAdv + nBd > 0) {
       const parts: string[] = []
       if (nTx > 0) parts.push(`รายจ่าย ${nTx} รายการ`)
       if (nAdv > 0) parts.push(`ใบเบิก ${nAdv} ใบ`)
+      if (nBd > 0) parts.push(`ลงชื่อย้อนหลัง ${nBd} คำขอ`)
+      const summary = `มีรออนุมัติ: ${parts.join(' · ')}`
       const message =
-        (await approvalCards(t.lineUserIds[0])) ??
-        text(`มีรออนุมัติ: ${parts.join(' · ')}`, [{ label: MENU_LABEL.apr, data: data({ m: 'apr' }) }])
+        (await approvalCards(t.lineUserIds[0], nBd)) ??
+        // มีแต่คำขอย้อนหลัง = เมนู "รออนุมัติ" ในแชทว่างเปล่า ไม่ใส่ปุ่มที่พาไปหน้าว่าง
+        (nTx + nAdv > 0
+          ? text(summary, [{ label: MENU_LABEL.apr, data: data({ m: 'apr' }) }])
+          : text(`${summary} — เปิดเว็บ หน้า "รออนุมัติ" เพื่ออนุมัติ`))
 
       // ส่งเข้าทุกบัญชีของเจ้าของคนนี้ · บัญชีหนึ่งล้มต้องไม่ขวางบัญชีที่เหลือ
       let ok = 0
