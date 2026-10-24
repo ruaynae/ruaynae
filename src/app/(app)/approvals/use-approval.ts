@@ -5,10 +5,11 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { txnError } from '@/lib/transactions'
 import { advanceError } from '@/lib/advances'
+import { backdateError } from '@/lib/attendance-backdate'
 
 export type ApprovalAction = 'approve' | 'reject'
 /** คิวเดียวกัน แต่คนละตาราง — รายจ่ายที่หัวหน้าโครงการคีย์ / คำขอเบิกค่าแรง */
-export type ApprovalKind = 'transaction' | 'advance'
+export type ApprovalKind = 'transaction' | 'advance' | 'backdate'
 
 /**
  * ยิงอนุมัติ/ตีกลับหนึ่งรายการ — ตรรกะชุดเดียวที่ปุ่มท้ายแถวและกล่องรายละเอียดใช้ร่วมกัน
@@ -22,10 +23,12 @@ export type ApprovalKind = 'transaction' | 'advance'
 export function useApproval(id: string, kind: ApprovalKind = 'transaction') {
   const router = useRouter()
   const [busy, setBusy] = useState<ApprovalAction | null>(null)
-  const path = kind === 'advance' ? 'advances' : 'transactions'
+  const path =
+    kind === 'advance' ? 'advances' : kind === 'backdate' ? 'attendance/backdate' : 'transactions'
   // ข้อความผิดพลาดของสองตารางไม่เหมือนกัน (ALREADY_APPROVED · PAYROLL_CLOSED
   // มีเฉพาะฝั่งใบเบิก) — แปลด้วยพจนานุกรมของตัวเองเสมอ
-  const toMessage = kind === 'advance' ? advanceError : txnError
+  const toMessage =
+    kind === 'advance' ? advanceError : kind === 'backdate' ? backdateError : txnError
 
   async function send(
     action: ApprovalAction,
@@ -52,7 +55,7 @@ export function useApproval(id: string, kind: ApprovalKind = 'transaction') {
       toast.success(
         action === 'approve'
           ? 'อนุมัติแล้ว'
-          : kind === 'advance' ? 'ไม่อนุมัติคำขอนี้แล้ว' : 'ตีกลับแล้ว',
+          : kind === 'advance' || kind === 'backdate' ? 'ไม่อนุมัติคำขอนี้แล้ว' : 'ตีกลับแล้ว',
       )
       // แถวหายจากคิวเพราะ query กรอง `pending` — refresh ให้เซิร์ฟเวอร์คำนวณใหม่
       // ไม่ใช่ลบออกจาก state เอง ซึ่งจะเพี้ยนทันทีที่มีคนอื่นกดพร้อมกัน

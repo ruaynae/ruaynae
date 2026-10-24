@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  Check, History, LayoutGrid, List, Loader2, SlidersHorizontal, UserRound, Users, X,
+  Check, Clock, History, LayoutGrid, List, Loader2, Send, SlidersHorizontal, UserRound, Users, X,
 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useState } from 'react'
@@ -10,6 +10,7 @@ import { fmtBaht } from '@/lib/format'
 import {
   ADJUST_ERRORS, adjustNet, type AdjustLine, type AdjustPreset,
 } from '@/lib/wage-adjustments'
+import { backdateError, MAX_BACKDATE_REASON } from '@/lib/attendance-backdate'
 import { AdjustDialog } from './adjust-dialog'
 import { PickGrid, type PickItem } from './pick-grid'
 
@@ -42,6 +43,7 @@ const MESSAGES: Record<string, string> = {
   ALREADY_SIGNED_IN: 'คนนี้ถูกลงชื่อในโครงการนี้ของวันนี้ไปแล้ว',
   EMPLOYEE_INACTIVE: 'คนงานคนนี้ถูกปิดใช้งานแล้ว',
   OT_INVALID: 'ค่า OT ต้องเป็นตัวเลขที่ไม่ติดลบ',
+  BACKDATE_NEEDS_APPROVAL: backdateError('BACKDATE_NEEDS_APPROVAL'),
   NOT_FOUND: 'ไม่พบรายการนี้ — อาจถูกลบไปแล้ว',
   ...ADJUST_ERRORS,
 }
@@ -65,6 +67,8 @@ export function AttendanceBoard({
   bookedElsewhere,
   presets,
   rates,
+  backdated,
+  pendingRequests,
 }: {
   date: string
   today: string
@@ -98,11 +102,20 @@ export function AttendanceBoard({
   presets: AdjustPreset[]
   /** เรตต่อวันรายคน (คนรายเดือน = 0) — ว่างสำหรับคนที่ไม่เห็นเงิน */
   rates: Record<string, number>
+  /**
+   * วันที่เลือกเป็นวันย้อนหลังและคนดูไม่ใช่เจ้าของ (24 ต.ค. 2569) — ลงชื่อตรง ๆ ไม่ได้
+   * ต้องยื่นคำขอให้เจ้าของอนุมัติ · ด่านจริงอยู่ที่ trigger `guard_attendance_backdate`
+   */
+  backdated: boolean
+  /** คำขอย้อนหลังของคนดูที่ยังรออนุมัติ ในโครงการและวันนี้ */
+  pendingRequests: { id: string; employee_id: string; work_units: number }[]
 }) {
   const router = useRouter()
   const params = useSearchParams()
   const [busy, setBusy] = useState<string | null>(null)
   const [bulkBusy, setBulkBusy] = useState(false)
+  /** เหตุผลที่ลงย้อนหลัง — ใช้ร่วมกันทั้งชุดที่ติ๊กไว้ */
+  const [reason, setReason] = useState('')
   const [half, setHalf] = useState<Record<string, boolean>>({})
   /** รายการปรับค่าแรงของคนที่ติ๊กไว้ (ยังไม่ลงชื่อ) — ไปกับ POST ตอนกด "ลงชื่อ N คน" */
   const [adjust, setAdjust] = useState<Record<string, AdjustLine[]>>({})
@@ -127,7 +140,9 @@ export function AttendanceBoard({
   const byEmployee = new Map(signedIn.map((r) => [r.employee_id, r]))
   const byId = new Map(employees.map((e) => [e.id, e]))
   const inSite = employees.filter((e) => byEmployee.has(e.id))
-  const notIn = employees.filter((e) => !byEmployee.has(e.id))
+  // คนที่ยื่นคำขอไว้แล้วไม่อยู่ในรายชื่อให้ติ๊กซ้ำ (ฐานข้อมูลก็กันซ้ำอยู่ที่ unique index)
+  const pendingByEmployee = new Map(pendingRequests.map((r) => [r.employee_id, r]))
+  const notIn = employees.filter((e) => !byEmployee.has(e.id) && !pendingByEmployee.has(e.id))
 
   /** เหลือลงได้อีกกี่วันสำหรับคนนี้ (เพดาน 1 วันต่อวัน หักที่ลงไว้ที่โครงการอื่นแล้ว) */
   const capacityOf = (employeeId: string) =>
@@ -152,6 +167,22 @@ export function AttendanceBoard({
     const p = new URLSearchParams(params.toString())
     for (const [k, v] of Object.entries(next)) p.set(k, v)
     router.push(`/attendance?${p.toString()}`)
+  }
+
+  /** ยื่นคำขอลงชื่อย้อนหลังหนึ่งคน — คืนรหัสเหตุผลที่ไม่สำเร็จ (null = สำเร็จ) */
+  async function postBackdate(employeeId: string, workUnits: number) {
+    try {
+      const r = await fetch('/api/attendance/backdate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ siteId, employeeId, workDate: date, workUnits, reason: reason.trim() }),
+      })
+      if (r.ok) return null
+      const b = await r.json().catch(() => ({}))
+      return typeof b.error === 'string' ? b.error : 'UNKNOWN'
+    } catch {
+      return 'NETWORK'
+    }
   }
 
   /** ยิงลงชื่อหนึ่งคน — คืนรหัสเหตุผลที่ไม่สำเร็จ (null = สำเร็จ) ให้ผู้เรียกสรุปข้อความเอง */
@@ -252,6 +283,49 @@ export function AttendanceBoard({
    * ยิงผ่าน API เดิมทีละคน (ด่านกันซ้ำ/กันเกินวันของฐานข้อมูลยังตรวจครบทุกคน)
    * คัดลอกเฉพาะ เต็มวัน/ครึ่งวัน — OT และรายการปรับเป็นเรื่องของแต่ละวัน ไม่คัดลอก
    */
+  /** ย้อนหลัง: ส่งคำขอทุกคนที่ติ๊กไว้ — ยังไม่มีการลงชื่อจนกว่าเจ้าของจะอนุมัติ */
+  async function requestPicked() {
+    if (busy || bulkBusy || pickedIds.length === 0) return
+    if (reason.trim() === '') {
+      toast.error(backdateError('REASON_REQUIRED'))
+      return
+    }
+    setBulkBusy(true)
+    let ok = 0
+    const failures: string[] = []
+    for (const id of pickedIds) {
+      const code = await postBackdate(id, unitsOf(id))
+      if (code === null) ok += 1
+      else failures.push(code)
+    }
+    if (ok > 0 && failures.length === 0) toast.success(`ส่งคำขอแล้ว ${ok} คน — รอเจ้าของอนุมัติ`)
+    else if (ok > 0) toast.success(`ส่งคำขอแล้ว ${ok} คน · ไม่สำเร็จ ${failures.length} คน`)
+    else toast.error(failures[0] === 'NETWORK' ? 'เชื่อมต่อไม่ได้ ตรวจสอบสัญญาณแล้วลองใหม่' : backdateError(failures[0]))
+    if (ok > 0) setReason('')
+    setPicked({})
+    router.refresh()
+    setBulkBusy(false)
+  }
+
+  async function cancelRequest(id: string) {
+    if (busy || bulkBusy) return
+    setBusy(id)
+    try {
+      const r = await fetch(`/api/attendance/backdate/${id}`, { method: 'DELETE' })
+      const b = await r.json().catch(() => ({}))
+      if (!r.ok) {
+        toast.error(backdateError(b.error))
+        return
+      }
+      toast.success('ยกเลิกคำขอแล้ว')
+      router.refresh()
+    } catch {
+      toast.error('เชื่อมต่อไม่ได้ ตรวจสอบสัญญาณแล้วลองใหม่')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   async function signInLikeYesterday() {
     if (busy || bulkBusy || copyFromYesterday.length === 0) return
     setBulkBusy(true)
@@ -380,7 +454,7 @@ export function AttendanceBoard({
       </div>
 
       {/* ทางลัดของเช้าวันปกติ — ชุดคนเหมือนเมื่อวาน ไม่ต้องไล่ติ๊กใหม่ทั้งโครงการ */}
-      {copyFromYesterday.length > 0 && (
+      {!backdated && copyFromYesterday.length > 0 && (
         <button
           type="button"
           onClick={signInLikeYesterday}
@@ -392,6 +466,70 @@ export function AttendanceBoard({
             ? 'กำลังลงชื่อ…'
             : `เหมือนเมื่อวาน — ลงชื่อ ${copyFromYesterday.length} คนเดิม`}
         </button>
+      )}
+
+      {backdated && (
+        <section
+          aria-label="ลงชื่อย้อนหลัง"
+          data-backdated="true"
+          className="space-y-2 rounded-lg border border-status-progress-ring bg-status-progress-bg px-4 py-3"
+        >
+          <p className="flex items-center gap-2 text-sm font-semibold text-status-progress">
+            <Clock className="size-4 shrink-0" aria-hidden />
+            วันนี้เป็นวันย้อนหลัง — ลงชื่อเองไม่ได้
+          </p>
+          <p className="text-sm text-ink-2">
+            ติ๊กคนที่มาทำงานในวันนั้น บอกเหตุผล แล้วกด &ldquo;ส่งคำขอ&rdquo; — ค่าแรงจะเข้าต้นทุนต่อเมื่อเจ้าของอนุมัติแล้วเท่านั้น
+            · การเอาคนออกจากวันย้อนหลังต้องให้เจ้าของทำ
+          </p>
+          <div>
+            <label htmlFor="att-backdate-reason" className="label-base">เหตุผลที่ต้องลงย้อนหลัง</label>
+            <input
+              id="att-backdate-reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value.slice(0, MAX_BACKDATE_REASON))}
+              placeholder="เช่น ลืมลงชื่อ · สัญญาณไม่มี"
+              autoComplete="off"
+              className="input-base"
+            />
+          </div>
+        </section>
+      )}
+
+      {backdated && pendingRequests.length > 0 && (
+        <section className="panel" aria-label="คำขอที่รออนุมัติ">
+          <div className="panel-head">
+            รอเจ้าของอนุมัติ
+            <span className="ml-auto text-xs font-normal tnum text-muted-token">
+              {pendingRequests.length} คน
+            </span>
+          </div>
+          <ul>
+            {pendingRequests.map((r) => (
+              <li
+                key={r.id}
+                className="flex items-center gap-3 border-b border-line-soft px-3.5 py-2.5 last:border-b-0 md:px-4"
+              >
+                <Clock className="size-4 shrink-0 text-status-progress" aria-hidden />
+                <span className="min-w-0 flex-1 truncate font-medium text-ink">
+                  {byId.get(r.employee_id)?.full_name ?? 'คนงาน'}
+                  {r.work_units === 0.5 && (
+                    <span className="ml-1.5 text-sm font-normal text-muted-token">ครึ่งวัน</span>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => cancelRequest(r.id)}
+                  disabled={busy !== null || bulkBusy}
+                  className="btn-secondary shrink-0 px-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {busy === r.id ? <Loader2 className="size-4 animate-spin" /> : <X className="size-4" />}
+                  ยกเลิกคำขอ
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {/* ── สรุปของวัน — การ์ดตัวเลขสำคัญ อยู่บนสุดไม่ลอยตามจอ (เจ้าของแจ้ง 19 ก.ย. 2569)
@@ -485,6 +623,7 @@ export function AttendanceBoard({
                       <SlidersHorizontal className="size-4" />
                     </button>
                   )}
+                  {!backdated && (
                   <button
                     type="button"
                     onClick={() => signOut(row)}
@@ -498,6 +637,7 @@ export function AttendanceBoard({
                       <X className="size-4" />
                     )}
                   </button>
+                  )}
                 </li>
               )
             })}
@@ -701,16 +841,20 @@ export function AttendanceBoard({
             </div>
             <button
               type="button"
-              onClick={signInPicked}
-              disabled={bulkBusy || busy !== null}
+              onClick={backdated ? requestPicked : signInPicked}
+              disabled={bulkBusy || busy !== null || (backdated && reason.trim() === '')}
               className="btn-primary shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {bulkBusy ? (
                 <Loader2 className="size-4 animate-spin" />
+              ) : backdated ? (
+                <Send className="size-4" />
               ) : (
                 <Check className="size-4" />
               )}
-              {bulkBusy ? 'กำลังลงชื่อ…' : `ลงชื่อ ${pickedIds.length} คน`}
+              {bulkBusy
+                ? backdated ? 'กำลังส่งคำขอ…' : 'กำลังลงชื่อ…'
+                : backdated ? `ส่งคำขอ ${pickedIds.length} คน` : `ลงชื่อ ${pickedIds.length} คน`}
             </button>
           </div>
         </div>

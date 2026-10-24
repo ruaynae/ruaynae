@@ -51,6 +51,9 @@ export default async function AttendancePage({
       ),
   )
 
+  // วันก่อนวันนี้ + ไม่ใช่เจ้าของ = ลงชื่อตรง ๆ ไม่ได้ ต้องยื่นคำขอ (trigger กันที่ฐานข้อมูลอีกชั้น)
+  const backdated = !isOwner && date < today
+
   const siteId = sites.some((s) => s.id === sp.site) ? sp.site! : sites[0]?.id
 
   if (sErr) {
@@ -63,7 +66,7 @@ export default async function AttendancePage({
   if (!siteId) {
     return (
       <>
-        <Header date={date} />
+        <Header date={date} backdated={backdated} />
         <EmptyState
           icon={HardHat}
           message={
@@ -95,6 +98,7 @@ export default async function AttendancePage({
     { data: otherSiteRows, error: oErr },
     { data: wageRows, error: wErr },
     { data: presetRows, error: prErr },
+    { data: backdateRows, error: bdErr },
   ] =
     await Promise.all([
       // 🔴 ไม่ดึงค่าแรงมาที่หน้านี้สำหรับหัวหน้าโครงการ — เขามีหน้าที่บันทึกว่าใครมาทำงาน
@@ -208,7 +212,23 @@ export default async function AttendancePage({
             .order('name', { ascending: true })
             .range(0, PAGE_SIZE - 1)
         : Promise.resolve({ data: [], error: null }),
+      // คำขอลงชื่อย้อนหลังของตัวเองที่ยังรออนุมัติ (24 ต.ค. 2569) — เฉพาะวันย้อนหลังของหัวหน้า
+      // · RLS ให้เห็นเฉพาะใบที่ตัวเองยื่นอยู่แล้ว ตรงนี้กรองซ้ำให้ชัดว่าเป็นของใคร
+      backdated
+        ? sb
+            .from('attendance_backdate_requests')
+            .select('id, employee_id, work_units')
+            .eq('site_id', siteId)
+            .eq('work_date', date)
+            .eq('status', 'pending')
+            .eq('requested_by', me.id)
+            .order('created_at', { ascending: true })
+            .range(0, PAGE_SIZE - 1)
+        : Promise.resolve({ data: [], error: null }),
     ])
+
+  // คำขอย้อนหลังอ่านไม่ได้ = แผง "รออนุมัติ" ว่าง ไม่ใช่ทั้งหน้าพัง
+  if (bdErr) console.error('[attendance] อ่านคำขอย้อนหลังไม่ได้', bdErr.message)
 
   if (eErr || aErr || pErr || oErr || wErr || prErr) {
     console.error(
@@ -237,7 +257,7 @@ export default async function AttendancePage({
 
   return (
     <>
-      <Header date={date} />
+      <Header date={date} backdated={backdated} />
       <AttendanceBoard
         date={date}
         today={today}
@@ -258,16 +278,26 @@ export default async function AttendancePage({
         bookedElsewhere={bookedElsewhere}
         presets={(presetRows ?? []).map((p) => ({ ...p, amount: Number(p.amount) }))}
         rates={rates}
+        backdated={backdated}
+        pendingRequests={(backdateRows ?? []).map((r) => ({
+          id: r.id,
+          employee_id: r.employee_id,
+          work_units: Number(r.work_units),
+        }))}
       />
     </>
   )
 }
 
-function Header({ date }: { date: string }) {
+function Header({ date, backdated }: { date: string; backdated: boolean }) {
   return (
     <PageHeader
       title="คนเข้าโครงการ"
-      subtitle={`${fmtDateLong(date)} · ติ๊กคนที่มาทำงาน — ค่าแรงเข้าต้นทุนโครงการทันทีโดยไม่ต้องรออนุมัติ`}
+      subtitle={
+        backdated
+          ? `${fmtDateLong(date)} · วันย้อนหลัง — ติ๊กคนที่มาทำงานแล้วส่งคำขอให้เจ้าของอนุมัติ`
+          : `${fmtDateLong(date)} · ติ๊กคนที่มาทำงาน — ค่าแรงเข้าต้นทุนโครงการทันทีโดยไม่ต้องรออนุมัติ`
+      }
     />
   )
 }
