@@ -466,7 +466,9 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
     overlay: { plotW: (weekW * nW) / (weekW * nW + pctW) },
     series: [
       { name: 'แผนงานสะสม', x: ref(SHEET.calc, `$F$6:$${wl(nW - 1)}$6`), y: ref(SHEET.calc, `$F$7:$${wl(nW - 1)}$7`), color: '2F5F94', width: 22225 },
-      ...(p.w124 ? [{ name: 'แผนงาน ÷ 2 (ว.124 ข้อ 2.2.2)', x: ref(SHEET.calc, `$F$6:$${wl(nW - 1)}$6`), y: ref(SHEET.calc, `$F$16:$${wl(nW - 1)}$16`), color: '8A939C', dash: true, marker: false, width: 15875 }] : []),
+      ...(p.w124 ? [{ name: 'แผนงาน ÷ 2 (ว.124 ข้อ 2.2.2)', x: ref(SHEET.calc, `$F$6:$${wl(nW - 1)}$6`), y: ref(SHEET.calc, `$F$16:$${wl(nW - 1)}$16`), color: '8A939C', dash: true, marker: false, width: 15875,
+        // เส้นนี้จบที่ 50% โดยตั้งใจ (ครึ่งของแผน) — ไม่มีป้ายแล้วคนอ่านนึกว่าเป็นเส้นผลงานที่กรอกไม่ครบ (เจ้าของแจ้ง 25 ต.ค. 2569)
+        endLabel: { idx: nW, text: 'ครึ่งของแผน (ว.124 ข้อ 2.2.2)', pos: 'l' as const } }] : []),
       ...redLines,
       { name: 'ผลงานจริงสะสม', x: ref(SHEET.calc, `$F$8:$${lastP}$8`), y: ref(SHEET.calc, `$F$9:$${lastP}$9`), color: 'E08A1E', width: 22225 },
       ...Array.from({ length: p.periods }, (_, k) => ({

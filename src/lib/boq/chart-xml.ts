@@ -13,6 +13,8 @@ export type LineSeries = {
   name: string; x: string; y: string; color: string; dash?: boolean; marker?: boolean; width?: number
   /** จุดที่มีหมุด + ป้ายข้อความของตัวเอง (บรรทัดละย่อหน้า) วางทางซ้ายของจุด — ใช้กับเส้นเกณฑ์ ว.124 */
   points?: { idx: number; lines: string[] }[]
+  /** ป้ายชื่อเส้นที่จุดเดียว (ไม่มีหมุด ไม่มีกรอบ) — กราฟทับตารางไม่มีคำอธิบายเส้น จึงบอกชื่อที่ปลายเส้นแทน */
+  endLabel?: { idx: number; text: string; pos: 't' | 'b' | 'l' | 'r' }
 }
 export type BarSeries = { name: string; y: string; color: string }
 type Base = {
@@ -95,12 +97,18 @@ function pointLabels(s: LineSeries) {
   return `${dPt}<c:dLbls>${lbl}${SHOW(0)}</c:dLbls>`
 }
 
+function endLabel(s: LineSeries, e: NonNullable<LineSeries['endLabel']>) {
+  const run = `<a:r><a:rPr lang="th-TH" sz="700" b="1"><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill></a:rPr><a:t>${esc(e.text)}</a:t></a:r>`
+  const lbl = `<c:dLbl><c:idx val="${e.idx}"/><c:tx><c:rich><a:bodyPr wrap="none"/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="700" b="1"/></a:pPr>${run}</a:p></c:rich></c:tx>${NO_FILL}<c:dLblPos val="${e.pos}"/>${SHOW(1)}</c:dLbl>`
+  return `<c:dLbls>${lbl}${SHOW(0)}</c:dLbls>`
+}
+
 function scatterPlot(c: Extract<ChartSpec, { kind: 'scatter' }>) {
   const ser = c.series
     .map((s, i) => `<c:ser><c:idx val="${i}"/><c:order val="${i}"/><c:tx><c:v>${esc(s.name)}</c:v></c:tx>
 <c:spPr><a:ln w="${s.width ?? (s.dash ? 22225 : 31750)}" cap="rnd"><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill>${s.dash ? '<a:prstDash val="dash"/>' : ''}<a:round/></a:ln></c:spPr>
 ${s.marker === false ? '<c:marker><c:symbol val="none"/></c:marker>' : `<c:marker><c:symbol val="circle"/><c:size val="4"/><c:spPr><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill><a:ln><a:noFill/></a:ln></c:spPr></c:marker>`}
-${s.points ? pointLabels(s) : ''}<c:xVal><c:numRef><c:f>${esc(s.x)}</c:f></c:numRef></c:xVal><c:yVal><c:numRef><c:f>${esc(s.y)}</c:f></c:numRef></c:yVal><c:smooth val="0"/></c:ser>`)
+${s.points ? pointLabels(s) : s.endLabel ? endLabel(s, s.endLabel) : ''}<c:xVal><c:numRef><c:f>${esc(s.x)}</c:f></c:numRef></c:xVal><c:yVal><c:numRef><c:f>${esc(s.y)}</c:f></c:numRef></c:yVal><c:smooth val="0"/></c:ser>`)
     .join('')
   const chart = `<c:scatterChart><c:scatterStyle val="lineMarker"/><c:varyColors val="0"/>${ser}<c:axId val="5001"/><c:axId val="5002"/></c:scatterChart>`
   if (c.overlay) {
