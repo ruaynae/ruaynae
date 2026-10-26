@@ -11,7 +11,12 @@ import { DomesticBuilder } from './domestic-builder'
  * · ติดตามผลงานจากไฟล์ Excel ที่กรอกนอกเว็บ · แผนการใช้พัสดุ/เหล็กที่ผลิตในประเทศจาก BOQ (R22)
  * · ทุกแท็บอยู่ในหน้า ไม่ล้างกันตอนสลับ — งานที่แก้ค้างในแท็บสร้างแผนไม่หาย
  */
-export function PlansTabs({ initial, saved }: { initial: 'saved' | 'build' | 'track' | 'domestic'; saved: ReactNode }) {
+export function PlansTabs({ initial, saved, domesticSaved }: {
+  initial: 'saved' | 'build' | 'track' | 'domestic'
+  saved: ReactNode
+  /** แผนการใช้วัสดุที่บันทึกไว้ (R22b) — เรนเดอร์ฝั่งเซิร์ฟเวอร์ วางเหนือช่องอัปโหลด */
+  domesticSaved?: ReactNode
+}) {
   const [tab, setTab] = useState(initial)
   const TABS = [
     { id: 'saved' as const, label: 'แผนงานที่บันทึกไว้', icon: FolderOpen },
@@ -41,7 +46,7 @@ export function PlansTabs({ initial, saved }: { initial: 'saved' | 'build' | 'tr
       <div hidden={tab !== 'saved'}>{saved}</div>
       <div hidden={tab !== 'build'}><PlanBuilder /></div>
       <div hidden={tab !== 'track'}><ProgressTracker /></div>
-      <div hidden={tab !== 'domestic'}><DomesticBuilder /></div>
+      <div hidden={tab !== 'domestic'} className="space-y-4">{domesticSaved}<DomesticBuilder /></div>
     </div>
   )
 }
