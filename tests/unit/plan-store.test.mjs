@@ -86,3 +86,25 @@ test('planReport: ช่องว่างยกค่างวดก่อน �
   assert.deepEqual(r.tasks.map((t) => t.code), ['1.1', '2.1'])
   assert.equal(r.w124Enabled, true)
 })
+
+test('แผนเสริม (เร่งรัด/ดำเนินการ): บันทึกได้ · ช่วงเกินสัญญาถูกปฏิเสธ · รายงานมีเส้นสะสมของทั้งสองแผน', () => {
+  const p = plan()
+  p.categories[0].tasks[0].fast = { offset: 0, dur: 21 }
+  p.categories[0].tasks[0].ops = { offset: 7, dur: 35 }
+  const r = parsePlanInput(p)
+  assert.equal(r.ok, true)
+  assert.deepEqual(r.value.categories[0].tasks[0].fast, { offset: 0, dur: 21 })
+  assert.equal('fast' in r.value.categories[1].tasks[0], false)
+
+  const bad = plan()
+  bad.categories[1].tasks[0].ops = { offset: 50, dur: 30 }
+  assert.deepEqual(parsePlanInput(bad), { ok: false, error: 'PLAN_CATEGORIES_INVALID' })
+
+  const rep = planReport({ ...r.value, progress: { dates: [], items: {} } }, '2027-01-01')
+  assert.equal(rep.fastCum.length, 10)
+  assert.ok(Math.abs(rep.fastCum.at(-1) - 1) < 1e-9 && Math.abs(rep.opsCum.at(-1) - 1) < 1e-9)
+  // เร่งรัด: ฐานรากเสร็จใน 3 สัปดาห์ (น้ำหนัก 60%) · ตามสัญญายังได้แค่ 3/5 ของงานนั้น
+  assert.ok(Math.abs(rep.fastCum[2] - 0.6) < 1e-9)
+  assert.ok(Math.abs(rep.planCum[2] - 0.36) < 1e-9)
+  assert.equal(planReport({ ...plan(), progress: { dates: [], items: {} } }, '2027-01-01').fastCum, undefined)
+})

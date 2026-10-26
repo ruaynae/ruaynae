@@ -128,6 +128,9 @@
   --bar-cost-wage: #92400e;
   --bar-cost-material: #c2680a;
   --bar-cost-other: #e9a94f;
+  /* แผนเสริมของแผนงานก่อสร้าง (R20j) — แผนเร่งรัด · แผนการทำงานดำเนินการ */
+  --bar-plan-fast: #7c4dbd;
+  --bar-plan-ops: #0f8a87;
 }
 
 .dark {
@@ -194,6 +197,8 @@
   --bar-cost-wage: #f0ad5a;
   --bar-cost-material: #cf8938;
   --bar-cost-other: #a5702f;
+  --bar-plan-fast: #b394ec;
+  --bar-plan-ops: #4cc9c4;
 }
 
 @theme inline {
@@ -268,6 +273,8 @@
   --color-bar-cost-wage: var(--bar-cost-wage);
   --color-bar-cost-material: var(--bar-cost-material);
   --color-bar-cost-other: var(--bar-cost-other);
+  --color-bar-plan-fast: var(--bar-plan-fast);
+  --color-bar-plan-ops: var(--bar-plan-ops);
   --color-bar-track: var(--bar-track);
 }
 

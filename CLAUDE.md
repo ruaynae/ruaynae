@@ -689,6 +689,9 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
         · ปุ่ม "บันทึกแผนงานไว้ในเว็บ" → `/plans/[id]` กรอก % แล้วเสร็จรายงวด + วันที่ส่งงวดบนเว็บ · S-Curve/ว.124 คิดทันทีด้วย `planReport()` (core.ts) **สูตรเดียวกับ `readProgress`**
         · ดาวน์โหลด Excel พร้อมผลงานในช่องสีเหลือง (`fillProgress`) · แก้แผนที่ `/plans/[id]/edit` · ผูกโครงการได้ · 🔴 คีย์ผลงาน `หมวด.งาน.รายการ` นับรวมงานที่ปิด — ห้ามเรียงหมวด/งานใหม่ตอนแก้แผน
         · PATCH ต้องส่ง `expectedUpdatedAt` (409 `PLAN_CHANGED`) · ตารางยังไม่มี = 503 `PLAN_TABLE_MISSING` · ⚠️ **migration `20261022090000_r20_saved_plans.sql` ยังไม่ได้ apply**
+      · **R20j (23 ต.ค. · ตามไฟล์ตัวอย่างของเจ้าของ):** แผนงานเร่งรัด + แผนการทำงานดำเนินการ — ติ๊กเปิดในหน้าสร้างแผน · แต่ละงานมีวันของสองแผนแยก (`BoqTask.fast/ops` · `spanOf()` · ไม่มี = เท่าแผนตามสัญญา)
+        · Excel งานละ 4 แถว (Plan · เร่งรัด · ดำเนินการ · Actual) ป้ายคอลัมน์ F = `ALT_PLANS[].tag` ที่ SUMIF ใช้ · ชีตคำนวณแถว 17/19 = เส้นใน S-Curve · ไม่ติ๊ก = ไฟล์เหมือนเดิมทุกช่อง
+        · ไม่ต้องรัน migration (อยู่ใน jsonb `categories`)
       · unit test `tests/unit/boq-core.test.mjs` (ชีตจำลอง — ห้ามใส่ BOQ จริงของลูกค้าใน repo public) · ตารางตรวจรับ `docs/test-plan/R20-construction-plan.md`
 - [ ] **R21 · คลังเอกสาร** (22 ต.ค. 2569) — เมนู `/files` (เจ้าของเท่านั้น) เก็บสัญญาจ้าง แบบก่อสร้าง BOQ หนังสือรับรองผลงาน
       · อัปหลายไฟล์ ≤ 100 MB ตรงเข้า R2 (`/api/files/sign` → PUT → `/api/files`) · ชนิดไฟล์จากนามสกุล เซิร์ฟเวอร์กำหนด content-type (ไม่รับ html/svg)

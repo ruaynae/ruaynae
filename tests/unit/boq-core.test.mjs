@@ -272,3 +272,21 @@ test('parseBoq: แบบเก่า (ปร.1 (ก)/ปร.2 (ก) ในช�
   ])
   assert.equal(m.categories[2].tasks[0].items[0].qty, 7)
 })
+
+test('แผนเสริม: setAltPlans เริ่มเท่าแผนตามสัญญา · distribute ตามแผนที่เลือก · autoSchedule บีบแผนเสริมให้อยู่ในสัญญา', async () => {
+  const { setAltPlans, hasAltPlans, spanOf } = await import('../../src/lib/boq/core.ts')
+  const task = (name, amount, offset, dur) => ({ name, amount, source: '', items: [], offset, dur, on: true })
+  const cats = [{ name: 'หมวด', source: '', mult: 1, group: '', tasks: [task('ก', 100, 0, 14), task('ข', 300, 14, 14)] }]
+  assert.equal(hasAltPlans(cats), false)
+  const on = setAltPlans(cats, true)
+  assert.equal(hasAltPlans(on), true)
+  assert.deepEqual(spanOf(on[0].tasks[1], 'ops'), { offset: 14, dur: 14 })
+  assert.deepEqual(distribute(on, 28, 'fast').cum, distribute(on, 28).cum)
+  on[0].tasks[1].fast = { offset: 0, dur: 7 }
+  const fast = distribute(on, 28, 'fast')
+  assert.ok(Math.abs(fast.perWeek[0] - (0.25 / 2 + 0.75)) < 1e-9)
+  assert.ok(Math.abs(fast.cum.at(-1) - 1) < 1e-9)
+  assert.equal(hasAltPlans(setAltPlans(on, false)), false)
+  on[0].tasks[0].ops = { offset: 20, dur: 8 }
+  assert.deepEqual(autoSchedule(on, 21)[0].tasks[0].ops, { offset: 20, dur: 1 })
+})

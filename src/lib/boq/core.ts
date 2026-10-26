@@ -31,6 +31,34 @@ export type BoqTask = {
   offset: number
   dur: number
   on: boolean
+  /** แผนงานเร่งรัด / แผนการทำงานดำเนินการ (คำขอเจ้าของ 23 ต.ค. 2569) — ไม่มี = เท่าแผนตามสัญญา */
+  fast?: Span
+  ops?: Span
+}
+/** ช่วงวันของงานในแผนหนึ่งชุด — `offset` นับจากวันเริ่มสัญญา (0 = วันแรก) */
+export type Span = { offset: number; dur: number }
+export type AltKind = 'fast' | 'ops'
+/** แผนเสริมที่วางคู่แผนตามสัญญา · `tag` = ป้ายในคอลัมน์ "แผนงาน/ผลงาน" ของ Excel (SUMIF ใช้ป้ายนี้) */
+export const ALT_PLANS: readonly { kind: AltKind; label: string; tag: string }[] = [
+  { kind: 'fast', label: 'แผนงานเร่งรัด', tag: 'เร่งรัด' },
+  { kind: 'ops', label: 'แผนการทำงานดำเนินการ', tag: 'ดำเนินการ' },
+]
+/** ช่วงวันของงานในแผนที่เลือก · ไม่ระบุแผน = ตามสัญญา */
+export const spanOf = (t: BoqTask, kind?: AltKind): Span => (kind && t[kind]) || { offset: t.offset, dur: t.dur }
+/** แผนนี้มีแผนเสริมไหม — ดูจากงานที่ติ๊กไว้งานใดงานหนึ่งมีช่วงวันของแผนเสริม */
+export const hasAltPlans = (categories: BoqCategory[]) => categories.some((c) => c.tasks.some((t) => t.fast || t.ops))
+/** บีบช่วงวันให้อยู่ในระยะสัญญา (ใช้ตอนระยะเวลาเปลี่ยน) */
+export function clampSpan(s: Span, days: number): Span {
+  const offset = Math.max(0, Math.min(days - 1, Math.round(s.offset)))
+  return { offset, dur: Math.max(1, Math.min(Math.round(s.dur), days - offset)) }
+}
+/** เปิด/ปิดแผนเสริม — เปิด = เริ่มจากแผนตามสัญญา · ปิด = ทิ้งช่วงวันของแผนเสริม */
+export function setAltPlans(categories: BoqCategory[], on: boolean): BoqCategory[] {
+  return categories.map((c) => ({
+    ...c,
+    tasks: c.tasks.map(({ fast: _f, ops: _o, ...t }) =>
+      on ? { ...t, fast: { offset: t.offset, dur: t.dur }, ops: { offset: t.offset, dur: t.dur } } : t),
+  }))
 }
 export type BoqCategory = {
   name: string
@@ -511,7 +539,12 @@ export function autoSchedule(categories: BoqCategory[], days: number): BoqCatego
       let dur = Math.round(span * (0.55 + 0.45 * Math.sqrt(t.amount / maxA)))
       dur = Math.min(span, Math.max(Math.min(7, span), dur))
       const offset = Math.max(0, Math.min(days - dur, Math.round(s * days + (span - dur) * 0.25)))
-      return { ...t, offset, dur: Math.max(1, dur) }
+      // แผนเสริมที่เจ้าของจัดไว้แล้วไม่ถูกจัดใหม่ — แค่บีบให้อยู่ในระยะสัญญาใหม่
+      return {
+        ...t, offset, dur: Math.max(1, dur),
+        ...(t.fast ? { fast: clampSpan(t.fast, days) } : {}),
+        ...(t.ops ? { ops: clampSpan(t.ops, days) } : {}),
+      }
     }),
   }))
 }
@@ -535,7 +568,7 @@ export const activeTasks = (categories: BoqCategory[]) => categories.flatMap((c)
  * กระจายน้ำหนักงานลงสัปดาห์ = (วันของงานที่ตกในสัปดาห์นั้น ÷ ระยะเวลางาน) × น้ำหนัก
  * 🔴 ต้องตรงกับสูตรในแถว Plan ของไฟล์ Excel — ไม่งั้นค่าที่โชว์บนจอกับในไฟล์ไม่เท่ากัน
  */
-export function distribute(categories: BoqCategory[], days: number): Distribution {
+export function distribute(categories: BoqCategory[], days: number, kind?: AltKind): Distribution {
   const weeks = weekCount(days)
   const tasks = activeTasks(categories)
   const total = tasks.reduce((s, t) => s + t.amount, 0)
@@ -543,10 +576,11 @@ export function distribute(categories: BoqCategory[], days: number): Distributio
   const weights = tasks.map((t) => (total ? t.amount / total : 0))
   const plan = tasks.map((t, i) => {
     const row = new Array<number>(weeks).fill(0)
-    const te = t.offset + t.dur - 1
+    const sp = spanOf(t, kind)
+    const te = sp.offset + sp.dur - 1
     for (let w = 0; w < weeks; w += 1) {
-      const ov = Math.max(0, Math.min(te, w * 7 + 6) - Math.max(t.offset, w * 7) + 1)
-      row[w] = (ov / t.dur) * weights[i]
+      const ov = Math.max(0, Math.min(te, w * 7 + 6) - Math.max(sp.offset, w * 7) + 1)
+      row[w] = (ov / sp.dur) * weights[i]
       perWeek[w] += row[w]
     }
     return row
@@ -632,6 +666,9 @@ export function planReport(
     planWeekly: dist.perWeek,
     planCum: dist.cum,
     actualCum,
+    ...(hasAltPlans(p.categories)
+      ? { fastCum: distribute(p.categories, p.days, 'fast').cum, opsCum: distribute(p.categories, p.days, 'ops').cum }
+      : {}),
     installments,
     tasks: rows.map((r) => ({
       code: r.code, name: r.name, category: r.category, amount: r.amount, weight: r.amount / total,
