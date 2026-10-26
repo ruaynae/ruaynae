@@ -650,7 +650,7 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
 - [ ] **R19 · หนังสือบริษัท + ทะเบียนหนังสือส่ง** (20 ต.ค. 2569) — เมนู `/letters` (เจ้าของเท่านั้น) · 19 แบบหนังสือถอดจาก
       หนังสือจริง `reg001`–`reg047` (`src/lib/letter-templates.ts` · ไม่มีชื่อบริษัทในโค้ด ใช้ `{บริษัท}`) · ตาราง `letter_series` (ชุดเลข
       ต่อโครงการ) + `letters` (unique ชุด+ปี+เลข) · ไฟล์ Word ประกอบที่เซิร์ฟเวอร์ด้วย `jszip` (`letter-docx.ts`) · หัวกระดาษแช่แข็งตอนลงทะเบียน
-      · หนังสือเก่านำเข้าจากไฟล์สำรอง `.json` (ห้ามเข้า repo public) · ⚠️ **migration `20261020090000_r19_letters.sql` ยังไม่ได้ apply**
+      · หนังสือเก่านำเข้าจากไฟล์สำรอง `.json` (ห้ามเข้า repo public) · ✅ migration `20261020090000_r19_letters.sql` apply แล้ว (เจ้าของใช้งานจริง)
       · ตารางตรวจรับ `docs/test-plan/R19-letters.md`
 - [ ] **R20 · แผนงานก่อสร้างจาก BOQ + ปริมาณงานที่แล้วเสร็จ** (21 ต.ค. 2569) — เมนู `/plans` (เจ้าของเท่านั้น)
       · อัปโหลด BOQ (.xlsx) → อ่าน ปร.6 → ปร.5 → ปร.4 **จับคู่ด้วยยอดเงิน ไม่ใช่ชื่อชีต** (ไฟล์จริงมีชีตของโครงการอื่นค้าง)
@@ -688,7 +688,7 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
       · **R20i (22 ต.ค. · คำขอเจ้าของ "เซฟไว้ในเว็บ"):** ตาราง `construction_plans` (เจ้าของเท่านั้น · หมวด/งาน/รายการ + ผลงานเป็น jsonb ทั้งก้อน)
         · ปุ่ม "บันทึกแผนงานไว้ในเว็บ" → `/plans/[id]` กรอก % แล้วเสร็จรายงวด + วันที่ส่งงวดบนเว็บ · S-Curve/ว.124 คิดทันทีด้วย `planReport()` (core.ts) **สูตรเดียวกับ `readProgress`**
         · ดาวน์โหลด Excel พร้อมผลงานในช่องสีเหลือง (`fillProgress`) · แก้แผนที่ `/plans/[id]/edit` · ผูกโครงการได้ · 🔴 คีย์ผลงาน `หมวด.งาน.รายการ` นับรวมงานที่ปิด — ห้ามเรียงหมวด/งานใหม่ตอนแก้แผน
-        · PATCH ต้องส่ง `expectedUpdatedAt` (409 `PLAN_CHANGED`) · ตารางยังไม่มี = 503 `PLAN_TABLE_MISSING` · ⚠️ **migration `20261022090000_r20_saved_plans.sql` ยังไม่ได้ apply**
+        · PATCH ต้องส่ง `expectedUpdatedAt` (409 `PLAN_CHANGED`) · ตารางยังไม่มี = 503 `PLAN_TABLE_MISSING` · ✅ migration `20261022090000_r20_saved_plans.sql` apply แล้ว (เจ้าของใช้งานจริง)
       · **R20j (23 ต.ค. · ตามไฟล์ตัวอย่างของเจ้าของ):** แผนงานเร่งรัด + แผนการทำงานดำเนินการ — ติ๊กเปิดในหน้าสร้างแผน · แต่ละงานมีวันของสองแผนแยก (`BoqTask.fast/ops` · `spanOf()` · ไม่มี = เท่าแผนตามสัญญา)
         · Excel งานละ 4 แถว (Plan · เร่งรัด · ดำเนินการ · Actual) ป้ายคอลัมน์ F = `ALT_PLANS[].tag` ที่ SUMIF ใช้ · ชีตคำนวณแถว 17/19 = เส้นใน S-Curve · ไม่ติ๊ก = ไฟล์เหมือนเดิมทุกช่อง
         · ไม่ต้องรัน migration (อยู่ใน jsonb `categories`)
@@ -701,14 +701,14 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
 - [ ] **R21 · คลังเอกสาร** (22 ต.ค. 2569) — เมนู `/files` (เจ้าของเท่านั้น) เก็บสัญญาจ้าง แบบก่อสร้าง BOQ หนังสือรับรองผลงาน
       · อัปหลายไฟล์ ≤ 100 MB ตรงเข้า R2 (`/api/files/sign` → PUT → `/api/files`) · ชนิดไฟล์จากนามสกุล เซิร์ฟเวอร์กำหนด content-type (ไม่รับ html/svg)
       · ค้นหา + กรองหมวด/โครงการ/ปี · เปิด/ดาวน์โหลดผ่าน `/api/files/[id]` (302 presigned · ชื่อไฟล์ไทย RFC 5987)
-      · ⚠️ **migration `20261023090000_project_files.sql` ยังไม่ได้ apply** · ตารางตรวจรับ `docs/test-plan/R21-file-library.md`
+      · ✅ migration `20261023090000_project_files.sql` apply แล้ว (เจ้าของตรวจ `to_regclass` 27 ต.ค. 2569) · ตารางตรวจรับ `docs/test-plan/R21-file-library.md`
 - [ ] **R22 · แผนการใช้พัสดุ/เหล็กที่ผลิตภายในประเทศ** (23 ต.ค. 2569) — แท็บ `?tab=domestic` ในเมนู `/plans` · อัปโหลด BOQ → ตาราง Excel ตามแบบที่ห้างยื่นอยู่เดิม
       · ส่วนรายละเอียด ปร.4 ของชีตที่ `parseBoq` ใช้ · **เฉพาะราคาค่าวัสดุ** · ตัดหัวข้อไม่มีค่าวัสดุ/รายการค่าแรงล้วน · ติ๊ก "นำเข้า"/"เหล็ก" บนเว็บ
       · มีเหล็ก = ชีต "เหล็กในประเทศ" · ชีตสรุปเทียบเกณฑ์ พัสดุ ≥ 60% · เหล็ก ≥ 90% · ไม่แตะฐานข้อมูล · ตารางตรวจรับ `docs/test-plan/R22-domestic-materials.md`
 - [ ] **R23 · ลงชื่อย้อนหลังต้องให้เจ้าของอนุมัติ** (24 ต.ค. 2569) — หัวหน้าโครงการลง/แก้/ลบ `attendance` ของวันก่อนวันนี้ (เวลาไทย) เองไม่ได้
       · ด่านที่ trigger `guard_attendance_backdate` (เจ้าของ + `auth.uid() is null` ผ่าน) · ยื่น `attendance_backdate_request()` พร้อมเหตุผล → คิว `/approvals`
       → เจ้าของอนุมัติ `attendance_backdate_decide()` = ระบบลงชื่อให้ในนามเจ้าของ (guard เดิมครบ) · ตีกลับต้องมีเหตุผล · enum แจ้งเตือน `backdate_*`
-      · ⚠️ **ยังไม่ได้ apply migration `20261024090000_attendance_backdate_approval.sql`** และยังไม่ได้รัน `verify-backdate-db.mjs` · LINE push ยังไม่ครอบคลุม
+      · ✅ migration `20261024090000_attendance_backdate_approval.sql` apply แล้ว (เจ้าของตรวจ `to_regclass` 27 ต.ค. 2569) · ⚠️ ยังไม่ได้รัน `verify-backdate-db.mjs` · LINE push ยังไม่ครอบคลุม
       · ตารางตรวจรับ `docs/test-plan/R23-attendance-backdate.md`
 - [x] **R9 · รอบคำสั่งเจ้าของ 4 ก.ย. 2569** — เรียกหน่วยงานว่า "โครงการ" ทั้งระบบ · ปิดการ์ด
       "งานวันนี้" · ต้นทุนสะสมแยกสามก้อน (ค่าแรง/ค่าวัสดุ/อื่น ๆ) + ธง `categories.is_material`
