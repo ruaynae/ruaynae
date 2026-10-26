@@ -44,7 +44,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     Object.assign(patch, planRow(parsed.value) as Database['public']['Tables']['construction_plans']['Update'])
   }
   if (body.progress !== undefined || body.plan !== undefined) {
-    const pr = parseProgress(body.progress ?? current.progress, plan.periods, plan.categories)
+    const pr = parseProgress(body.progress ?? current.progress, plan)
     if (!pr.ok) return NextResponse.json({ error: pr.error }, { status: 422 })
     patch.progress = pr.value as unknown as Json
   }

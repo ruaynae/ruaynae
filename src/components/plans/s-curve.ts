@@ -13,8 +13,8 @@ export type CurveData = {
   actual?: (number | null)[]
   labels: string[]
   sublabels?: string[]
-  /** เส้นประเทา = แผนสะสม ÷ 2 (ว.124 ข้อ 2.2.2) */
-  planHalf?: boolean
+  /** เส้นเทา "แผนงานตาม ว.124" (ผ่าน 25% ที่ครึ่งเวลา · 65% ที่ 3/4 · จบ 100%) */
+  w124?: number[]
   /** เส้นประแดงแนวตั้งที่วันตรวจ ว.124 — x เป็นสัปดาห์ทศนิยม · หมุดที่ระดับเกณฑ์ */
   checks?: { x: number; marks: { y: number; text: string }[] }[]
   /** แผนเสริมสะสมรายสัปดาห์ (ยาวเท่า `plan`) */
@@ -114,11 +114,7 @@ export function drawSCurve(cv: HTMLCanvasElement, d: CurveData) {
       g.fill()
     })
   }
-  if (d.planHalf) {
-    g.setLineDash([5, 4])
-    line(d.plan.map((v) => v / 2), c.muted, 1.5, false)
-    g.setLineDash([])
-  }
+  if (d.w124) line(d.w124, c.muted, 2, true)
   for (const k of d.checks ?? []) {
     const x = m.l + Math.min(n, k.x) * bw
     g.strokeStyle = c.urgent

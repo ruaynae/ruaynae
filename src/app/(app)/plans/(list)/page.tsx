@@ -18,7 +18,7 @@ export default async function PlansPage({ searchParams }: { searchParams: Promis
   const sb = await getSupabaseServer()
   const { data, error } = await sb
     .from('construction_plans')
-    .select('id, name, start_date, days, periods, updated_at, dates:progress->dates, site:sites(name)')
+    .select('id, name, start_date, days, updated_at, site:sites(name)')
     .order('updated_at', { ascending: false })
     .order('id', { ascending: false })
     .range(0, 199)
@@ -29,9 +29,7 @@ export default async function PlansPage({ searchParams }: { searchParams: Promis
     name: r.name,
     start: r.start_date,
     days: r.days,
-    periods: r.periods,
     updatedAt: r.updated_at,
-    filled: Array.isArray(r.dates) ? r.dates.filter(Boolean).length : 0,
     siteName: r.site?.name ?? null,
   }))
   const initial: Tab = TABS.includes(tab as Tab) ? (tab as Tab) : plans.length ? 'saved' : 'build'

@@ -111,20 +111,15 @@ test('รายการย่อยจากส่วนรายละเอ�
 
 import { readProgress, statusOf } from '../../src/lib/boq/progress-core.ts'
 
-test('อ่านไฟล์ที่กรอกผลงานรายงวด: ช่องว่างยกค่างวดก่อน · แผน ณ วันส่งงวดคิดรายวัน', () => {
+test('อ่านไฟล์ที่กรอกผลงานรายสัปดาห์: ช่องว่างยกค่าสัปดาห์ก่อน · แผน ณ สิ้นสัปดาห์คิดรายวัน', () => {
   const D = (y, m, d) => new Date(Date.UTC(y, m - 1, d))
-  const summary = sheet('สรุปผลเบิกจ่าย', [
-    [], [], [PROJECT],
-    ['งวดที่ 1', null, D(2026, 6, 10)],
-    ['งวดที่ 2', null, D(2026, 6, 30)],
-    ['งวดที่ 3'],
-  ])
-  // ชีตหมวด: หัวตารางแถว 8 (index 7) · งวดเริ่มคอลัมน์ M (index 12) · ตารางสรุปหัวชีตจบที่แถว "รวม…"
-  const row = (cells, periods = []) => { const r = new Array(12).fill(null); cells.forEach((v, i) => { r[i] = v }); return [...r, ...periods] }
+  const summary = sheet('สรุปผลเบิกจ่าย', [[], [], [PROJECT]])
+  // ชีตหมวด: หัวตารางแถว 8 (index 7) · สัปดาห์เริ่มคอลัมน์ M (index 12) · ตารางสรุปหัวชีตจบที่แถว "รวม…"
+  const row = (cells, weeks = []) => { const r = new Array(12).fill(null); cells.forEach((v, i) => { r[i] = v }); return [...r, ...weeks] }
   const cat = { name: '1 งานสถาปัตยกรรม', rows: 0, cols: 20, v: null, w: null }
   const rows = [
     [], [], [], [], [], [], [],
-    row(['ลำดับที่', 'รายการ', 'จำนวน', 'หน่วย', 'มูลค่างาน', 'เปอร์เซ็นที่แล้วเสร็จ'], ['งวดที่ 1', 'งวดที่ 2', 'งวดที่ 3']),
+    row(['ลำดับที่', 'รายการ', 'จำนวน', 'หน่วย', 'มูลค่างาน', 'เปอร์เซ็นที่แล้วเสร็จ'], ['W1', 'W2', 'W3']),
     [],
     row(['1', 'หมวดงานสถาปัตยกรรม']),
     row(['1.1', 'หมวดงานรื้อถอน', 1, 'งาน', 100], [0.99, 0.99]),
@@ -141,33 +136,34 @@ test('อ่านไฟล์ที่กรอกผลงานรายง�
     row([null, 'รวมงานพื้น', null, null, 300]),
   ]
   Object.assign(cat, sheet(cat.name, rows), { cols: 20 })
-  // งาน 1.1: 1–10 มิ.ย. (10 วัน) · งาน 1.2: 11 มิ.ย.–10 ก.ค. (30 วัน)
+  // สัญญา 35 วัน เริ่ม 1 มิ.ย. · งาน 1.1: 1–10 มิ.ย. (10 วัน) · งาน 1.2: 11 มิ.ย.–10 ก.ค. (30 วัน)
   const plan = sheet('แผนงานก่อสร้าง', [
-    [], [null, null, D(2026, 6, 1)], [], [], [], [], [],
-    [null, null, null, null, null, null, 'W1', 'W2', 'W3', 'W4', 'W5', 'W6'],
+    [], [null, null, D(2026, 6, 1)], [], [], [null, null, null, 35], [], [],
+    [null, null, null, null, null, null, 'W1', 'W2', 'W3', 'W4', 'W5'],
     [null, null, 10, D(2026, 6, 1), D(2026, 6, 10), 'Plan', 0.175, 0.075],
     [null, null, null, null, null, 'Actual'],
-    [null, null, 30, D(2026, 6, 11), D(2026, 7, 10), 'Plan', 0, 0.1, 0.175, 0.175, 0.175, 0.125],
+    [null, null, 30, D(2026, 6, 11), D(2026, 7, 10), 'Plan', 0, 0.1, 0.175, 0.175, 0.3],
   ])
   const r = readProgress(summary, [cat], plan)
   assert.equal(r.projectName, PROJECT)
+  // กรอกถึง W2 = สองจุด · วันที่ = วันสุดท้ายของสัปดาห์
   assert.equal(r.installments.length, 2)
   const [p1, p2] = r.installments
-  assert.deepEqual([p1.date, p1.week, p2.date, p2.week], ['2026-06-10', 2, '2026-06-30', 5])
-  // งวด 1: (0.5×40 + 0.4×60)/400 = 0.11 · แผน = งาน 1.1 เสร็จพอดี = 0.25 (ค่าในตารางสรุปหัวชีตไม่ถูกนับซ้ำ)
+  assert.deepEqual([p1.date, p1.week, p2.date, p2.week], ['2026-06-07', 1, '2026-06-14', 2])
+  // W1: (0.5×40 + 0.4×60)/400 = 0.11 · แผน = งาน 1.1 เดินไป 7/10 = 0.25 × 0.7 (ค่าในตารางสรุปหัวชีตไม่ถูกนับซ้ำ)
   assert.ok(Math.abs(p1.actual - 0.11) < 1e-9)
-  assert.ok(Math.abs(p1.plan - 0.25) < 1e-9)
-  // งวด 2: รื้อพื้นว่าง → ยก 40% · แผน = 0.25 + 0.75 × 20/30
+  assert.ok(Math.abs(p1.plan - 0.175) < 1e-9)
+  // W2: รื้อพื้นว่าง → ยก 40% · แผน = 0.25 + 0.75 × 4/30
   assert.ok(Math.abs(p2.actual - (40 + 24) / 400) < 1e-9)
-  assert.ok(Math.abs(p2.plan - (0.25 + 0.75 * 20 / 30)) < 1e-9)
-  assert.equal(r.actualCum[1], p1.actual)
-  assert.equal(r.actualCum[4], p2.actual)
+  assert.ok(Math.abs(p2.plan - (0.25 + 0.75 * 4 / 30)) < 1e-9)
+  assert.equal(r.actualCum[0], p1.actual)
+  assert.equal(r.actualCum[1], p2.actual)
   assert.equal(r.actualCum[2], null)
   const [demo, floor] = r.tasks
   assert.equal(demo.category, 'หมวดงานสถาปัตยกรรม')
   assert.ok(Math.abs(demo.actual - 0.64) < 1e-9)
   assert.equal(demo.plan, 1)
-  assert.ok(Math.abs(floor.plan - 20 / 30) < 1e-9)
+  assert.ok(Math.abs(floor.plan - 4 / 30) < 1e-9)
   assert.equal(statusOf(-0.02, 0.01), 'behind')
   assert.equal(statusOf(0.004, 0.005), 'on')
 })
@@ -273,20 +269,42 @@ test('parseBoq: แบบเก่า (ปร.1 (ก)/ปร.2 (ก) ในช�
   assert.equal(m.categories[2].tasks[0].items[0].qty, 7)
 })
 
-test('แผนเสริม: setAltPlans เริ่มเท่าแผนตามสัญญา · distribute ตามแผนที่เลือก · autoSchedule บีบแผนเสริมให้อยู่ในสัญญา', async () => {
-  const { setAltPlans, hasAltPlans, spanOf } = await import('../../src/lib/boq/core.ts')
+test('แผนเสริม: setAltPlan เปิด/ปิดทีละแผน เริ่มเท่าแผนตามสัญญา · distribute ตามแผนที่เลือก · autoSchedule บีบแผนเสริมให้อยู่ในสัญญา', async () => {
+  const { setAltPlan, altKindsOf, hasAltPlans, spanOf } = await import('../../src/lib/boq/core.ts')
   const task = (name, amount, offset, dur) => ({ name, amount, source: '', items: [], offset, dur, on: true })
   const cats = [{ name: 'หมวด', source: '', mult: 1, group: '', tasks: [task('ก', 100, 0, 14), task('ข', 300, 14, 14)] }]
   assert.equal(hasAltPlans(cats), false)
-  const on = setAltPlans(cats, true)
-  assert.equal(hasAltPlans(on), true)
+  const opsOnly = setAltPlan(cats, 'ops', true)
+  assert.deepEqual(altKindsOf(opsOnly), ['ops'])
+  const on = setAltPlan(opsOnly, 'fast', true)
+  assert.deepEqual(altKindsOf(on), ['fast', 'ops'])
   assert.deepEqual(spanOf(on[0].tasks[1], 'ops'), { offset: 14, dur: 14 })
   assert.deepEqual(distribute(on, 28, 'fast').cum, distribute(on, 28).cum)
   on[0].tasks[1].fast = { offset: 0, dur: 7 }
   const fast = distribute(on, 28, 'fast')
   assert.ok(Math.abs(fast.perWeek[0] - (0.25 / 2 + 0.75)) < 1e-9)
   assert.ok(Math.abs(fast.cum.at(-1) - 1) < 1e-9)
-  assert.equal(hasAltPlans(setAltPlans(on, false)), false)
+  assert.deepEqual(altKindsOf(setAltPlan(on, 'fast', false)), ['ops'])
+  assert.equal(hasAltPlans(setAltPlan(opsOnly, 'ops', false)), false)
   on[0].tasks[0].ops = { offset: 20, dur: 8 }
   assert.deepEqual(autoSchedule(on, 21)[0].tasks[0].ops, { offset: 20, dur: 1 })
+})
+
+test('เส้น "แผนงานตาม ว.124": ผ่าน 25% ที่เวลาเกิน 1/2 · 65% ที่ 3/4 · จบ 100% · เดินตามรูปทรงแผน', async () => {
+  const { w124Curve, w124Anchors, cumAtDay } = await import('../../src/lib/boq/core.ts')
+  // 28 วัน (4 สัปดาห์) · แผนสะสม 10/40/70/100
+  const cum = [0.1, 0.4, 0.7, 1]
+  assert.deepEqual(w124Anchors(28).map((a) => a.e), [0, 15, 22, 28])
+  assert.ok(Math.abs(cumAtDay(cum, 28, 14) - 0.4) < 1e-9)
+  assert.ok(Math.abs(cumAtDay(cum, 28, 15) - (0.4 + 0.3 / 7)) < 1e-9)
+  const w = w124Curve(cum, 28)
+  // W1–W2 อยู่ก่อนจุดครึ่งเวลา: 25% × แผนสะสม ÷ แผน ณ วันที่ 15
+  const pH = 0.4 + 0.3 / 7
+  assert.ok(Math.abs(w[0] - 0.25 * 0.1 / pH) < 1e-9)
+  assert.ok(Math.abs(w[1] - 0.25 * 0.4 / pH) < 1e-9)
+  assert.equal(w[3], 1)
+  assert.ok(w.every((v, i) => i === 0 || v >= w[i - 1]))
+  // 180 วัน: สัปดาห์ที่ 13 จบวันที่ 91 = วันตรวจครึ่งเวลา → 25% พอดี
+  const flat = Array.from({ length: 26 }, (_, k) => Math.min(1, (7 * (k + 1)) / 180))
+  assert.ok(Math.abs(w124Curve(flat, 180)[12] - 0.25) < 1e-9)
 })

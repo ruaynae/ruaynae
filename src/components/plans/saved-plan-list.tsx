@@ -10,10 +10,7 @@ export type SavedPlanSummary = {
   name: string
   start: string
   days: number
-  periods: number
   updatedAt: string
-  /** งวดที่ใส่วันที่ส่งงวดแล้ว */
-  filled: number
   siteName: string | null
 }
 
@@ -48,7 +45,7 @@ export function SavedPlanList({ plans, state }: { plans: SavedPlanSummary[]; sta
             <div className="min-w-0 flex-1">
               <div className="break-words font-semibold text-ink">{p.name}</div>
               <div className="text-sm text-muted-token">
-                {fmtDate(p.start)} – {fmtDate(endOf(p.start, p.days))} · {p.days} วัน · ส่งงวดแล้ว {p.filled}/{p.periods} งวด
+                {fmtDate(p.start)} – {fmtDate(endOf(p.start, p.days))} · {p.days} วัน · {Math.ceil(p.days / 7)} สัปดาห์
                 {p.siteName && <> · โครงการ {p.siteName}</>}
               </div>
               <div className="text-xs text-muted-token">แก้ล่าสุด {fmtDateTime(p.updatedAt)}</div>

@@ -8,22 +8,23 @@ import { W124, W124_LABEL, w124Offset } from './w124'
  * ชุดชีต "ปริมาณงานที่แล้วเสร็จ" ตามแบบฟอร์มที่ห้างใช้ยื่นจริง (คำสั่งเจ้าของ 21 ต.ค. 2569)
  *
  *   รายละเอียด          ข้อมูลโครงการและสัญญา
- *   สรุปผลเบิกจ่าย       ระยะเวลา · มูลค่าตามสัญญาเทียบที่ได้จริงรายกลุ่ม ปร.5 · ผลงานรายงวดเทียบแผน · งบประมาณรายปี
+ *   สรุปผลเบิกจ่าย       ระยะเวลา · มูลค่าตามสัญญาเทียบที่ได้จริงรายกลุ่ม ปร.5 · สถานะสัปดาห์ล่าสุด · ว.124 · งบประมาณรายปี
  *   N <หมวด>            "แบบแสดงรายการ ปริมาณงาน และราคา ที่แล้วเสร็จ" — A–K ตามแบบเดิมทุกคอลัมน์
  *                       (มูลค่างาน · % ที่แล้วเสร็จ · มูลค่าที่แล้วเสร็จ · Factor F/VAT · รวมเป็นมูลค่า · คิดเป็น % ของค่าก่อสร้าง)
  *
- * 🔴 ช่องกรอกจริงคือคอลัมน์ "งวดที่ k" ทางขวาของแต่ละชีตหมวด (% สะสม ณ วันส่งงวด) — คอลัมน์ F "% ที่แล้วเสร็จ"
- *    ของแบบเดิมดึงงวดล่าสุดมาเอง · เก็บแยกรายงวดเพื่อให้ประวัติไม่ถูกเขียนทับ และกราฟจริงมีจุดของทุกงวด
- * · ช่องรายการที่เว้นว่าง = เท่างวดก่อน (ชีตซ่อน "คำนวณ" ยกค่าต่อให้)
- * · เทียบแผนด้วยน้ำหนักค่างานต้นทุน (ฐานเดียวกับชีตแผนงาน) · แผน ณ วันส่งงวดคิดรายวันจากวันเริ่ม/เสร็จของงาน
+ * 🔴 ช่องกรอกจริงคือคอลัมน์ "W1 … Wn" ทางขวาของแต่ละชีตหมวด (% สะสม ณ สิ้นสัปดาห์ · คำสั่งเจ้าของ 26 ต.ค. 2569
+ *    กลับไปกรอกรายสัปดาห์ ไม่มีงวดแล้ว) — คอลัมน์ F "% ที่แล้วเสร็จ" ของแบบเดิมดึงสัปดาห์ล่าสุดมาเอง
+ * · ช่องรายการที่เว้นว่าง = เท่าสัปดาห์ก่อน (ชีตซ่อน "คำนวณ" ยกค่าต่อให้)
+ * · เทียบแผนด้วยน้ำหนักค่างานต้นทุน (ฐานเดียวกับชีตแผนงาน) · แผน ณ สิ้นสัปดาห์คิดรายวันจากวันเริ่ม/เสร็จของงาน
  */
 
-/** ชีตคำนวณ: A1 = สัปดาห์ของงวดล่าสุด (0 = ยังไม่มี) · B1 = งวดล่าสุดที่กรอก · แถว 5 = สัปดาห์ของแต่ละงวด */
+/** ชีตคำนวณ: A1 = B1 = สัปดาห์ล่าสุดที่กรอก (0 = ยังไม่มี) · แถว 2 ธงสัปดาห์ที่กรอก · แถว 3/4 แผน/จริงสะสมรายสัปดาห์ */
 export const LW = ref(SHEET.calc, '$A$1')
 export const LP = ref(SHEET.calc, '$B$1')
-const CALC_WEEK_ROW = 5
-const K0 = 7 // คอลัมน์งวดแรกในชีตคำนวณ (G)
-const P0 = 13 // คอลัมน์งวดแรกในชีตหมวด (M) — A–K ตามแบบเดิม · L เว้นว่าง
+const CALC_PLAN_ROW = 3
+const CALC_ACTUAL_ROW = 4
+const K0 = 7 // คอลัมน์สัปดาห์แรกในชีตคำนวณ (G)
+const P0 = 13 // คอลัมน์สัปดาห์แรกในชีตหมวด (M) — A–K ตามแบบเดิม · L เว้นว่าง
 const CI0 = 20 // แถวรายการแรกในชีตคำนวณ
 const CONTRACT = ref(SHEET.detail, '$E$18')
 
@@ -43,13 +44,14 @@ export type CatLayout = {
 export type ProgressLayout = {
   /** เจ้าของติ๊กให้มีการประเมินตาม ว.124 (ตาราง + เส้นในกราฟ) */
   w124: boolean
-  periods: number
+  /** จำนวนสัปดาห์ของสัญญา = จำนวนคอลัมน์กรอกในชีตหมวด */
+  weeks: number
   cats: CatLayout[]
   /** ต่องานที่ติ๊กอยู่ (เรียงเหมือนชีตแผนงาน): ชีตและแถวในตารางสรุปหัวชีต */
   tasks: { sheet: string; top: number }[]
   groups: { label: string; cats: CatLayout[] }[]
   summary: {
-    groupRow0: number; groupTotal: number; periodHead: number; period0: number; status: number
+    groupRow0: number; groupTotal: number; status: number
     /** ตารางประเมินตาม ว.124: หัวตาราง · แถวแรกของเกณฑ์ (เรียงตาม `W124`) */
     w124Head: number; w124Row0: number
     fyHead: number; fy0: number; fyTotal: number
@@ -65,7 +67,7 @@ const sheetName = (no: number, name: string) =>
 const fiscalYear = (d: Date) => d.getUTCFullYear() + 543 + (d.getUTCMonth() >= 9 ? 1 : 0)
 
 /** ตำแหน่งของทุกแถว — คิดก่อนเขียนชีตแผนงาน เพราะแถว Actual ต้องอ้างถึง */
-export function progressLayout(categories: BoqCategory[], periods: number, start: Date, days: number, w124 = false): ProgressLayout {
+export function progressLayout(categories: BoqCategory[], weeks: number, start: Date, days: number, w124 = false): ProgressLayout {
   const cats: CatLayout[] = []
   const tasks: ProgressLayout['tasks'] = []
   let itemCount = 0
@@ -103,15 +105,13 @@ export function progressLayout(categories: BoqCategory[], periods: number, start
   const fiscalYears = Array.from({ length: fy1 - fy0 + 1 }, (_, i) => fy0 + i)
   const groupRow0 = 10
   const groupTotal = groupRow0 + groups.length
-  const periodHead = groupTotal + 3
-  const period0 = periodHead + 1
-  const status = period0 + periods + 1
+  const status = groupTotal + 2
   const w124Head = status + 3
   const w124Row0 = w124Head + 1
   const fyHead = w124 ? w124Row0 + W124.length + 3 : status + 3
   return {
-    w124, periods, cats, tasks, groups, itemCount, fiscalYears,
-    summary: { groupRow0, groupTotal, periodHead, period0, status, w124Head, w124Row0, fyHead, fy0: fyHead + 2, fyTotal: fyHead + 2 + fiscalYears.length },
+    w124, weeks, cats, tasks, groups, itemCount, fiscalYears,
+    summary: { groupRow0, groupTotal, status, w124Head, w124Row0, fyHead, fy0: fyHead + 2, fyTotal: fyHead + 2 + fiscalYears.length },
   }
 }
 
@@ -135,26 +135,24 @@ export type ProgressArgs = {
  */
 export function addProgressSheets(wb: Workbook, a: ProgressArgs) {
   const { layout: L, dist } = a
-  const nP = L.periods
+  const nP = L.weeks
   const calc = new Map<string, CellValue>()
   const K = (addr: string) => ref(SHEET.calc, addr)
   const kc = (k: number) => col(K0 + k)
   const pc = (k: number) => col(P0 + k)
   const flag = (k: number) => col(K0 + nP + 2 + k)
-  const CT0 = CI0 + L.itemCount + 3 // แถวงานแรกในชีตคำนวณ (สัดส่วนแผน ณ วันส่งงวด)
-  const S = L.summary
-  const dateCell = (k: number) => ref(SHEET.summary, `$C$${S.period0 + k}`)
+  const CT0 = CI0 + L.itemCount + 3 // แถวงานแรกในชีตคำนวณ (สัดส่วนแผน ณ สิ้นสัปดาห์)
+  /** วันสุดท้ายของสัปดาห์ k — สัปดาห์สุดท้ายจบที่วันสิ้นสุดสัญญา */
+  const dateCell = (k: number) => `MIN(${ref(SHEET.plan, '$C$2')}+${7 * (k + 1) - 1},${ref(SHEET.plan, '$C$4')})`
   const P = a.project
   const contractTotal = P.total ?? dist.total
 
   addDetailSheet(wb, a, nP)
   const i0 = CI0
   const i1 = CI0 + L.itemCount - 1
-  const chart = addSummarySheet(wb, a, contractTotal, {
-    plan: (k) => `IF(${dateCell(k)}="","",SUMPRODUCT(${K(`$E$${CT0}:$E$${CT0 + L.tasks.length - 1}`)},${K(`${kc(k)}${CT0}:${kc(k)}${CT0 + L.tasks.length - 1}`)})/${a.planTotal})`,
-    actual: (k) => `SUMPRODUCT(${K(`$E$${i0}:$E$${i1}`)},${K(`${kc(k)}${i0}:${kc(k)}${i1}`)})/${a.planTotal}`,
-    value: (k) => `SUMPRODUCT(${K(`$E$${i0}:$E$${i1}`)},${K(`$D$${i0}:$D$${i1}`)},${K(`${kc(k)}${i0}:${kc(k)}${i1}`)})`,
-  })
+  const chart = addSummarySheet(wb, a, contractTotal)
+  const planAt = (k: number) => `SUMPRODUCT(${K(`$E$${CT0}:$E$${CT0 + L.tasks.length - 1}`)},${K(`${kc(k)}${CT0}:${kc(k)}${CT0 + L.tasks.length - 1}`)})/${a.planTotal}`
+  const actualAt = (k: number) => `SUMPRODUCT(${K(`$E$${i0}:$E$${i1}`)},${K(`${kc(k)}${i0}:${kc(k)}${i1}`)})/${a.planTotal}`
 
   // ---- ชีตหมวด
   let item = 0
@@ -167,7 +165,7 @@ export function addProgressSheets(wb: Workbook, a: ProgressArgs) {
     })
     const { put, merge } = kit(ws)
     ;[7, 56, 8, 7, 14, 10, 14, 8, 14, 10, 12, 2].forEach((w, i) => { ws.getColumn(i + 1).width = w })
-    for (let k = 0; k < nP; k += 1) ws.getColumn(P0 + k).width = 10
+    for (let k = 0; k < nP; k += 1) ws.getColumn(P0 + k).width = 6.5
     const cPlan = P0 + nP + 1
     ;[9, 9, 12].forEach((w, i) => { ws.getColumn(cPlan + i).width = w })
     const plain: Style = { border: false }
@@ -182,16 +180,16 @@ export function addProgressSheets(wb: Workbook, a: ProgressArgs) {
       })
     put('K7', 'หน่วย : บาท', { ...plain, align: { horizontal: 'right' } })
     merge(7, P0, 7, P0 + nP - 1)
-    put(`${pc(0)}7`, 'กรอก % แล้วเสร็จสะสม ณ วันส่งงวด (พิมพ์ 40 = 40%) · ว่าง = เท่างวดก่อน', { ...plain, font: { size: 8, color: { argb: C.muted } } })
+    put(`${pc(0)}7`, 'กรอก % แล้วเสร็จสะสม ณ สิ้นสัปดาห์ (พิมพ์ 40 = 40%) · ว่าง = เท่าสัปดาห์ก่อน', { ...plain, font: { size: 8, color: { argb: C.muted } }, align: { wrapText: false } })
     const head: Style = { fill: C.head, font: { bold: true }, align: { horizontal: 'center' } }
     ;(['ลำดับที่', 'รายการ', 'จำนวน', 'หน่วย', 'มูลค่างาน', 'เปอร์เซ็นที่แล้วเสร็จ', 'มูลค่างานที่แล้วเสร็จ',
       c.cat.mult > 1.2 ? 'Factor F' : 'VAT', 'รวมเป็นมูลค่า', 'คิดเป็นเปอร์เซ็น', 'หมายเหตุ'] as const)
       .forEach((t, i) => { merge(8, i + 1, 9, i + 1); put(`${col(i + 1)}8`, t, head) })
     for (let k = 0; k < nP; k += 1) {
-      put(`${pc(k)}8`, `งวดที่ ${k + 1}`, head)
-      put(`${pc(k)}9`, f(`IF(${dateCell(k)}="","",${dateCell(k)})`, ''), { ...head, fmt: '[$-1070000]d mmm yy', font: { size: 8 } })
+      put(`${pc(k)}8`, `W${k + 1}`, head)
+      put(`${pc(k)}9`, f(dateCell(k), addDays(a.start, Math.min(a.days, 7 * (k + 1)) - 1)), { ...head, fmt: '[$-1070000]d/m', font: { size: 7 } })
     }
-    ;(['แผน (%)', 'ผลต่าง', 'สถานะ'] as const).forEach((t, i) => { merge(8, cPlan + i, 9, cPlan + i); put(`${col(cPlan + i)}8`, `${t}\nงวดล่าสุด`, head) })
+    ;(['แผน (%)', 'ผลต่าง', 'สถานะ'] as const).forEach((t, i) => { merge(8, cPlan + i, 9, cPlan + i); put(`${col(cPlan + i)}8`, `${t}\nสัปดาห์ล่าสุด`, head) })
 
     const catStyle: Style = { font: { bold: true } }
     put(`A10`, c.no, { ...catStyle, align: { horizontal: 'center' } })
@@ -271,10 +269,10 @@ export function addProgressSheets(wb: Workbook, a: ProgressArgs) {
       for (let k = 0; k < nP; k += 1) {
         put(`${pc(k)}${tr}`, f(`IF(${k + 1}>${LP},"",SUMPRODUCT(${K(`$E$${r0}:$E$${r1}`)},${K(`${kc(k)}${r0}:${kc(k)}${r1}`)})/E${tr})`, ''),
           { fill: C.sum, fmt: '0%', font: { bold: true, size: 8 }, align: { horizontal: 'center' } })
-        // แผนของงาน ณ วันส่งงวด: เสร็จแล้ว 1 · กำลังทำ = วันที่ผ่านไป ÷ ระยะเวลา · ยังไม่เริ่ม 0
+        // แผนของงาน ณ สิ้นสัปดาห์: เสร็จแล้ว 1 · กำลังทำ = วันที่ผ่านไป ÷ ระยะเวลา · ยังไม่เริ่ม 0
         const dd = dateCell(k)
         const PL = (x: string) => ref(SHEET.plan, x)
-        calc.set(`${kc(k)}${ct}`, f(`IF(${dd}="","",IF(${dd}>=${PL(`$E$${pr}`)},1,IF(${dd}>=${PL(`$D$${pr}`)},(${dd}-${PL(`$D$${pr}`)}+1)/${PL(`$C$${pr}`)},0)))`, ''))
+        calc.set(`${kc(k)}${ct}`, f(`IF(${dd}>=${PL(`$E$${pr}`)},1,IF(${dd}>=${PL(`$D$${pr}`)},(${dd}-${PL(`$D$${pr}`)}+1)/${PL(`$C$${pr}`)},0))`, 0))
       }
       put(`${col(cPlan)}${tr}`, f(`IF(${LP}=0,0,N(INDEX(${K(`$${kc(0)}$${ct}:$${kc(nP - 1)}$${ct}`)},${LP})))`, 0), { fmt: '0%', align: { horizontal: 'center' } })
       put(`${col(cPlan + 1)}${tr}`, f(`F${tr}-${col(cPlan)}${tr}`, 0), { fmt: '+0%;-0%;0%', align: { horizontal: 'center' } })
@@ -299,14 +297,15 @@ export function addProgressSheets(wb: Workbook, a: ProgressArgs) {
     statusColors(ws, `${col(cPlan + 2)}${t0}:${col(cPlan + 2)}${t1}`, `${col(cPlan + 1)}${t0}:${col(cPlan + 1)}${t1}`)
   }
 
-  // ---- ชีตคำนวณ: ธงงวดที่กรอก · งวดล่าสุด · สัปดาห์ของแต่ละงวด
+  // ---- ชีตคำนวณ: ธงสัปดาห์ที่กรอก · สัปดาห์ล่าสุด · แผน/จริงสะสมรายสัปดาห์
   for (let k = 0; k < nP; k += 1) {
     calc.set(`${kc(k)}2`, f(`IF(SUM(${flag(k)}${i0}:${flag(k)}${i1})>0,${k + 1},0)`, 0))
-    calc.set(`${kc(k)}${CALC_WEEK_ROW}`, f(`IF(OR(${k + 1}>B1,${dateCell(k)}=""),"",INT((${dateCell(k)}-${ref(SHEET.plan, '$C$2')})/7)+1)`, ''))
+    calc.set(`${kc(k)}${CALC_PLAN_ROW}`, f(planAt(k), a.dist.cum[k]))
+    calc.set(`${kc(k)}${CALC_ACTUAL_ROW}`, f(`IF(${k + 1}>$B$1,"",${actualAt(k)})`, ''))
   }
-  // 🔴 นับงวดที่กรอกจากธงของแถวรายการเท่านั้น — นับทั้งคอลัมน์ของชีตหมวดจะรวมแถวงานที่อ่าน B1 กลับมา = อ้างอิงวน
+  // 🔴 นับสัปดาห์ที่กรอกจากธงของแถวรายการเท่านั้น — นับทั้งคอลัมน์ของชีตหมวดจะรวมแถวงานที่อ่าน B1 กลับมา = อ้างอิงวน
   calc.set('B1', f(`MAX(${kc(0)}2:${kc(nP - 1)}2)`, 0))
-  calc.set('A1', f(`IF(B1=0,0,N(INDEX(${kc(0)}${CALC_WEEK_ROW}:${kc(nP - 1)}${CALC_WEEK_ROW},B1)))`, 0))
+  calc.set('A1', f('B1', 0))
 
   if (a.layout.w124) w124CalcCells(a.layout).forEach((v, k) => calc.set(k, v))
   return { calc, chart }
@@ -359,9 +358,9 @@ function addDetailSheet(wb: Workbook, a: ProgressArgs, nP: number) {
   merge(16, 2, 16, 4); put('B16', 'ระยะเวลาก่อสร้าง', { ...plain, font: { bold: true } })
   put('E16', f(ref(SHEET.plan, '$D$5'), a.days), { ...plain, align: { horizontal: 'left' } })
   put('F16', 'วัน', plain)
-  merge(16, 7, 16, 8); put('G16', 'งวดงานทั้งหมด', { ...plain, font: { bold: true } })
+  merge(16, 7, 16, 8); put('G16', 'จำนวนสัปดาห์', { ...plain, font: { bold: true } })
   put('I16', nP, { ...plain, align: { horizontal: 'left' } })
-  put('J16', 'งวดงาน', plain)
+  put('J16', 'สัปดาห์', plain)
   line(17, 'แก้ไขเพิ่มเติม', null)
   merge(18, 2, 18, 4); put('B18', 'ราคาค่าก่อสร้าง', { ...plain, font: { bold: true } })
   merge(18, 5, 18, 7); put('E18', total, { ...plain, fill: C.input, fmt: '#,##0.00', align: { horizontal: 'left' } })
@@ -372,15 +371,9 @@ function addDetailSheet(wb: Workbook, a: ProgressArgs, nP: number) {
 }
 
 /** ชีต "สรุปผลเบิกจ่าย" — สรุปความก้าวหน้าของโครงการ */
-function addSummarySheet(
-  wb: Workbook,
-  a: ProgressArgs,
-  contractTotal: number,
-  fx: { plan: (k: number) => string; actual: (k: number) => string; value: (k: number) => string },
-) {
+function addSummarySheet(wb: Workbook, a: ProgressArgs, contractTotal: number) {
   const L = a.layout
   const S = L.summary
-  const nP = L.periods
   const ws = wb.addWorksheet(SHEET.summary, { views: [{ showGridLines: false }], pageSetup: { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 } })
   const { put, merge } = kit(ws)
   ;[6, 6, 8, 6, 11, 4, 8, 11, 4, 8, 11, 4, 8].forEach((w, i) => { ws.getColumn(i + 1).width = w })
@@ -391,11 +384,11 @@ function addSummarySheet(
   merge(3, 1, 3, 13)
   put('A3', a.project.name, { border: false, font: { bold: true }, align: { horizontal: 'center' } })
 
-  // ---- ระยะเวลา (ณ วันที่ — ว่าง = วันส่งงวดล่าสุด หรือวันนี้)
-  const lastDate = `IF(${LP}=0,"",INDEX($C$${S.period0}:$C$${S.period0 + nP - 1},${LP}))`
+  // ---- ระยะเวลา (ณ วันที่ — ว่าง = สิ้นสัปดาห์ล่าสุดที่กรอก หรือวันนี้)
+  const lastDate = `IF(${LP}=0,"",MIN(${ref(SHEET.plan, '$C$2')}+7*${LP}-1,${ref(SHEET.plan, '$C$4')}))`
   merge(4, 1, 4, 4); put('A4', 'ข้อมูล ณ วันที่ (กรอก)', { border: false, font: { bold: true }, align: { horizontal: 'right' } })
   merge(4, 5, 4, 7); put('E4', null, { fill: C.input, fmt: '[$-1070000]d mmm yyyy', align: { horizontal: 'center' } })
-  merge(4, 8, 4, 13); put('H4', 'ว่างไว้ = ใช้วันส่งงวดล่าสุด (ถ้ายังไม่ส่ง ใช้วันนี้)', { border: false, font: { size: 8, color: { argb: C.muted } } })
+  merge(4, 8, 4, 13); put('H4', 'ว่างไว้ = ใช้สิ้นสัปดาห์ล่าสุดที่กรอกผลงาน (ถ้ายังไม่กรอก ใช้วันนี้)', { border: false, font: { size: 8, color: { argb: C.muted } } })
   const asOf = `IF($E$4<>"",$E$4,IF(N(${lastDate})>0,${lastDate},TODAY()))`
   const start = ref(SHEET.plan, '$C$2')
   const days = ref(SHEET.plan, '$D$5')
@@ -441,42 +434,21 @@ function addSummarySheet(
   put(`J${T}`, f(`SUM(J${g0}:J${g1})`, 0), { ...tot, ...cell, fmt: '0.00%' })
   merge(T, 11, T, 13); put(`K${T}`, f(`SUM(K${g0}:K${g1})`, 1), { ...tot, ...cell, fmt: '0.00%' })
 
-  // ---- ผลงานรายงวดเทียบแผน
-  const ph = S.periodHead
-  merge(ph - 1, 1, ph - 1, 13)
-  put(`A${ph - 1}`, 'ผลงานรายงวด เทียบแผนงาน (กรอกวันที่ส่งงวดในช่องสีเหลือง · % แล้วเสร็จกรอกที่ชีตหมวด คอลัมน์ "งวดที่")', { border: false, font: { bold: true } })
-  ;([['งวด', 1, 2], ['วันที่ส่งงวด', 3, 4], ['สัปดาห์', 5, 5], ['แผนสะสม', 6, 7], ['จริงสะสม', 8, 9], ['ผลต่าง', 10, 10], ['สถานะ', 11, 11], ['มูลค่าที่ได้ (บาท)', 12, 13]] as const)
-    .forEach(([t, c0, c1]) => { merge(ph, c0, ph, c1); put(`${col(c0)}${ph}`, t, head) })
-  for (let k = 0; k < nP; k += 1) {
-    const r = S.period0 + k
-    const after = `${k + 1}>${LP}`
-    merge(r, 1, r, 2); put(`A${r}`, `งวดที่ ${k + 1}`, { ...cell, font: { bold: true } })
-    merge(r, 3, r, 4); put(`C${r}`, null, { fill: C.input, fmt: '[$-1070000]d mmm yy', align: { horizontal: 'center' } })
-    ws.getCell(`C${r}`).dataValidation = { type: 'date', operator: 'greaterThan', allowBlank: true, formulae: [new Date(Date.UTC(2000, 0, 1))],
-      showErrorMessage: true, errorTitle: 'วันที่ไม่ถูกต้อง', error: 'กรอกเป็นวันที่ เช่น 15/8/2026' }
-    const wk = ref(SHEET.calc, `${col(K0 + k)}$${CALC_WEEK_ROW}`)
-    put(`E${r}`, f(`IF(${wk}="","","W"&${wk})`, ''), cell)
-    merge(r, 6, r, 7); put(`F${r}`, f(fx.plan(k), ''), { ...cell, fmt: '0.00%' })
-    merge(r, 8, r, 9); put(`H${r}`, f(`IF(${after},"",${fx.actual(k)})`, ''), { ...cell, fmt: '0.00%', font: { bold: true } })
-    put(`J${r}`, f(`IF(OR(F${r}="",H${r}=""),"",H${r}-F${r})`, ''), { ...cell, fmt: '+0.00%;-0.00%;0.00%' })
-    put(`K${r}`, f(`IF(J${r}="","",IF(J${r}>=0.005,"เร็วกว่าแผน",IF(J${r}<=-0.005,"ช้ากว่าแผน","ตามแผน")))`, ''), cell)
-    merge(r, 12, r, 13); put(`L${r}`, f(`IF(${after},"",${fx.value(k)})`, ''), { fmt: '#,##0.00' })
-  }
-  const p0 = S.period0
-  const p1 = S.period0 + nP - 1
+  // ---- สถานะ ณ สัปดาห์ล่าสุดที่กรอก (แผน/จริงสะสมอยู่ในชีตคำนวณ แถว 3/4)
   const st = S.status
-  const at = (c: string) => `INDEX($${c}$${p0}:$${c}$${p1},${LP})`
-  merge(st, 1, st, 4); put(`A${st}`, 'สถานะ ณ งวดล่าสุด', { ...tot })
+  const planW = `INDEX(${calcWeekRange(CALC_PLAN_ROW, L.weeks)},${LP})`
+  const actW = `INDEX(${calcWeekRange(CALC_ACTUAL_ROW, L.weeks)},${LP})`
+  const diff = `(${actW}-${planW})`
+  merge(st, 1, st, 4); put(`A${st}`, 'สถานะ ณ สัปดาห์ล่าสุด', { ...tot })
   merge(st, 5, st, 13)
-  put(`E${st}`, f(`IF(${LP}=0,"ยังไม่กรอกผลงาน",IF(${at('C')}="","งวดที่ "&${LP}&" ยังไม่ใส่วันที่ส่งงวด","งวดที่ "&${LP}&" · แผน "&TEXT(${at('F')},"0.00%")&" · จริง "&TEXT(${at('H')},"0.00%")&" · "&${at('K')}))`, 'ยังไม่กรอกผลงาน'),
+  put(`E${st}`, f(`IF(${LP}=0,"ยังไม่กรอกผลงาน","W"&${LP}&" · แผน "&TEXT(${planW},"0.00%")&" · จริง "&TEXT(${actW},"0.00%")&" · "&IF(${diff}>=0.005,"เร็วกว่าแผน",IF(${diff}<=-0.005,"ช้ากว่าแผน","ตามแผน")))`, 'ยังไม่กรอกผลงาน'),
     { font: { bold: true, size: 11 } })
-  statusColors(ws, `K${p0}:K${p1}`, `J${p0}:J${p1}`)
   ws.addConditionalFormatting({ ref: `E${st}`, rules: [
     { type: 'containsText', operator: 'containsText', text: 'ช้ากว่าแผน', priority: 30, style: { font: { color: { argb: C.bad }, bold: true } } },
     { type: 'containsText', operator: 'containsText', text: 'เร็วกว่าแผน', priority: 31, style: { font: { color: { argb: C.good }, bold: true } } },
   ] })
 
-  if (L.w124) addW124Table(ws, a, { asOf, start, days, p0, p1 })
+  if (L.w124) addW124Table(ws, a, { asOf, start, days })
 
   // ---- งบประมาณรายปี
   const fh = S.fyHead
@@ -524,9 +496,9 @@ function addSummarySheet(
 
 /**
  * ตารางประเมินตาม ว.124 ข้อ 2.2 — วันที่ตรวจคิดจากวันเริ่ม/ระยะเวลาในชีตแผนงาน (แก้แล้วตามเอง)
- * ผลงาน ณ วันตรวจ = งวดล่าสุดที่วันส่งงวดไม่เกินวันตรวจ (ลำดับงวดอยู่ในชีตคำนวณ แถว 18)
+ * ผลงาน ณ วันตรวจ = สัปดาห์ล่าสุดที่กรอกและจบไม่เกินวันตรวจ (เลขสัปดาห์อยู่ในชีตคำนวณ แถว 18)
  */
-function addW124Table(ws: Worksheet, a: ProgressArgs, x: { asOf: string; start: string; days: string; p0: number; p1: number }) {
+function addW124Table(ws: Worksheet, a: ProgressArgs, x: { asOf: string; start: string; days: string }) {
   const { put, merge } = kit(ws)
   const S = a.layout.summary
   const head: Style = { fill: 'FFFFCCFF', font: { bold: true }, align: { horizontal: 'center' } }
@@ -545,9 +517,10 @@ function addW124Table(ws: Worksheet, a: ProgressArgs, x: { asOf: string; start: 
     merge(r, 3, r, 5); put(`C${r}`, `${rule.when} · ${rule.rule}`, { font: { size: 8 } })
     merge(r, 6, r, 7); put(`F${r}`, f(date, addDays(a.start, w124Offset(a.days, rule.frac))), { ...cell, fmt: '[$-1070000]d mmm yy' })
     put(`H${r}`, rule.min, { ...cell, fmt: '0%' })
-    merge(r, 9, r, 10); put(`I${r}`, f(`IF(${idx}=0,0,N(INDEX($H$${x.p0}:$H$${x.p1},${idx})))`, 0), { ...cell, fmt: '0.00%', font: { bold: true } })
+    const weeks = a.layout.weeks
+    merge(r, 9, r, 10); put(`I${r}`, f(`IF(${idx}=0,0,N(INDEX(${calcWeekRange(CALC_ACTUAL_ROW, weeks)},${idx})))`, 0), { ...cell, fmt: '0.00%', font: { bold: true } })
     const ok = rule.halfPlan
-      ? `OR(I${r}>=H${r},AND(${idx}>0,I${r}>=N(INDEX($F$${x.p0}:$F$${x.p1},MAX(1,${idx})))/2))`
+      ? `OR(I${r}>=H${r},AND(${idx}>0,I${r}>=N(INDEX(${calcWeekRange(CALC_PLAN_ROW, weeks)},MAX(1,${idx})))/2))`
       : `I${r}>=H${r}`
     merge(r, 11, r, 13)
     put(`K${r}`, f(`IF(${ok},"${W124_LABEL.pass}",IF(${x.asOf}>=F${r},"${W124_LABEL.fail}","${W124_LABEL.pending}"))`, W124_LABEL.pending), { ...cell, font: { bold: true } })
@@ -560,51 +533,43 @@ function addW124Table(ws: Worksheet, a: ProgressArgs, x: { asOf: string; start: 
   ] })
   merge(r1 + 1, 1, r1 + 1, 13)
   put(`A${r1 + 1}`,
-    '* ต่ำกว่าเกณฑ์ และความล่าช้าเป็นความผิดของผู้รับจ้าง = หน่วยงานใช้ดุลพินิจบอกเลิกสัญญาได้ (ม.103 วรรคหนึ่ง (2)) · ข้อ 2.2.2 เทียบผลงานสะสมกับครึ่งหนึ่งของแผน ณ วันส่งงวด แทนผลงานรายเดือน · ไม่ใช้กับงานก่อสร้างบำรุงทาง',
+    '* ต่ำกว่าเกณฑ์ และความล่าช้าเป็นความผิดของผู้รับจ้าง = หน่วยงานใช้ดุลพินิจบอกเลิกสัญญาได้ (ม.103 วรรคหนึ่ง (2)) · ข้อ 2.2.2 เทียบผลงานสะสมกับครึ่งหนึ่งของแผน ณ สิ้นสัปดาห์เดียวกัน แทนผลงานรายเดือน · ไม่ใช้กับงานก่อสร้างบำรุงทาง',
     { border: false, font: { size: 8, color: { argb: C.muted } } })
   ws.getRow(r1 + 1).height = 24
 }
 
-/** ลำดับงวดล่าสุดที่วันส่งงวดไม่เกินวันตรวจของเกณฑ์ข้อ i (0 = ไม่มี) — ชีตคำนวณแถว 18 */
+/** สัปดาห์ล่าสุดที่กรอกและจบไม่เกินวันตรวจของเกณฑ์ข้อ i (0 = ไม่มี) — ชีตคำนวณแถว 18 */
 export function w124CalcCells(layout: ProgressLayout): Map<string, CellValue> {
   const out = new Map<string, CellValue>()
   const S = layout.summary
-  const p0 = S.period0
-  const p1 = p0 + layout.periods - 1
-  const C_ = ref(SHEET.summary, `$C$${p0}:$C$${p1}`)
+  const start = ref(SHEET.plan, '$C$2')
   W124.forEach((_, i) => {
     const d = ref(SHEET.summary, `$F$${S.w124Row0 + i}`)
-    out.set(`${col(1 + i)}18`, f(`SUMPRODUCT(MAX(ISNUMBER(${C_})*(${C_}<=${d})*(ROW(${C_})-${p0 - 1}<=${LP})*(ROW(${C_})-${p0 - 1})))`, 0))
+    out.set(`${col(1 + i)}18`, f(`MAX(0,MIN(${LP},INT((${d}-${start}+1)/7)))`, 0))
   })
   return out
 }
 
-/** ช่วงคอลัมน์งวดของแถวงานในชีตหมวด เช่น `'1 งานสถาปัตยกรรม'!$M$11:$Q$11` */
-export const taskPeriodRange = (sheet: string, row: number, periods: number) =>
-  ref(sheet, `$${col(P0)}$${row}:$${col(P0 + periods - 1)}$${row}`)
-/** สัปดาห์ของแต่ละงวด (ชีตคำนวณ แถว 5) */
-export const periodWeeksRange = (periods: number) => ref(SHEET.calc, `$${col(K0)}$${CALC_WEEK_ROW}:$${col(K0 + periods - 1)}$${CALC_WEEK_ROW}`)
-/** ช่องของงวด k ในตารางผลงานรายงวดของชีตสรุป */
-export const summaryPeriodCell = (layout: ProgressLayout, column: 'C' | 'H' | 'J', k: number) =>
-  ref(SHEET.summary, `$${column}$${layout.summary.period0 + k}`)
-export const summaryPeriodRange = (layout: ProgressLayout, column: 'C' | 'H' | 'J') =>
-  ref(SHEET.summary, `$${column}$${layout.summary.period0}:$${column}$${layout.summary.period0 + layout.periods - 1}`)
+/** ช่วงคอลัมน์สัปดาห์ของแถวงานในชีตหมวด เช่น `'1 งานสถาปัตยกรรม'!$M$11:$AL$11` */
+export const taskPeriodRange = (sheet: string, row: number, weeks: number) =>
+  ref(sheet, `$${col(P0)}$${row}:$${col(P0 + weeks - 1)}$${row}`)
+/** ช่องของสัปดาห์ k ในแถวงานของชีตหมวด */
+export const taskWeekCell = (sheet: string, row: number, k: number) => ref(sheet, `${col(P0 + k)}${row}`)
+/** แผน (แถว 3) / จริง (แถว 4) สะสมรายสัปดาห์ในชีตคำนวณ */
+export const calcWeekRange = (row: number, weeks: number) => ref(SHEET.calc, `$${col(K0)}$${row}:$${col(K0 + weeks - 1)}$${row}`)
+export const CALC_ROWS = { plan: CALC_PLAN_ROW, actual: CALC_ACTUAL_ROW } as const
 
 /**
- * เติมผลงานที่กรอกบนเว็บ (R20i) ลงช่องกรอกของไฟล์ — วันที่ส่งงวดในชีตสรุป และ % ในคอลัมน์ "งวดที่ k" ของชีตหมวด
- * · ช่องที่ไม่ได้กรอกปล่อยว่างเหมือนเดิม (= เท่างวดก่อน) · สูตรทั้งไฟล์คำนวณต่อเองตอนเปิดใน Excel
+ * เติมผลงานที่กรอกบนเว็บ (R20i) ลงช่องกรอกของไฟล์ — % ในคอลัมน์ "W1 … Wn" ของชีตหมวด
+ * · ช่องที่ไม่ได้กรอกปล่อยว่างเหมือนเดิม (= เท่าสัปดาห์ก่อน) · สูตรทั้งไฟล์คำนวณต่อเองตอนเปิดใน Excel
  * · คีย์รายการ `<หมวด>.<งาน>.<รายการ>` นับจาก `categories` ทั้งก้อน — เหมือน `plan-store.ts`
  */
 export function fillProgress(
   wb: Workbook,
   layout: ProgressLayout,
   categories: BoqCategory[],
-  progress: { dates: (string | null)[]; items: Record<string, (number | null)[]> },
+  progress: { items: Record<string, (number | null)[]> },
 ) {
-  const summary = wb.getWorksheet(SHEET.summary)
-  progress.dates.slice(0, layout.periods).forEach((d, k) => {
-    if (d && summary) summary.getCell(`C${layout.summary.period0 + k}`).value = new Date(`${d}T00:00:00Z`)
-  })
   categories.forEach((cat, ci) => {
     const lc = layout.cats.find((x) => x.cat === cat)
     const ws = lc && wb.getWorksheet(lc.sheet)
@@ -617,7 +582,7 @@ export function fillProgress(
         const vals = progress.items[`${ci}.${ti}.${ii}`]
         const row = lc.items[j]?.[ii]
         if (!vals || row == null) return
-        vals.slice(0, layout.periods).forEach((v, k) => {
+        vals.slice(0, layout.weeks).forEach((v, k) => {
           if (v != null) ws.getCell(`${col(P0 + k)}${row}`).value = v
         })
       })
