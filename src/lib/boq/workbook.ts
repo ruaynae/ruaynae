@@ -528,7 +528,7 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
       color: 'C0261C', dash: true, marker: false, width: 15875,
       points: rules.map((r, j) => ({
         idx: j + 1,
-        lines: [`ว.124 ข้อ ${r.clause} · ผลงาน ≥ ${Math.round(r.min * 100)}%${r.halfPlan ? ' หรือครึ่งของแผน' : ''}`, `${r.when} · ${date}`],
+        lines: [`ว.124 ข้อ ${r.clause} · ผลงาน ≥ ${Math.round(r.min * 100)}%`, `${r.when} · ${date}`],
       })),
     }
     c0 += ys.length

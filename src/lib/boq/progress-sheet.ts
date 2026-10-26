@@ -519,9 +519,7 @@ function addW124Table(ws: Worksheet, a: ProgressArgs, x: { asOf: string; start: 
     put(`H${r}`, rule.min, { ...cell, fmt: '0%' })
     const weeks = a.layout.weeks
     merge(r, 9, r, 10); put(`I${r}`, f(`IF(${idx}=0,0,N(INDEX(${calcWeekRange(CALC_ACTUAL_ROW, weeks)},${idx})))`, 0), { ...cell, fmt: '0.00%', font: { bold: true } })
-    const ok = rule.halfPlan
-      ? `OR(I${r}>=H${r},AND(${idx}>0,I${r}>=N(INDEX(${calcWeekRange(CALC_PLAN_ROW, weeks)},MAX(1,${idx})))/2))`
-      : `I${r}>=H${r}`
+    const ok = `I${r}>=H${r}`
     merge(r, 11, r, 13)
     put(`K${r}`, f(`IF(${ok},"${W124_LABEL.pass}",IF(${x.asOf}>=F${r},"${W124_LABEL.fail}","${W124_LABEL.pending}"))`, W124_LABEL.pending), { ...cell, font: { bold: true } })
   })
@@ -533,7 +531,7 @@ function addW124Table(ws: Worksheet, a: ProgressArgs, x: { asOf: string; start: 
   ] })
   merge(r1 + 1, 1, r1 + 1, 13)
   put(`A${r1 + 1}`,
-    '* ต่ำกว่าเกณฑ์ และความล่าช้าเป็นความผิดของผู้รับจ้าง = หน่วยงานใช้ดุลพินิจบอกเลิกสัญญาได้ (ม.103 วรรคหนึ่ง (2)) · ข้อ 2.2.2 เทียบผลงานสะสมกับครึ่งหนึ่งของแผน ณ สิ้นสัปดาห์เดียวกัน แทนผลงานรายเดือน · ไม่ใช้กับงานก่อสร้างบำรุงทาง',
+    '* ต่ำกว่าเกณฑ์ และความล่าช้าเป็นความผิดของผู้รับจ้าง = หน่วยงานใช้ดุลพินิจบอกเลิกสัญญาได้ (ม.103 วรรคหนึ่ง (2)) · ข้อ 2.2.1 และ 2.2.2 ใช้เกณฑ์เดียวกัน: เวลาเกิน 1 ใน 2 ผลงานสะสมไม่น้อยกว่า 25% · ไม่ใช้กับงานก่อสร้างบำรุงทาง',
     { border: false, font: { size: 8, color: { argb: C.muted } } })
   ws.getRow(r1 + 1).height = 24
 }
