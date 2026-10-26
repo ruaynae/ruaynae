@@ -2,12 +2,13 @@ import type { Grid } from './core'
 import type { W124State } from './w124'
 
 /**
- * อ่านไฟล์แผนงานที่เจ้าของกรอกผลงานรายงวดกลับมา — ส่วนคำนวณล้วน (ไม่ผูก exceljs)
+ * อ่านไฟล์แผนงานที่เจ้าของกรอกผลงานรายสัปดาห์กลับมา — ส่วนคำนวณล้วน (ไม่ผูก exceljs)
  *
  * 🔴 ผลงานจริง **คำนวณใหม่จากช่องที่กรอก** ไม่อ่านค่าที่ Excel คำนวณไว้ — ไฟล์ที่ถูกแก้ด้วยโปรแกรม
- * ที่ไม่คำนวณสูตร (หรือเปิดบนมือถือ) จะไม่มีค่าเหล่านั้น · แผน ณ วันส่งงวดคิดรายวันจากวันเริ่ม/เสร็จ/ระยะเวลา
+ * ที่ไม่คำนวณสูตร (หรือเปิดบนมือถือ) จะไม่มีค่าเหล่านั้น · แผน ณ สิ้นสัปดาห์คิดรายวันจากวันเริ่ม/เสร็จ/ระยะเวลา
  * ของแต่ละงานในชีตแผนงาน — สูตรเดียวกับชีต "คำนวณ" ในไฟล์
- * กติกาตรงกับไฟล์: ช่องรายการที่ว่าง = เท่างวดก่อน · งวดล่าสุด = งวดสุดท้ายที่มีการกรอกอย่างน้อยหนึ่งช่อง
+ * กติกาตรงกับไฟล์: ช่องรายการที่ว่าง = เท่าสัปดาห์ก่อน · สัปดาห์ล่าสุด = สัปดาห์สุดท้ายที่มีการกรอกอย่างน้อยหนึ่งช่อง
+ * · `installments` = หนึ่งจุดต่อสัปดาห์ที่กรอก (ชื่อเดิมจากสมัยกรอกรายงวด · `no` = เลขสัปดาห์)
  */
 
 export type TaskProgress = {
@@ -20,8 +21,9 @@ export type TaskProgress = {
   actual: number
 }
 export type Installment = {
+  /** เลขสัปดาห์ (1 = W1) */
   no: number
-  /** `YYYY-MM-DD` · null = ยังไม่ใส่วันที่ส่งงวด */
+  /** วันสุดท้ายของสัปดาห์ `YYYY-MM-DD` */
   date: string | null
   /** สัปดาห์ของแผน (1-based) */
   week: number | null
@@ -37,9 +39,9 @@ export type W124Check = {
   date: string
   /** ตำแหน่งบนแกนสัปดาห์ (ทศนิยม · สิ้นวันตรวจ) */
   x: number
-  /** ผลงานสะสมของงวดล่าสุดที่ส่งไม่เกินวันตรวจ */
+  /** ผลงานสะสมของสัปดาห์ล่าสุดที่จบไม่เกินวันตรวจ */
   actual: number
-  /** งวดที่ใช้ประเมิน · null = ไม่มีงวดก่อนวันตรวจ */
+  /** สัปดาห์ที่ใช้ประเมิน · null = ไม่มีสัปดาห์ที่กรอกก่อนวันตรวจ */
   period: number | null
   state: W124State
 }
@@ -53,8 +55,13 @@ export type ProgressReport = {
   /** ความคืบหน้าแผนรายสัปดาห์ (ไม่สะสม) */
   planWeekly: number[]
   planCum: number[]
-  /** มีค่าเฉพาะสัปดาห์ที่ส่งงวด — กราฟลากเส้นต่อจุดของแต่ละงวด */
+  /** มีค่าเฉพาะสัปดาห์ที่กรอกแล้ว (null หลังสัปดาห์ล่าสุด) */
   actualCum: (number | null)[]
+  /** แผนงานเร่งรัด / แผนการทำงานดำเนินการ สะสมรายสัปดาห์ — ไม่มีแผนเสริม = ไม่มีคีย์ */
+  fastCum?: number[]
+  opsCum?: number[]
+  /** เส้น "แผนงานตาม ว.124" (ผ่าน 25% ที่ครึ่งเวลา · 65% ที่ 3/4 · จบ 100%) — มีเมื่อเปิดประเมิน ว.124 */
+  w124Cum?: number[]
   installments: Installment[]
   tasks: TaskProgress[]
   /** ไฟล์นี้สร้างแบบมีการประเมินตาม ว.124 */
@@ -89,8 +96,8 @@ const iso = (t: number) => new Date(t).toISOString().slice(0, 10)
 const thShort = (t: number) => new Date(t).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: 'UTC' })
 
 /**
- * @param summary ชีต "สรุปผลเบิกจ่าย" — ตารางผลงานรายงวด (คอลัมน์ A "งวดที่ k" · C วันที่ส่งงวด)
- * @param sheets ชีตหมวดเรียงตามไฟล์ — หัวตารางแถว 8 · คอลัมน์งวดเริ่มที่ M · ส่วนรายละเอียดอยู่ใต้แถว "รวม…" แรก
+ * @param summary ชีต "สรุปผลเบิกจ่าย" — ชื่อโครงการ (แถว 3) · "ข้อมูล ณ วันที่" (E4) · ตาราง ว.124
+ * @param sheets ชีตหมวดเรียงตามไฟล์ — หัวตารางแถว 8 · คอลัมน์สัปดาห์ W1… เริ่มที่ M · ส่วนรายละเอียดอยู่ใต้แถว "รวม…" แรก
  * @param plan ชีตแผนงาน
  */
 export function readProgress(summary: Grid, sheets: Grid[], plan: Grid): ProgressReport {
@@ -98,15 +105,10 @@ export function readProgress(summary: Grid, sheets: Grid[], plan: Grid): Progres
   const P0 = 12
   const periods = (() => {
     let n = 0
-    while (/^งวดที่/.test(sheets[0].w(7, P0 + n))) n += 1
+    while (/^W\d+$/.test(sheets[0].w(7, P0 + n))) n += 1
     return n
   })()
   if (!periods) throw new Error('NOT_PLAN_FILE')
-  const dates: (number | null)[] = new Array(periods).fill(null)
-  for (let r = 0; r < summary.rows; r += 1) {
-    const m = /^งวดที่ (\d+)$/.exec(summary.w(r, 0))
-    if (m && Number(m[1]) <= periods) dates[Number(m[1]) - 1] = dayOf(summary.v(r, 2))
-  }
 
   // รายการย่อย = แถวที่มีจำนวน (C) และมูลค่า (E) ในส่วนรายละเอียด · แถวงาน = รหัส N.k ไม่มีจำนวน
   type Item = { amount: number; eff: number[] }
@@ -152,7 +154,16 @@ export function readProgress(summary: Grid, sheets: Grid[], plan: Grid): Progres
   const planWeekly = Array.from({ length: weeks }, (_, k) => planRows.reduce((s, r) => s + (n(plan.v(r, 6 + k)) ?? 0), 0))
   let acc = 0
   const planCum = planWeekly.map((x) => (acc += x))
-  const weekOf = (t: number) => (start == null ? null : Math.max(1, Math.min(weeks, Math.floor((t - start) / DAY / 7) + 1)))
+  // แผนเสริม: แถวที่คอลัมน์ F เป็น "เร่งรัด" / "ดำเนินการ" (ป้ายเดียวกับ ALT_PLANS ใน core.ts)
+  const altCum = (tag: string) => {
+    const rows: number[] = []
+    for (let r = 0; r < plan.rows; r += 1) if (plan.w(r, 5) === tag) rows.push(r)
+    if (!rows.length) return undefined
+    let a = 0
+    return Array.from({ length: weeks }, (_, k) => (a += rows.reduce((s, r) => s + (n(plan.v(r, 6 + k)) ?? 0), 0)))
+  }
+  const fastCum = altCum('เร่งรัด')
+  const opsCum = altCum('ดำเนินการ')
 
   /** สัดส่วนแผนของงาน ณ วัน t — เสร็จแล้ว 1 · กำลังทำ = วันที่ผ่านไป ÷ ระยะเวลา · ยังไม่เริ่ม 0 */
   const taskPlan = (ti: number, t: number) => {
@@ -169,19 +180,22 @@ export function readProgress(summary: Grid, sheets: Grid[], plan: Grid): Progres
   const planAt = (t: number) => tasks.reduce((s, _, ti) => s + weight(ti) * taskPlan(ti, t), 0)
   const actualAt = (k: number) => tasks.reduce((s, t) => s + t.items.reduce((q, it) => q + it.amount * it.eff[k], 0), 0) / total
 
+  // วันสุดท้ายของสัปดาห์ k — สัปดาห์สุดท้ายจบที่วันสิ้นสุดสัญญา
+  const days = n(plan.v(4, 3))
+  const weekEnd = (k: number) => (start == null ? null : start + (Math.min(days ?? Infinity, 7 * (k + 1)) - 1) * DAY)
   const installments: Installment[] = Array.from({ length: lastPeriod }, (_, k) => {
-    const t = dates[k]
-    return { no: k + 1, date: t == null ? null : iso(t), week: t == null ? null : weekOf(t), plan: t == null ? null : planAt(t), actual: actualAt(k) }
+    const t = weekEnd(k)
+    return { no: k + 1, date: t == null ? null : iso(t), week: k + 1, plan: t == null ? null : planAt(t), actual: actualAt(k) }
   })
   const actualCum: (number | null)[] = new Array(weeks).fill(null)
-  for (const p of installments) if (p.week) actualCum[p.week - 1] = p.actual
+  for (const p of installments) if (p.week && p.week <= weeks) actualCum[p.week - 1] = p.actual
 
-  const lastDate = lastPeriod ? dates[lastPeriod - 1] : null
-  // ข้อมูลสำหรับประเมิน ว.124 (คำนวณใน w124.ts) — ข้อมูล ณ วันที่ = ช่อง E4 · ว่าง = วันส่งงวดล่าสุด · ยังไม่มี = วันนี้
+  const lastDate = lastPeriod ? weekEnd(lastPeriod - 1) : null
+  // ข้อมูลสำหรับประเมิน ว.124 (คำนวณใน w124.ts) — ข้อมูล ณ วันที่ = ช่อง E4 · ว่าง = สิ้นสัปดาห์ล่าสุดที่กรอก · ยังไม่มี = วันนี้
   const now = new Date()
   const asOf = dayOf(summary.v(3, 4)) ?? lastDate ?? Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
   return {
-    days: n(plan.v(4, 3)),
+    days,
     // ไฟล์ที่ติ๊ก ว.124 ตอนสร้างมีตาราง "ว.124 ข้อ …" ในชีตสรุป · ไม่ติ๊ก = ไม่ประเมิน
     w124Enabled: Array.from({ length: summary.rows }, (_, r) => summary.w(r, 0)).some((t) => /^ว\.124 ข้อ/.test(t)),
     asOf: iso(asOf),
@@ -193,6 +207,8 @@ export function readProgress(summary: Grid, sheets: Grid[], plan: Grid): Progres
     planWeekly,
     planCum,
     actualCum,
+    ...(fastCum ? { fastCum } : {}),
+    ...(opsCum ? { opsCum } : {}),
     installments,
     tasks: tasks.map((t, ti) => ({
       code: t.code, name: t.name, category: t.category, amount: t.amount, weight: weight(ti),

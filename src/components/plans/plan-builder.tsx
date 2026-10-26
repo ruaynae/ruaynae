@@ -1,10 +1,13 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
+import { PaperSelect, type Paper } from './paper-select'
 import { useRouter } from 'next/navigation'
 import { AlertTriangle, Download, FileSpreadsheet, Loader2, RotateCcw, Save, Upload } from 'lucide-react'
 import { toast } from 'sonner'
-import { autoSchedule, distribute, type BoqCategory, type BoqModel } from '@/lib/boq/core'
+import {
+  ALT_PLANS, altKindsOf, autoSchedule, distribute, setAltPlan, spanOf, w124Curve, type AltKind, type BoqCategory, type BoqModel,
+} from '@/lib/boq/core'
 import { planMessage, type SavedPlan, type SavedPlanInput } from '@/lib/boq/plan-store'
 import { fmtMoney, todayInBangkok } from '@/lib/format'
 import { useSCurve, type CurveData } from './s-curve'
@@ -27,6 +30,10 @@ const thShort = (iso: string) =>
 const thDay = (iso: string) => isoToDate(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: 'UTC' })
 const pct = (x: number) => `${(x * 100).toFixed(2)}%`
 
+/** แผนที่กำลังแก้วันในตาราง — `plan` = ตามสัญญา */
+type View = 'plan' | AltKind
+const BAR: Record<View, string> = { plan: 'bg-bar-time', fast: 'bg-bar-plan-fast', ops: 'bg-bar-plan-ops' }
+
 const MESSAGES: Record<string, string> = {
   BOQ_EMPTY: 'ไม่พบรายการงานในไฟล์ ตรวจว่าเป็นไฟล์ BOQ ที่มีแบบ ปร.4 / ปร.5 / ปร.6',
 }
@@ -35,6 +42,7 @@ export function PlanBuilder({ saved }: { saved?: SavedPlan }) {
   const router = useRouter()
   const [fileName, setFileName] = useState(saved?.sourceFile ?? '')
   const [reading, setReading] = useState(false)
+  const [paper, setPaper] = useState<Paper>('A3')
   const [over, setOver] = useState(false)
   const [model, setModel] = useState<BoqModel | null>(
     saved ? { project: saved.project, factor: saved.factor, vat: saved.vat, categories: saved.categories, warnings: [] } : null,
@@ -44,13 +52,23 @@ export function PlanBuilder({ saved }: { saved?: SavedPlan }) {
   const [start, setStart] = useState(() => saved?.start ?? addIso(todayInBangkok(), 14))
   const [days, setDays] = useState(saved?.days ?? 180)
   const [daysText, setDaysText] = useState(String(saved?.days ?? 180))
-  const [periods, setPeriods] = useState(String(saved?.periods ?? 5))
   const [w124, setW124] = useState(saved?.w124 ?? false)
   const [exporting, setExporting] = useState(false)
   const [saving, setSaving] = useState(false)
   const canvas = useRef<HTMLCanvasElement>(null)
 
+  const [view, setView] = useState<View>('plan')
   const dist = useMemo(() => distribute(cats, days), [cats, days])
+  const kinds = altKindsOf(cats)
+  const alts = kinds.length > 0
+  /** ปุ่มเลือกแผนที่แก้วัน · คำอธิบายเส้น — แผนตามสัญญา + แผนเสริมที่เปิดอยู่ */
+  const views: [View, string][] = [['plan', 'แผนงานตามสัญญา'], ...ALT_PLANS.filter((a) => kinds.includes(a.kind)).map((a) => [a.kind, a.label] as [View, string])]
+  const altCum = useMemo(
+    () => Object.fromEntries(kinds.map((k) => [k, distribute(cats, days, k).cum])),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [kinds.join(), cats, days],
+  )
+  const kind = view === 'plan' || !kinds.includes(view) ? undefined : view
 
   const curve = useMemo<CurveData | null>(
     () => (cats.length
@@ -59,9 +77,11 @@ export function PlanBuilder({ saved }: { saved?: SavedPlan }) {
           plan: dist.cum,
           labels: dist.cum.map((_, i) => `W${i + 1}`),
           sublabels: dist.cum.map((_, i) => thDay(addIso(start, i * 7))),
+          ...altCum,
+          ...(w124 ? { w124: w124Curve(dist.cum, days) } : {}),
         }
       : null),
-    [dist, start, cats.length],
+    [dist, start, cats.length, altCum, w124, days],
   )
   useSCurve(canvas, curve)
 
@@ -135,19 +155,22 @@ export function PlanBuilder({ saved }: { saved?: SavedPlan }) {
               ...c,
               tasks: c.tasks.map((t, j) => {
                 if (j !== ti) return t
-                let { offset, dur } = t
+                // แก้วันของแผนที่เลือกอยู่ (ตามสัญญา / เร่งรัด / ดำเนินการ)
+                let { offset, dur } = spanOf(t, kind)
                 if (patch.startIso) offset = Math.round((isoToDate(patch.startIso).getTime() - isoToDate(start).getTime()) / DAY)
                 if (patch.dur != null && Number.isFinite(patch.dur)) dur = Math.max(1, Math.round(patch.dur))
                 offset = Math.max(0, Math.min(days - 1, offset))
                 dur = Math.min(dur, days - offset)
-                return { ...t, offset, dur, on: patch.on ?? t.on }
+                const on = patch.on ?? t.on
+                return kind ? { ...t, on, [kind]: { offset, dur } } : { ...t, offset, dur, on }
               }),
             },
       ),
     )
   }
 
-  const periodCount = () => Math.min(24, Math.max(1, Math.round(Number(periods)) || 5))
+  /** คอลัมน์ `periods` ของตารางยังบังคับ 1–24 — ไม่ใช้แล้ว (กรอกผลงานรายสัปดาห์) จึงส่งค่าเดิม/1 */
+  const periodCount = () => saved?.periods ?? 1
 
   /** บันทึกแผนลงเว็บ — ใหม่ = POST · แก้แผนเดิม = PATCH พร้อม `expectedUpdatedAt` (กันเขียนทับอีกเครื่อง) */
   async function onSave() {
@@ -168,7 +191,7 @@ export function PlanBuilder({ saved }: { saved?: SavedPlan }) {
         toast.error(planMessage(j.error ?? ''))
         return
       }
-      toast.success(saved ? 'บันทึกการแก้ไขแล้ว' : 'บันทึกแผนงานแล้ว — กรอกผลงานรายงวดได้ที่หน้านี้')
+      toast.success(saved ? 'บันทึกการแก้ไขแล้ว' : 'บันทึกแผนงานแล้ว — กรอกผลงานรายสัปดาห์ได้ที่หน้านี้')
       router.push(`/plans/${saved?.id ?? j.id}`)
       router.refresh()
     } catch {
@@ -184,8 +207,8 @@ export function PlanBuilder({ saved }: { saved?: SavedPlan }) {
     try {
       const { buildPlanXlsx } = await import('@/lib/boq/workbook')
       const buf = await buildPlanXlsx({
-        project, factor: model.factor, vat: model.vat, categories: cats, days, start, periods: periodCount(), w124,
-        progress: saved?.progress,
+        project, factor: model.factor, vat: model.vat, categories: cats, days, start, w124,
+        progress: saved?.progress, paper,
       })
       const a = document.createElement('a')
       a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
@@ -237,7 +260,7 @@ export function PlanBuilder({ saved }: { saved?: SavedPlan }) {
             <li>อ่านแบบ ปร.6 → ปร.5 → ปร.4 แยกหมวดและรายการงาน (ชีตของโครงการอื่นในไฟล์ถูกข้ามให้)</li>
             <li>คิดน้ำหนักงานจากค่างานต้นทุน แล้วจัดลำดับตามขั้นตอนก่อสร้าง (รื้อถอน → งานระบบ → ผนัง พื้น ฝ้า → ตกแต่ง → ครุภัณฑ์)</li>
             <li>แก้วันเริ่ม/จำนวนวันของแต่ละงานได้ แล้วดาวน์โหลดแผนงาน Excel พร้อม S-Curve ไปยื่นหน่วยงาน</li>
-            <li>ในไฟล์มีแบบ &quot;ปริมาณงาน และราคา ที่แล้วเสร็จ&quot; แยกชีตตามหมวด ทุกรายการจาก ปร.4 — ส่งงวดงานเมื่อไหร่ กรอกวันที่ส่งงวดกับ % แล้วเสร็จตามหน้างาน แล้วไฟล์คิดมูลค่างานที่ได้ (รวม Factor F/VAT) และเทียบกับแผน ณ วันนั้นว่าเร็ว ตามแผน หรือช้ากว่าแผน</li>
+            <li>ในไฟล์มีแบบ &quot;ปริมาณงาน และราคา ที่แล้วเสร็จ&quot; แยกชีตตามหมวด ทุกรายการจาก ปร.4 — ทุกสัปดาห์กรอก % แล้วเสร็จสะสมตามหน้างานในคอลัมน์ W1 … Wn แล้วไฟล์คิดมูลค่างานที่ได้ (รวม Factor F/VAT) วาดเส้นผลงานจริง และเทียบกับแผนว่าเร็ว ตามแผน หรือช้ากว่าแผน</li>
           </ol>
         </div>
       </div>
@@ -337,23 +360,34 @@ export function PlanBuilder({ saved }: { saved?: SavedPlan }) {
               onKeyDown={(e) => e.key === 'Enter' && commitDays()}
             />
           </label>
-          <label>
-            <span className="label-base">จำนวนงวดงาน (ช่องกรอกผลงาน)</span>
-            <input
-              className="input-base tabular-nums"
-              inputMode="numeric"
-              value={periods}
-              onChange={(e) => setPeriods(e.target.value.replace(/\D/g, '').slice(0, 2))}
-              onBlur={() => setPeriods(String(Math.min(24, Math.max(1, Number(periods) || 5))))}
-            />
-          </label>
           <label className="flex items-start gap-2 self-end text-sm text-ink-2 sm:col-span-full">
             <input type="checkbox" className="mt-1 size-4 shrink-0 accent-[var(--brand)]" checked={w124} onChange={(e) => setW124(e.target.checked)} />
             <span>
               <span className="font-semibold text-ink">ประเมินตามหนังสือกรมบัญชีกลาง ว.124</span>
-              <span className="block text-muted-token">เส้นแดงวันตรวจ (เวลาเกิน 1/2 · 3/4 · ครบสัญญา) และเส้นเทา &quot;แผน ÷ 2&quot; บน S-Curve + ตารางผลประเมินในชีตสรุปผลเบิกจ่าย</span>
+              <span className="block text-muted-token">เส้นเทา &quot;แผนงานตาม ว.124&quot; (ผ่าน 25% ที่ครึ่งเวลา · 65% ที่ 3/4 · จบ 100%) + เส้นแดงวันตรวจบน S-Curve · กล่องคำอธิบายผลใต้ตาราง · ตารางผลประเมินในชีตสรุปผลเบิกจ่าย</span>
             </span>
           </label>
+          {[...ALT_PLANS].reverse().map((a) => (
+            <label key={a.kind} className="flex items-start gap-2 self-end text-sm text-ink-2 sm:col-span-full">
+              <input
+                type="checkbox"
+                className="mt-1 size-4 shrink-0 accent-[var(--brand)]"
+                checked={kinds.includes(a.kind)}
+                onChange={(e) => {
+                  setCats((c) => setAltPlan(c, a.kind, e.target.checked))
+                  setView(e.target.checked ? a.kind : 'plan')
+                }}
+              />
+              <span>
+                <span className="font-semibold text-ink">ใส่{a.label}</span>
+                <span className="block text-muted-token">
+                  {a.kind === 'ops'
+                    ? 'แผนที่เราวางไว้เองว่าอยากให้งานเสร็จตามนี้ · แต่ละงานกำหนดวันเริ่ม/จำนวนวันแยกจากแผนตามสัญญา · ในไฟล์ได้แถวแท่ง ตารางสรุป และเส้นใน S-Curve (แยกจากเส้นผลงานจริง)'
+                    : 'แผนเร่งงานอีกชุด กำหนดวันต่องานแยกเหมือนกัน · ไม่ติ๊ก = ไม่มีในไฟล์'}
+                </span>
+              </span>
+            </label>
+          ))}
         </div>
       </section>
 
@@ -375,6 +409,32 @@ export function PlanBuilder({ saved }: { saved?: SavedPlan }) {
           </button>
         </div>
         <p className="text-sm text-muted-token">แก้วันเริ่มและจำนวนวันในตารางได้ · ติ๊กออกถ้าไม่รวมงานนั้นในแผน (น้ำหนักงานคิดใหม่เอง)</p>
+        {alts && (
+          <div className="flex flex-wrap items-center gap-2" role="radiogroup" aria-label="แผนที่กำลังแก้วัน">
+            <span className="text-sm font-semibold text-ink">แก้วันของ:</span>
+            {views.map(([v, label]) => (
+              <button
+                key={v}
+                type="button"
+                role="radio"
+                aria-checked={view === v}
+                onClick={() => setView(v)}
+                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm ${view === v ? 'border-brand bg-brand-tint font-semibold text-ink' : 'border-line text-ink-2'}`}
+              >
+                <span className={`size-3 rounded-xs ${BAR[v]}`} />{label}
+              </button>
+            ))}
+            {view !== 'plan' && (
+              <button
+                type="button"
+                className="btn-secondary ml-auto"
+                onClick={() => setCats((c) => c.map((x) => ({ ...x, tasks: x.tasks.map((t) => ({ ...t, [view]: { offset: t.offset, dur: t.dur } })) })))}
+              >
+                <RotateCcw className="size-4" />ใช้วันตามแผนตามสัญญา
+              </button>
+            )}
+          </div>
+        )}
         <div className="panel overflow-x-auto">
           <table className="w-full min-w-[980px] border-collapse text-sm">
             <thead>
@@ -399,8 +459,8 @@ export function PlanBuilder({ saved }: { saved?: SavedPlan }) {
               {cats.map((c, ci) => {
                 const on = c.tasks.filter((t) => t.on)
                 const catNo = numbers[ci].cat
-                const lo = on.length ? Math.min(...on.map((t) => t.offset)) : 0
-                const hi = on.length ? Math.max(...on.map((t) => t.offset + t.dur)) : 0
+                const lo = on.length ? Math.min(...on.map((t) => spanOf(t, kind).offset)) : 0
+                const hi = on.length ? Math.max(...on.map((t) => spanOf(t, kind).offset + spanOf(t, kind).dur)) : 0
                 const sum = on.reduce((s, t) => s + t.amount, 0)
                 return [
                   <tr key={`c${ci}`} className="border-t border-line bg-surface-2 font-semibold text-ink">
@@ -418,6 +478,7 @@ export function PlanBuilder({ saved }: { saved?: SavedPlan }) {
                   </tr>,
                   ...c.tasks.map((t, ti) => {
                     const w = dist.total && t.on ? t.amount / dist.total : 0
+                    const sp = spanOf(t, kind)
                     return (
                       <tr key={`t${ci}-${ti}`} className={`border-t border-line-soft ${t.on ? '' : 'opacity-50'}`}>
                         <td className="px-2 py-1.5">
@@ -433,21 +494,27 @@ export function PlanBuilder({ saved }: { saved?: SavedPlan }) {
                         <td className="px-2 py-1.5 text-right tabular-nums">{t.on ? pct(w) : '–'}</td>
                         <td className="px-2 py-1.5">
                           <input type="date" className="input-base w-[150px] px-2 py-1 text-sm" aria-label="วันเริ่ม"
-                            value={addIso(start, t.offset)} min={start} max={addIso(start, days - 1)}
+                            value={addIso(start, sp.offset)} min={start} max={addIso(start, days - 1)}
                             onChange={(e) => e.target.value && editTask(ci, ti, { startIso: e.target.value })} />
                         </td>
                         <td className="px-2 py-1.5">
                           <input type="number" className="input-base w-[76px] px-2 py-1 text-right text-sm tabular-nums" aria-label="จำนวนวัน"
-                            min={1} max={days} value={t.dur}
+                            min={1} max={days} value={sp.dur}
                             onChange={(e) => editTask(ci, ti, { dur: Number(e.target.value) })} />
                         </td>
                         <td className="p-0">
-                          <div className="relative h-10" style={grid}>
-                            <div
-                              className="absolute top-3 h-4 rounded-xs bg-bar-time"
-                              style={{ left: at(t.offset), width: at(t.dur) }}
-                              title={`${thShort(addIso(start, t.offset))} – ${thShort(addIso(start, t.offset + t.dur - 1))}`}
-                            />
+                          <div className={`relative ${alts ? 'h-12' : 'h-10'}`} style={grid}>
+                            {views.map(([v], i) => {
+                              const b = spanOf(t, v === 'plan' ? undefined : v)
+                              return (
+                                <div
+                                  key={v}
+                                  className={`absolute rounded-xs ${BAR[v]} ${alts ? 'h-2.5' : 'top-3 h-4'} ${alts && v !== view ? 'opacity-45' : ''}`}
+                                  style={{ left: at(b.offset), width: at(b.dur), ...(alts ? { top: `${(views.length === 2 ? 0.75 : 0.375) + i * 0.875}rem` } : {}) }}
+                                  title={`${v === 'plan' ? 'ตามสัญญา' : ALT_PLANS.find((a) => a.kind === v)?.label} · ${thShort(addIso(start, b.offset))} – ${thShort(addIso(start, b.offset + b.dur - 1))}`}
+                                />
+                              )
+                            })}
                           </div>
                         </td>
                       </tr>
@@ -463,14 +530,23 @@ export function PlanBuilder({ saved }: { saved?: SavedPlan }) {
       <section className="card-surface p-4">
         <h2 className="sec-head">S-Curve แผนงาน<span className="count">50% ของงานควรเสร็จที่ W{dist.cum.findIndex((v) => v >= 0.5) + 1}</span></h2>
         <canvas ref={canvas} className="block h-[300px] w-full max-w-full" role="img" aria-label="กราฟ S-Curve ความคืบหน้าสะสมตามแผน" />
+        {(alts || w124) && (
+          <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-token">
+            {views.map(([v, label]) => (
+              <span key={v} className="inline-flex items-center gap-1.5"><span className={`h-1 w-5 rounded-full ${BAR[v]}`} />{label}</span>
+            ))}
+            {w124 && <span className="inline-flex items-center gap-1.5"><span className="h-1 w-5 rounded-full bg-muted-token" />แผนงานตาม ว.124</span>}
+          </div>
+        )}
       </section>
 
       <section className="card-surface flex flex-wrap items-center gap-4 p-4">
         <div className="min-w-0 flex-1 text-sm text-muted-token">
           ในไฟล์: <b className="text-ink">แผนงานก่อสร้าง</b> (แท่งรายสัปดาห์ · S-Curve แผนเทียบจริง) ·{' '}
-          <b className="text-ink">รายละเอียด</b> · <b className="text-ink">สรุปผลเบิกจ่าย</b> (ระยะเวลา · มูลค่าตามสัญญาเทียบที่ได้จริง · ผลงานรายงวด · งบประมาณรายปี) ·{' '}
-          <b className="text-ink">แบบปริมาณงานที่แล้วเสร็จแยกหมวด</b> (กรอก % ในคอลัมน์ &quot;งวดที่&quot;)
+          <b className="text-ink">รายละเอียด</b> · <b className="text-ink">สรุปผลเบิกจ่าย</b> (ระยะเวลา · มูลค่าตามสัญญาเทียบที่ได้จริง · สถานะสัปดาห์ล่าสุด · งบประมาณรายปี) ·{' '}
+          <b className="text-ink">แบบปริมาณงานที่แล้วเสร็จแยกหมวด</b> (กรอก % รายสัปดาห์ในคอลัมน์ W1 … Wn)
         </div>
+        <PaperSelect value={paper} onChange={setPaper} />
         <button type="button" className="btn-secondary" disabled={exporting || !dist.plan.length} onClick={() => void onExport()}>
           {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
           ดาวน์โหลดแผนงาน Excel

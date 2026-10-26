@@ -18,7 +18,7 @@ type Search = { series?: string; q?: string; after?: string }
 
 /**
  * ทะเบียนหนังสือส่ง (R19) — ใหม่สุดก่อน · แยกตามชุดเลข (โครงการ) · ค้นจากเรื่อง
- * keyset ด้วย (letter_date desc, id desc) — offset ลึก ๆ ช้าและแถวซ้ำได้ (§7)
+ * keyset ด้วย (letter_date desc, seq desc, id desc) — วันเดียวกันเรียงตามเลขหนังสือ · offset ลึก ๆ ช้าและแถวซ้ำได้ (§7)
  */
 export default async function LettersPage({ searchParams }: { searchParams: Promise<Search> }) {
   const sp = await searchParams
@@ -35,14 +35,14 @@ export default async function LettersPage({ searchParams }: { searchParams: Prom
   // 🔴 escape แล้วค่อยยัดเข้า ilike — คอมมาในช่องค้นหาจะกลายเป็นเงื่อนไขที่สอง (§7)
   for (const t of terms) list = list.ilike('subject', `%${t}%`)
   if (sp.after) {
-    const [d, id] = sp.after.split('|')
-    if (/^\d{4}-\d{2}-\d{2}$/.test(d ?? '') && isUuid(id)) {
-      list = list.or(`letter_date.lt.${d},and(letter_date.eq.${d},id.lt.${id})`)
+    const [d, n, id] = sp.after.split('|')
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d ?? '') && /^\d{1,9}$/.test(n ?? '') && isUuid(id)) {
+      list = list.or(`letter_date.lt.${d},and(letter_date.eq.${d},seq.lt.${n}),and(letter_date.eq.${d},seq.eq.${n},id.lt.${id})`)
     }
   }
 
   const [listRes, seriesRes] = await Promise.all([
-    list.order('letter_date', { ascending: false }).order('id', { ascending: false }).range(0, PAGE_SIZE),
+    list.order('letter_date', { ascending: false }).order('seq', { ascending: false }).order('id', { ascending: false }).range(0, PAGE_SIZE),
     sb.from('letter_series').select('id, label, prefix, is_active').order('label', { ascending: true }).range(0, 199),
   ])
 
@@ -175,7 +175,7 @@ export default async function LettersPage({ searchParams }: { searchParams: Prom
 
       {hasMore && last && (
         <div className="mt-3 text-center">
-          <Link href={href({ after: `${last.letter_date}|${last.id}` })} className="btn-secondary">
+          <Link href={href({ after: `${last.letter_date}|${last.seq}|${last.id}` })} className="btn-secondary">
             โหลดเพิ่ม
           </Link>
         </div>

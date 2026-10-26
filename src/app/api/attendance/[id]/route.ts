@@ -34,6 +34,10 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
     .from('attendance').delete().eq('id', id).select('id').maybeSingle()
 
   if (error) {
+    // ลบแถวของวันก่อนวันนี้ = แก้ค่าแรงย้อนหลัง · หัวหน้าโครงการทำเองไม่ได้ (24 ต.ค. 2569)
+    if ((error.message ?? '').includes('BACKDATE_NEEDS_APPROVAL')) {
+      return NextResponse.json({ error: 'BACKDATE_NEEDS_APPROVAL' }, { status: 409 })
+    }
     console.error('[attendance] ลบไม่สำเร็จ', error.message)
     return NextResponse.json({ error: 'DELETE_FAILED' }, { status: 500 })
   }

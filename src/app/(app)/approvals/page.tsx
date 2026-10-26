@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { ClipboardCheck, HandCoins, Inbox } from 'lucide-react'
+import { CalendarClock, ClipboardCheck, HandCoins, Inbox } from 'lucide-react'
 import { getCurrentUser } from '@/lib/auth/current-user'
 import { getSupabaseServer } from '@/lib/supabase/server'
 import { PAGE_SIZE } from '@/lib/constants'
@@ -54,6 +54,7 @@ export default async function ApprovalsPage({
     { count },
     { data: advanceRows, error: aErr, count: advanceCount },
     { data: balances, error: bErr },
+    { data: backdateRows, error: bdErr, count: backdateCount },
   ] = await Promise.all([
     q
       .order('created_at', { ascending: true })
@@ -76,7 +77,23 @@ export default async function ApprovalsPage({
     // ยอดค้างจ่ายของทุกคนในคำสั่งเดียว — ไม่ใช่ยิง employee_balance ทีละคน (N+1)
     // · คนที่ไม่มีทั้งค่าแรงค้างและยอดเบิกจะไม่อยู่ในผลลัพธ์ = คงเหลือ ฿0
     sb.rpc('payroll_balances'),
+    // คำขอลงชื่อคนเข้าโครงการย้อนหลัง (24 ต.ค. 2569) — หัวหน้าลงวันก่อนวันนี้เองไม่ได้
+    // ต้องมาที่นี่ · อนุมัติแล้วระบบลงชื่อให้และค่าแรงเข้าต้นทุนทันที
+    sb
+      .from('attendance_backdate_requests')
+      .select(`
+        id, work_date, work_units, reason, created_at,
+        employees(full_name), sites(name),
+        profiles!attendance_backdate_requests_requested_by_fkey(full_name)
+      `, { count: 'exact' })
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(0, PAGE_SIZE),
   ])
+
+  // คิวคำขอลงชื่อย้อนหลังพังต้องไม่ลากคิวรายจ่าย/เบิกลงไปด้วย (เช่นช่วงที่ deploy โค้ดก่อน apply migration)
+  if (bdErr) console.error('[approvals] อ่านคำขอลงชื่อย้อนหลังไม่ได้', bdErr.message)
 
   if (error || aErr || bErr) {
     console.error('[approvals] อ่านคิวไม่ได้', error?.message ?? aErr?.message ?? bErr?.message)
@@ -99,7 +116,8 @@ export default async function ApprovalsPage({
   const balanceOf = new Map(
     (balances ?? []).map((b) => [b.employee_id, Number(b.balance)] as const),
   )
-  const pendingTotal = (count ?? 0) + (advanceCount ?? 0)
+  const bdPage = (backdateRows ?? []).slice(0, PAGE_SIZE)
+  const pendingTotal = (count ?? 0) + (advanceCount ?? 0) + (backdateCount ?? 0)
 
   // อายุของรายการในคิว — เทียบกับสิ้นวันนี้เวลาไทย ให้ของเมื่อวานนับเป็น 1 วัน
   // ค้างนานคือสัญญาณว่าหัวหน้าโครงการกำลังรอคำตอบ ไม่ใช่แค่ตัวเลขประดับ
@@ -119,7 +137,7 @@ export default async function ApprovalsPage({
             </span>
           ) : null
         }
-        subtitle="รายจ่ายและคำขอเบิกค่าแรงที่หัวหน้าโครงการส่งเข้ามา · เรียงคนที่รอนานที่สุดไว้บนสุด"
+        subtitle="รายจ่าย คำขอเบิกค่าแรง และคำขอลงชื่อย้อนหลังที่หัวหน้าโครงการส่งเข้ามา · เรียงคนที่รอนานที่สุดไว้บนสุด"
       />
 
       {/* ── คำขอเบิกค่าแรง (R14) ────────────────────────────────────────
@@ -210,8 +228,66 @@ export default async function ApprovalsPage({
         </section>
       )}
 
+      {/* ── คำขอลงชื่อย้อนหลัง ─────────────────────────────────────────
+          วันก่อนวันนี้หัวหน้าโครงการลง/แก้/ลบเองไม่ได้ (ฐานข้อมูลกันไว้) · กดอนุมัติ =
+          ระบบลงชื่อให้ในนามเจ้าของ และค่าแรงวันนั้นเข้าต้นทุนทันที */}
+      {bdPage.length > 0 && (
+        <section className="panel mb-5" data-backdate-queue="true">
+          <div className="panel-head">
+            <CalendarClock className="size-4 text-brand" />
+            คำขอลงชื่อย้อนหลัง
+            <span className="ml-auto text-xs font-normal tnum text-muted-token">
+              {backdateCount ?? bdPage.length} รายการ
+            </span>
+          </div>
+          {bdPage.map((r) => (
+            <div
+              key={r.id}
+              className="flex flex-wrap items-start gap-x-3 gap-y-2.5 border-b border-line-soft px-3.5 py-3.5 last:border-b-0 md:px-4"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="truncate font-semibold text-ink">
+                    {r.employees?.full_name ?? 'คนงานที่ถูกลบแล้ว'}
+                  </span>
+                  <span className="text-sm font-medium tnum text-ink-2">
+                    {fmtDate(r.work_date)}
+                    {Number(r.work_units) === 0.5 ? ' · ครึ่งวัน' : ' · เต็มวัน'}
+                  </span>
+                  {r.sites?.name && (
+                    <span className="chip border border-brand-tint-strong bg-brand-tint text-brand-on-tint ring-0">
+                      {r.sites.name}
+                    </span>
+                  )}
+                </div>
+                <div className="mt-0.5 text-sm text-muted-token">
+                  {'ยื่นโดย '}
+                  <span className="font-medium text-ink-2">
+                    {r.profiles?.full_name ?? 'ผู้ใช้ที่ถูกลบแล้ว'}
+                  </span>
+                  {ageDays(r.created_at) >= 1 && (
+                    <>
+                      {' · '}
+                      <span
+                        className={ageDays(r.created_at) >= 2 ? 'font-semibold text-urgent' : undefined}
+                      >
+                        ค้าง {ageDays(r.created_at)} วัน
+                      </span>
+                    </>
+                  )}
+                </div>
+                <div className="mt-0.5 text-sm text-ink-2">เหตุผล: {r.reason}</div>
+              </div>
+              <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                <ApprovalActions id={r.id} kind="backdate" />
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
+
       {page.length === 0 ? (
-        advPage.length === 0 ? (
+        advPage.length === 0 && bdPage.length === 0 ? (
           <EmptyState
             icon={Inbox}
             message="ไม่มีรายการรออนุมัติ — ทุกอย่างที่หัวหน้าโครงการส่งเข้ามาถูกตรวจครบแล้ว"

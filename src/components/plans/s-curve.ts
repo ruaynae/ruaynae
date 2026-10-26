@@ -3,6 +3,7 @@ import { useEffect, type RefObject } from 'react'
 /**
  * S-Curve บน canvas — สีจากโทเคนของธีม
  * · เส้นทึบ = แผนสะสม (แกนซ้าย 0–100%) · เส้นส้ม = ผลงานจริงสะสม (ถ้ามี) · แท่ง = แผนรายสัปดาห์ (แกนขวา)
+ * · เส้นม่วง/เขียวน้ำทะเล = แผนงานเร่งรัด / แผนการทำงานดำเนินการ (ถ้ามี)
  */
 
 export type CurveData = {
@@ -12,10 +13,13 @@ export type CurveData = {
   actual?: (number | null)[]
   labels: string[]
   sublabels?: string[]
-  /** เส้นประเทา = แผนสะสม ÷ 2 (ว.124 ข้อ 2.2.2) */
-  planHalf?: boolean
+  /** เส้นเทา "แผนงานตาม ว.124" (ผ่าน 25% ที่ครึ่งเวลา · 65% ที่ 3/4 · จบ 100%) */
+  w124?: number[]
   /** เส้นประแดงแนวตั้งที่วันตรวจ ว.124 — x เป็นสัปดาห์ทศนิยม · หมุดที่ระดับเกณฑ์ */
   checks?: { x: number; marks: { y: number; text: string }[] }[]
+  /** แผนเสริมสะสมรายสัปดาห์ (ยาวเท่า `plan`) */
+  fast?: number[]
+  ops?: number[]
 }
 
 function palette() {
@@ -30,6 +34,8 @@ function palette() {
     bar: v('--status-info-ring', '#c6d6fb'),
     bg: v('--surface', '#ffffff'),
     urgent: v('--urgent', '#b42318'),
+    fast: v('--bar-plan-fast', '#7c4dbd'),
+    ops: v('--bar-plan-ops', '#0f8a87'),
   }
 }
 
@@ -108,11 +114,7 @@ export function drawSCurve(cv: HTMLCanvasElement, d: CurveData) {
       g.fill()
     })
   }
-  if (d.planHalf) {
-    g.setLineDash([5, 4])
-    line(d.plan.map((v) => v / 2), c.muted, 1.5, false)
-    g.setLineDash([])
-  }
+  if (d.w124) line(d.w124, c.muted, 2, true)
   for (const k of d.checks ?? []) {
     const x = m.l + Math.min(n, k.x) * bw
     g.strokeStyle = c.urgent
@@ -144,6 +146,8 @@ export function drawSCurve(cv: HTMLCanvasElement, d: CurveData) {
     }
     g.font = `${fs}px "IBM Plex Sans Thai", Tahoma, sans-serif`
   }
+  if (d.fast) line(d.fast, c.fast, 2, false)
+  if (d.ops) line(d.ops, c.ops, 2, false)
   line(d.plan, c.plan, 2.5)
   if (d.actual) line(d.actual, c.actual, 3)
 

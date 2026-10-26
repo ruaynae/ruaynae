@@ -9,7 +9,7 @@ import { Badge, type BadgeTone } from '@/components/ui/badge'
 import { useSCurve, type CurveData } from './s-curve'
 
 /**
- * รายงานแผนเทียบจริง — S-Curve · ว.124 · ผลงานรายงวด · รายงานรายงาน
+ * รายงานแผนเทียบจริง — S-Curve · ว.124 · ผลงานรายสัปดาห์ · รายงานรายงาน
  * ใช้ทั้งแท็บ "ติดตามผลงาน" (อ่านจากไฟล์) และหน้าแผนงานที่บันทึกไว้ (คำนวณจากที่กรอกบนเว็บ)
  */
 
@@ -40,7 +40,9 @@ export function ProgressReportView({ report }: { report: ProgressReport }) {
   const curve = useMemo<CurveData>(
     () => ({
       weekly: report.planWeekly, plan: report.planCum, actual: report.actualCum, labels: report.labels, sublabels: report.sublabels,
-      planHalf: report.w124.length > 0,
+      w124: report.w124Cum,
+      fast: report.fastCum,
+      ops: report.opsCum,
       checks: [...new Set(report.w124.map((c) => c.x))].map((x) => ({
         x,
         marks: report.w124.filter((c) => c.x === x).map((c) => ({ y: c.min, text: `ว.124 ข้อ ${c.clause} ≥ ${Math.round(c.min * 100)}%` })),
@@ -56,7 +58,7 @@ export function ProgressReportView({ report }: { report: ProgressReport }) {
   const actualNow = cur?.actual ?? 0
   const diff = actualNow - planNow
   const overall = STATUS[statusOf(diff, 0.005)]
-  const curLabel = cur ? `งวดที่ ${cur.no}` : 'ยังไม่กรอก'
+  const curLabel = cur ? `W${cur.no}` : 'ยังไม่กรอก'
   const rows = report.tasks.map((t) => ({ ...t, diff: t.actual - t.plan, status: statusOf(t.actual - t.plan, 0.01) }))
   const behind = rows.filter((t) => t.status === 'behind').length
   const shown = onlyBehind ? rows.filter((t) => t.status === 'behind') : rows
@@ -65,8 +67,8 @@ export function ProgressReportView({ report }: { report: ProgressReport }) {
     <div className="min-w-0 space-y-5">
       <section className="card-surface grid grid-cols-2 gap-4 p-4 lg:grid-cols-5">
         {[
-          ['งวดล่าสุด', cur ? `${curLabel}${cur.date ? ` · ${thDate(cur.date)}` : ''}` : curLabel],
-          ['แผนงานสะสม ณ วันส่งงวด', ready ? p1(planNow) : '—'],
+          ['สัปดาห์ล่าสุดที่กรอก', cur ? `${curLabel}${cur.date ? ` · ${thDate(cur.date)}` : ''}` : curLabel],
+          ['แผนงานสะสม ณ สิ้นสัปดาห์', ready ? p1(planNow) : '—'],
           ['ผลงานจริงสะสม', cur ? p1(actualNow) : '—'],
           ['เร็ว (+) / ช้า (−)', ready ? signed(diff) : '—'],
         ].map(([l, v]) => (
@@ -79,7 +81,7 @@ export function ProgressReportView({ report }: { report: ProgressReport }) {
           <div className="text-xs text-muted-token">สถานะโครงการ</div>
           <div className="mt-1">
             {ready ? <Badge tone={overall.tone} dot>{overall.label}</Badge>
-              : <span className="text-sm text-muted-token">{cur ? 'ใส่วันที่ส่งงวดก่อน' : '—'}</span>}
+              : <span className="text-sm text-muted-token">—</span>}
           </div>
         </div>
       </section>
@@ -90,10 +92,21 @@ export function ProgressReportView({ report }: { report: ProgressReport }) {
           <span className="count flex gap-3">
             <span><i className="mr-1 inline-block h-0.5 w-4 bg-bar-time align-middle" />แผน</span>
             <span><i className="mr-1 inline-block h-1 w-4 bg-bar-cost-material align-middle" />จริง</span>
+            {report.w124Cum && <span><i className="mr-1 inline-block h-0.5 w-4 bg-muted-token align-middle" />แผนงานตาม ว.124</span>}
             {report.w124.length > 0 && <span><i className="mr-1 inline-block h-3 w-0 border-l-2 border-dashed border-urgent align-middle" />วันตรวจ ว.124</span>}
           </span>
         </h2>
         <canvas ref={canvas} className="block h-[300px] w-full max-w-full" role="img" aria-label="กราฟ S-Curve แผนงานเทียบผลงานจริง" />
+        {(report.fastCum || report.opsCum) && (
+          <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-token">
+            {([['bg-bar-time', 'แผนงานตามสัญญา', true], ['bg-bar-plan-fast', 'แผนงานเร่งรัด', !!report.fastCum],
+              ['bg-bar-plan-ops', 'แผนการทำงานดำเนินการ', !!report.opsCum], ['bg-bar-cost-material', 'ผลงานจริง', true]] as const)
+              .filter(([, , on]) => on)
+              .map(([cls, label]) => (
+                <span key={label} className="inline-flex items-center gap-1.5"><span className={`h-1 w-5 rounded-full ${cls}`} />{label}</span>
+              ))}
+          </div>
+        )}
       </section>
 
       {report.w124.length > 0 && (
@@ -121,7 +134,7 @@ export function ProgressReportView({ report }: { report: ProgressReport }) {
                     <td className="px-3 py-2 tabular-nums">{thDate(c.date)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">
                       <span className="font-semibold text-ink">{p1(c.actual)}</span>
-                      <div className="text-xs text-muted-token">{c.period ? `งวดที่ ${c.period}` : 'ยังไม่มีงวดก่อนวันตรวจ'}</div>
+                      <div className="text-xs text-muted-token">{c.period ? `ณ W${c.period}` : 'ยังไม่มีผลงานก่อนวันตรวจ'}</div>
                     </td>
                     <td className="px-3 py-2"><Badge tone={W124_TONE[c.state]} dot>{W124_LABEL[c.state]}</Badge></td>
                   </tr>
@@ -130,7 +143,7 @@ export function ProgressReportView({ report }: { report: ProgressReport }) {
             </table>
           </div>
           <p className="text-xs text-muted-token">
-            ต่ำกว่าเกณฑ์และความล่าช้าเป็นความผิดของผู้รับจ้าง = หน่วยงานใช้ดุลพินิจบอกเลิกสัญญาได้ · ข้อ 2.2.2 เทียบผลงานสะสมกับครึ่งหนึ่งของแผน (เส้นประเทา) ณ วันส่งงวด แทนผลงานรายเดือน · ไม่ใช้กับงานก่อสร้างบำรุงทาง
+            ต่ำกว่าเกณฑ์และความล่าช้าเป็นความผิดของผู้รับจ้าง = หน่วยงานใช้ดุลพินิจบอกเลิกสัญญาได้ · ข้อ 2.2.1 และ 2.2.2 ใช้เกณฑ์เดียวกัน (เวลาเกิน 1 ใน 2 ผลงานสะสมไม่น้อยกว่า 25%) · เส้นเทา = แผนงานตาม ว.124 (25% ที่ครึ่งเวลา · 65% ที่ 3/4 · จบ 100%) · ไม่ใช้กับงานก่อสร้างบำรุงทาง
           </p>
         </section>
       )}
@@ -140,8 +153,8 @@ export function ProgressReportView({ report }: { report: ProgressReport }) {
           <table className="w-full min-w-[620px] border-collapse text-sm">
             <thead>
               <tr className="bg-surface-2 text-left text-xs text-muted-token">
-                <th className="px-3 py-2">งวด</th>
-                <th className="px-3 py-2">วันที่ส่งงวด</th>
+                <th className="px-3 py-2">สัปดาห์</th>
+                <th className="px-3 py-2">สิ้นสัปดาห์</th>
                 <th className="px-3 py-2 text-right">แผนสะสม</th>
                 <th className="px-3 py-2 text-right">จริงสะสม</th>
                 <th className="px-3 py-2 text-right">ผลต่าง</th>
@@ -153,8 +166,8 @@ export function ProgressReportView({ report }: { report: ProgressReport }) {
                 const st = p.plan == null ? null : statusOf(p.actual - p.plan, 0.005)
                 return (
                   <tr key={p.no} className="border-t border-line-soft">
-                    <td className="px-3 py-2 font-semibold text-ink">งวดที่ {p.no}</td>
-                    <td className="px-3 py-2">{p.date ? `${thDate(p.date)} (W${p.week})` : <span className="text-status-progress">ยังไม่ใส่วันที่</span>}</td>
+                    <td className="px-3 py-2 font-semibold text-ink">W{p.no}</td>
+                    <td className="px-3 py-2">{p.date ? thDate(p.date) : '—'}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{p.plan == null ? '—' : p1(p.plan)}</td>
                     <td className="px-3 py-2 text-right font-semibold tabular-nums text-ink">{p1(p.actual)}</td>
                     <td className={`px-3 py-2 text-right tabular-nums ${st === 'behind' ? 'text-urgent' : st === 'ahead' ? 'text-status-done' : ''}`}>
@@ -214,7 +227,7 @@ export function ProgressReportView({ report }: { report: ProgressReport }) {
           </table>
         </div>
         <p className="text-xs text-muted-token">
-          แท่งส้ม = ผลงานจริงของงานนั้น · ขีดน้ำเงิน = แผน ณ วันส่งงวดเดียวกัน · ตัดสินเร็ว/ช้าเมื่อต่างจากแผนเกิน 1 จุด (โครงการ 0.5 จุด) เท่ากับในไฟล์ Excel
+          แท่งส้ม = ผลงานจริงของงานนั้น · ขีดน้ำเงิน = แผน ณ สิ้นสัปดาห์เดียวกัน · ตัดสินเร็ว/ช้าเมื่อต่างจากแผนเกิน 1 จุด (โครงการ 0.5 จุด) เท่ากับในไฟล์ Excel
         </p>
       </section>
     </div>

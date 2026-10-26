@@ -7,14 +7,14 @@ import { itemKey, type PlanProgress } from '@/lib/boq/plan-store'
 import { fmtMoney } from '@/lib/format'
 
 /**
- * ช่องกรอกผลงานของงวดหนึ่ง — วันที่ส่งงวด + % แล้วเสร็จสะสมของแต่ละรายการย่อย (ปร.4)
- * · ช่องว่าง = เท่างวดก่อน (ตัวเลขจาง ๆ ในช่องคือค่าที่ยกมา) — กติกาเดียวกับช่องว่างในไฟล์ Excel
+ * ช่องกรอกผลงานของสัปดาห์หนึ่ง — % แล้วเสร็จสะสม ณ สิ้นสัปดาห์ของแต่ละรายการย่อย (ปร.4)
+ * · ช่องว่าง = เท่าสัปดาห์ก่อน (ตัวเลขจาง ๆ ในช่องคือค่าที่ยกมา) — กติกาเดียวกับช่องว่างในไฟล์ Excel
  * · "ทั้งงาน" = ใส่ % เดียวกันให้ทุกรายการของงานนั้นในคลิกเดียว (งานที่ไม่ได้แตกรายการ)
  */
 
 const pctText = (x: number) => String(Math.round(x * 10000) / 100)
 
-/** ค่าที่ยกมาจากงวดก่อน ๆ (ไม่มี = 0) */
+/** ค่าที่ยกมาจากสัปดาห์ก่อน ๆ (ไม่มี = 0) */
 export const inherited = (vals: (number | null)[] | undefined, k: number) => {
   for (let i = k - 1; i >= 0; i -= 1) if (vals?.[i] != null) return vals[i] as number
   return 0
@@ -58,13 +58,14 @@ function PctInput({
 }
 
 export function ProgressEntry({
-  categories, progress, k, onDate, onItem, onTask,
+  categories, progress, k, weekLabel, onItem, onTask,
 }: {
   categories: BoqCategory[]
   progress: PlanProgress
-  /** งวดที่กำลังกรอก (0 = งวดที่ 1) */
+  /** สัปดาห์ที่กำลังกรอก (0 = W1) */
   k: number
-  onDate: (iso: string | null) => void
+  /** ป้ายสัปดาห์ เช่น "W5 · 15 ก.ค. 69 – 21 ก.ค. 69" */
+  weekLabel: string
   onItem: (key: string, v: number | null) => void
   onTask: (keys: string[], v: number | null) => void
 }) {
@@ -77,15 +78,9 @@ export function ProgressEntry({
   }, [])
   return (
     <div className="space-y-3">
-      <label className="block max-w-xs">
-        <span className="label-base">วันที่ส่งงวดที่ {k + 1}</span>
-        <input
-          className="input-base"
-          type="date"
-          value={progress.dates[k] ?? ''}
-          onChange={(e) => onDate(e.target.value || null)}
-        />
-      </label>
+      <p className="text-sm text-ink-2">
+        <b className="text-ink">{weekLabel}</b> · กรอก % แล้วเสร็จสะสม ณ สิ้นสัปดาห์นี้
+      </p>
 
       {categories.map((c, ci) => {
         if (!c.tasks.some((t) => t.on)) return null
