@@ -5,7 +5,7 @@ import type { BoqCategory, BoqItem, BoqTask, Span } from './core'
  * ใช้ทั้งฝั่ง API (ตรวจก่อนเขียน) และหน้าจอ · ไฟล์นี้ไม่มี import ค่าจากไฟล์อื่น (unit test รันด้วย node ตรง ๆ)
  *
  * 🔴 คีย์ผลงานรายการ = `<หมวด>.<งาน>.<รายการ>` นับจาก `categories` ทั้งก้อน รวมงานที่ปิดไว้
- *    ปิด/เปิดงานแล้วผลงานที่กรอกไว้ไม่สลับรายการ · ค่าในอาร์เรย์ = % สะสม ณ งวดนั้น (0–1)
+ *    ปิด/เปิดงานแล้วผลงานที่กรอกไว้ไม่สลับรายการ · ค่าในอาร์เรย์ = % สะสม ณ สิ้นสัปดาห์นั้น (0–1)
  *    `null` = ไม่ได้กรอก (เท่างวดก่อน) — กติกาเดียวกับช่องว่างในไฟล์ Excel
  */
 
@@ -14,8 +14,9 @@ export type PlanProject = {
   contractor: string; contractNo: string; contractDate: string; contractorRep: string
 }
 export type PlanProgress = {
-  /** วันที่ส่งงวด `YYYY-MM-DD` · ยาวเท่าจำนวนงวด */
-  dates: (string | null)[]
+  /** รูปแบบรายสัปดาห์ (26 ต.ค. 2569) — ไม่มีธงนี้ = แบบงวดเดิม `{ dates, items }` ที่ `parseProgress` แปลงให้ */
+  weekly: true
+  /** % สะสม ณ สิ้นสัปดาห์ ยาวเท่าจำนวนสัปดาห์ของสัญญา (0 = W1) */
   items: Record<string, (number | null)[]>
 }
 export type SavedPlanInput = {
@@ -42,7 +43,7 @@ export const PLAN_COLUMNS =
   'id, name, site_id, project, factor, vat, categories, start_date, days, periods, w124, source_file, progress, updated_at'
 
 export const itemKey = (ci: number, ti: number, ii: number) => `${ci}.${ti}.${ii}`
-export const emptyProgress = (): PlanProgress => ({ dates: [], items: {} })
+export const emptyProgress = (): PlanProgress => ({ weekly: true, items: {} })
 
 type Result<T> = { ok: true; value: T } | { ok: false; error: string }
 const fail = (error: string): { ok: false; error: string } => ({ ok: false, error })
@@ -135,37 +136,52 @@ export function parsePlanInput(body: unknown): Result<SavedPlanInput> {
   }
 }
 
+const DAY = 864e5
+/** จำนวนสัปดาห์ของสัญญา — สูตรเดียวกับ `weekCount()` ใน core.ts (ไฟล์นี้ import ค่าจากไฟล์อื่นไม่ได้) */
+export const planWeeks = (days: number) => Math.max(1, Math.ceil(days / 7))
+/** สัปดาห์ (0 = W1) ของวันที่ — นอกช่วงสัญญาถูกบีบเข้าสัปดาห์แรก/สุดท้าย */
+const weekIndex = (start: string, iso: string, weeks: number) =>
+  Math.max(0, Math.min(weeks - 1, Math.floor((Date.parse(`${iso}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / DAY / 7)))
+/** วันนี้ตามเวลาไทย `YYYY-MM-DD` */
+const bangkokToday = () => new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10)
+
 /**
- * ผลงานรายงวด — ตัดให้พอดีจำนวนงวด และทิ้งคีย์ที่ไม่มีรายการจริง (ไม่ใช่ error:
- * แก้จำนวนงวดให้น้อยลงแล้วผลงานของงวดที่หายไปต้องถูกตัดทิ้ง ไม่ใช่ทำให้บันทึกไม่ได้)
- * · ค่านอก 0–1 หรือวันที่ผิดรูป = error เพราะแปลว่าหน้าจอส่งของเสียมา
+ * ผลงานรายสัปดาห์ (คำสั่งเจ้าของ 26 ต.ค. 2569 · กลับไปกรอกราย W แทนรายงวด) — ยาวเท่าจำนวนสัปดาห์ของสัญญา
+ * และทิ้งคีย์ที่ไม่มีรายการจริง (ไม่ใช่ error: ย่นระยะเวลาแล้วสัปดาห์ที่หายไปต้องถูกตัดทิ้ง ไม่ใช่ทำให้บันทึกไม่ได้)
+ * · ค่านอก 0–1 = error เพราะแปลว่าหน้าจอส่งของเสียมา
+ * · ข้อมูลแบบงวดเดิม (`dates` + ค่ารายงวด) แปลงเป็นสัปดาห์ของวันส่งงวด · งวดที่ไม่มีวันที่ = สัปดาห์ของวันนี้
  */
-export function parseProgress(v: unknown, periods: number, categories: BoqCategory[]): Result<PlanProgress> {
+export function parseProgress(
+  v: unknown,
+  plan: { categories: BoqCategory[]; days: number; start: string },
+  todayIso = bangkokToday(),
+): Result<PlanProgress> {
   if (!isObj(v)) return fail('PROGRESS_INVALID')
-  const datesIn = Array.isArray(v.dates) ? v.dates : []
-  const dates: (string | null)[] = []
-  for (let k = 0; k < periods; k += 1) {
-    const d = datesIn[k]
-    if (d == null || d === '') dates.push(null)
-    else if (isIsoDate(d)) dates.push(d)
-    else return fail('PROGRESS_DATE_INVALID')
-  }
+  const weeks = planWeeks(plan.days)
   const keys = new Set<string>()
-  categories.forEach((c, ci) => c.tasks.forEach((t, ti) => t.items.forEach((_, ii) => keys.add(itemKey(ci, ti, ii)))))
-  const items: Record<string, (number | null)[]> = {}
+  plan.categories.forEach((c, ci) => c.tasks.forEach((t, ti) => t.items.forEach((_, ii) => keys.add(itemKey(ci, ti, ii)))))
   const raw = isObj(v.items) ? v.items : {}
+  // แบบงวดเดิม: งวด k → สัปดาห์ของวันส่งงวด (งวดหลังทับงวดก่อนถ้าตกสัปดาห์เดียวกัน)
+  const legacy = v.weekly !== true
+  const datesIn = Array.isArray(v.dates) ? v.dates : []
+  const slot = (k: number) => {
+    if (!legacy) return k
+    const d = datesIn[k]
+    return weekIndex(plan.start, isIsoDate(d) ? d : todayIso, weeks)
+  }
+  const items: Record<string, (number | null)[]> = {}
   for (const [key, arr] of Object.entries(raw)) {
     if (!keys.has(key) || !Array.isArray(arr)) continue
-    const vals: (number | null)[] = []
-    for (let k = 0; k < periods; k += 1) {
+    const vals: (number | null)[] = new Array(weeks).fill(null)
+    for (let k = 0; k < (legacy ? Math.min(arr.length, 24) : weeks); k += 1) {
       const x = arr[k]
-      if (x == null) vals.push(null)
-      else if (finite(x) && x >= 0 && x <= 1) vals.push(Math.round(x * 10000) / 10000)
-      else return fail('PROGRESS_VALUE_INVALID')
+      if (x == null) continue
+      if (!finite(x) || x < 0 || x > 1) return fail('PROGRESS_VALUE_INVALID')
+      vals[slot(k)] = Math.round(x * 10000) / 10000
     }
     if (vals.some((x) => x != null)) items[key] = vals
   }
-  return { ok: true, value: { dates, items } }
+  return { ok: true, value: { weekly: true, items } }
 }
 
 /** แถวจากฐานข้อมูล → แผนงาน (jsonb ผ่านตัวตรวจอีกรอบ — ข้อมูลเก่าที่รูปร่างเพี้ยนต้องไม่ทำหน้าพัง) */
@@ -176,7 +192,7 @@ export function planFromRow(row: Record<string, unknown>): SavedPlan | null {
     days: row.days, periods: row.periods, w124: row.w124, sourceFile: row.source_file,
   })
   if (!parsed.ok) return null
-  const progress = parseProgress(row.progress, parsed.value.periods, parsed.value.categories)
+  const progress = parseProgress(row.progress, parsed.value)
   return {
     ...parsed.value,
     id: String(row.id),
@@ -192,10 +208,9 @@ export const planRow = (p: SavedPlanInput) => ({
   start_date: p.start, days: p.days, periods: p.periods, w124: p.w124, source_file: p.sourceFile,
 })
 
-/** งวดล่าสุดที่กรอกแล้ว (มีวันที่ หรือมีผลงานอย่างน้อยหนึ่งช่อง) · 0 = ยังไม่กรอก */
-export function lastFilledPeriod(p: PlanProgress) {
+/** สัปดาห์ล่าสุดที่กรอกผลงานอย่างน้อยหนึ่งช่อง (1 = W1) · 0 = ยังไม่กรอก */
+export function lastFilledWeek(p: PlanProgress) {
   let last = 0
-  p.dates.forEach((d, k) => { if (d) last = Math.max(last, k + 1) })
   Object.values(p.items).forEach((a) => a.forEach((x, k) => { if (x != null) last = Math.max(last, k + 1) }))
   return last
 }
