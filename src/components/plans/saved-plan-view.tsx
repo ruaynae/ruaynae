@@ -10,6 +10,7 @@ import { planReport } from '@/lib/boq/core'
 import { withW124 } from '@/lib/boq/w124'
 import { lastFilledWeek, planMessage, planWeeks, type PlanProgress, type SavedPlan } from '@/lib/boq/plan-store'
 import { fmtDate, todayInBangkok } from '@/lib/format'
+import { PaperSelect, type Paper } from './paper-select'
 import { ProgressEntry } from './progress-entry'
 import { ProgressReportView } from './progress-report'
 
@@ -52,6 +53,7 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
   const [busy, setBusy] = useState<null | 'save' | 'site' | 'export' | 'delete'>(null)
   const [delOpen, setDelOpen] = useState(false)
   const [clearAllOpen, setClearAllOpen] = useState(false)
+  const [paper, setPaper] = useState<Paper>('A3')
   const dirty = draft !== savedProgress
 
   useEffect(() => {
@@ -128,7 +130,7 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
       const { buildPlanXlsx } = await import('@/lib/boq/workbook')
       const buf = await buildPlanXlsx({
         project: plan.project, factor: plan.factor, vat: plan.vat, categories: plan.categories,
-        days: plan.days, start: plan.start, w124: plan.w124, progress: draft,
+        days: plan.days, start: plan.start, w124: plan.w124, progress: draft, paper,
       })
       const a = document.createElement('a')
       a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
@@ -178,7 +180,8 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
         {siteId && <Link href={`/sites/${siteId}`} className="btn-secondary">เปิดหน้าโครงการ</Link>}
       </section>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <PaperSelect value={paper} onChange={setPaper} />
         <button type="button" className="btn-secondary" disabled={busy === 'export'} onClick={() => void onExport()}>
           {busy === 'export' ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
           ดาวน์โหลด Excel (พร้อมผลงานที่กรอก)
