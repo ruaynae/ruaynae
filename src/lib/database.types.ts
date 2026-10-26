@@ -583,6 +583,54 @@ export type Database = {
           },
         ]
       }
+      domestic_plans: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          model: Json
+          name: string
+          site_id: string | null
+          source_file: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          model: Json
+          name: string
+          site_id?: string | null
+          source_file?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          model?: Json
+          name?: string
+          site_id?: string | null
+          source_file?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "domestic_plans_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "domestic_plans_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customers: {
         Row: {
           address: string | null

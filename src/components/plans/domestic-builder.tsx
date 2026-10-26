@@ -1,11 +1,15 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { Download, FileSpreadsheet, Loader2, Upload } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import * as Dialog from '@radix-ui/react-dialog'
+import { Download, FileSpreadsheet, Loader2, Save, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   DOMESTIC_MIN, STEEL_MIN, applyMarks, itemTotal, itemsOf, totals, type DomModel,
 } from '@/lib/boq/domestic'
+import { domesticMessage, type SavedDomestic } from '@/lib/boq/domestic-store'
 import { fmtMoney } from '@/lib/format'
 import { Badge } from '@/components/ui/badge'
 
@@ -14,14 +18,25 @@ import { Badge } from '@/components/ui/badge'
  * · ทุกรายการเริ่มเป็นพัสดุในประเทศ · ติ๊ก "นำเข้า" รายการที่ผลิตจากต่างประเทศ
  * · ติ๊ก "เหล็ก" แก้รายการเหล็กที่ระบบเดาให้ — มีเหล็กอย่างน้อยหนึ่งรายการ = ไฟล์มีชีตแผนการใช้เหล็กด้วย
  * · อ่านไฟล์ในเบราว์เซอร์ ไม่ส่งขึ้นเซิร์ฟเวอร์ (เหมือนแท็บสร้างแผนงาน)
+ * · บันทึกไว้ในเว็บได้ (R22b · ตาราง `domestic_plans`) — เก็บตารางพร้อมที่ติ๊กไว้ ไม่เก็บไฟล์ BOQ
+ *   `saved` = เปิดจาก `/plans/domestic/[id]` → ปุ่มบันทึกแก้ฉบับเดิม + ผูกโครงการ + ลบ
  */
 
 type Marks = Record<string, { steel?: boolean; foreign?: boolean }>
+type Site = { id: string; name: string }
 const pct = (x: number) => `${(x * 100).toFixed(2)}%`
 
-export function DomesticBuilder() {
-  const [model, setModel] = useState<DomModel | null>(null)
-  const [fileName, setFileName] = useState('')
+export function DomesticBuilder({ saved, sites = [] }: { saved?: SavedDomestic; sites?: Site[] }) {
+  const router = useRouter()
+  const [model, setModel] = useState<DomModel | null>(saved?.model ?? null)
+  const [fileName, setFileName] = useState(saved?.sourceFile ?? '')
+  const [name, setName] = useState(saved?.name ?? '')
+  const [updatedAt, setUpdatedAt] = useState(saved?.updatedAt ?? '')
+  const [siteId, setSiteId] = useState(saved?.siteId ?? '')
+  /** มีอะไรที่ยังไม่ได้บันทึก (ติ๊ก · ชื่อ · อัปโหลด BOQ ใหม่) */
+  const [dirty, setDirty] = useState(false)
+  const [busy, setBusy] = useState<null | 'save' | 'site' | 'delete'>(null)
+  const [delOpen, setDelOpen] = useState(false)
   const [reading, setReading] = useState(false)
   const [over, setOver] = useState(false)
   const [marks, setMarks] = useState<Marks>({})
@@ -32,6 +47,13 @@ export function DomesticBuilder() {
   const items = useMemo(() => (view ? itemsOf(view) : []), [view])
   const all = totals(items)
   const steel = totals(items.filter((i) => i.steel))
+
+  useEffect(() => {
+    if (!dirty || !saved) return
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty, saved])
 
   async function onFile(file: File | undefined) {
     if (!file) return
@@ -54,6 +76,8 @@ export function DomesticBuilder() {
       setModel(m)
       setMarks({})
       setFileName(file.name)
+      setDirty(true)
+      if (!name.trim()) setName(m.project.slice(0, 300))
       toast.success(`อ่าน BOQ แล้ว · พัสดุ ${itemsOf(m).length} รายการ`)
     } catch (e) {
       const code = e instanceof Error ? e.message : ''
@@ -63,7 +87,94 @@ export function DomesticBuilder() {
     }
   }
 
-  const mark = (id: string, k: 'steel' | 'foreign', v: boolean) => setMarks((m) => ({ ...m, [id]: { ...m[id], [k]: v } }))
+  const mark = (id: string, k: 'steel' | 'foreign', v: boolean) => {
+    setMarks((m) => ({ ...m, [id]: { ...m[id], [k]: v } }))
+    setDirty(true)
+  }
+
+  function failed(code: string) {
+    toast.error(domesticMessage(code))
+    if (code === 'DOMESTIC_CHANGED') router.refresh()
+  }
+
+  async function send(url: string, method: 'POST' | 'PATCH' | 'DELETE', body?: Record<string, unknown>) {
+    const res = await fetch(url, {
+      method,
+      headers: body ? { 'content-type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    })
+    const j = (await res.json().catch(() => ({}))) as { id?: string; updatedAt?: string; error?: string }
+    return { ok: res.ok, ...j }
+  }
+
+  async function onSave() {
+    if (!view) return
+    if (!name.trim()) {
+      toast.error(domesticMessage('DOMESTIC_NAME_REQUIRED'))
+      return
+    }
+    setBusy('save')
+    try {
+      if (!saved) {
+        const r = await send('/api/domestic-plans', 'POST', { name, model: view, sourceFile: fileName })
+        if (!r.ok || !r.id) return failed(r.error ?? '')
+        setDirty(false)
+        toast.success('บันทึกแผนการใช้วัสดุแล้ว')
+        router.push(`/plans/domestic/${r.id}`)
+        return
+      }
+      const r = await send(`/api/domestic-plans/${saved.id}`, 'PATCH', { expectedUpdatedAt: updatedAt, name, model: view, sourceFile: fileName })
+      if (!r.ok || !r.updatedAt) return failed(r.error ?? '')
+      setUpdatedAt(r.updatedAt)
+      setModel(view)
+      setMarks({})
+      setDirty(false)
+      toast.success('บันทึกแล้ว')
+      router.refresh()
+    } catch {
+      toast.error('บันทึกไม่สำเร็จ ตรวจการเชื่อมต่อแล้วลองใหม่')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function onSite(next: string) {
+    if (!saved) return
+    const prev = siteId
+    setSiteId(next)
+    setBusy('site')
+    try {
+      const r = await send(`/api/domestic-plans/${saved.id}`, 'PATCH', { expectedUpdatedAt: updatedAt, siteId: next || null })
+      if (!r.ok || !r.updatedAt) {
+        setSiteId(prev)
+        return failed(r.error ?? '')
+      }
+      setUpdatedAt(r.updatedAt)
+      toast.success(next ? 'ผูกกับโครงการแล้ว' : 'เลิกผูกโครงการแล้ว')
+    } catch {
+      setSiteId(prev)
+      toast.error('บันทึกไม่สำเร็จ ตรวจการเชื่อมต่อแล้วลองใหม่')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function onDelete() {
+    if (!saved) return
+    setBusy('delete')
+    try {
+      const r = await send(`/api/domestic-plans/${saved.id}`, 'DELETE')
+      if (!r.ok) return failed(r.error ?? '')
+      setDirty(false)
+      toast.success('ลบแผนแล้ว')
+      router.push('/plans?tab=domestic')
+      router.refresh()
+    } catch {
+      toast.error('ลบไม่สำเร็จ ตรวจการเชื่อมต่อแล้วลองใหม่')
+    } finally {
+      setBusy(null)
+    }
+  }
 
   async function onExport() {
     if (!view) return
@@ -132,6 +243,43 @@ export function DomesticBuilder() {
   return (
     <div className="min-w-0 space-y-5">
       {upload}
+
+      <section className="card-surface flex flex-wrap items-end gap-3 p-4">
+        <label className="min-w-0 flex-1 basis-64">
+          <span className="label-base">ชื่อแผน</span>
+          <input
+            className="input-base"
+            value={name}
+            maxLength={300}
+            placeholder="เช่น ชื่อโครงการ"
+            onChange={(e) => { setName(e.target.value); setDirty(true) }}
+          />
+        </label>
+        {saved && (
+          <label className="w-full sm:w-64">
+            <span className="label-base">ผูกกับโครงการ</span>
+            <select className="input-base" value={siteId} disabled={busy === 'site'} onChange={(e) => void onSite(e.target.value)}>
+              <option value="">— ไม่ผูกโครงการ —</option>
+              {sites.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </select>
+          </label>
+        )}
+        {saved && siteId && <Link href={`/sites/${siteId}`} className="btn-secondary">เปิดหน้าโครงการ</Link>}
+        <button type="button" className="btn-primary" disabled={busy === 'save' || (!!saved && !dirty)} onClick={() => void onSave()}>
+          {busy === 'save' ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+          {saved ? 'บันทึก' : 'บันทึกไว้ในเว็บ'}
+        </button>
+        {saved && (
+          <button type="button" className="btn-secondary text-urgent" onClick={() => setDelOpen(true)}>
+            <Trash2 className="size-4" />ลบแผน
+          </button>
+        )}
+        <div className="w-full text-xs text-muted-token">
+          {saved
+            ? dirty ? 'มีที่แก้ยังไม่ได้บันทึก' : 'บันทึกแล้ว · เปิดจากเครื่องไหนก็ได้ ไม่ต้องอัปโหลด BOQ ซ้ำ'
+            : 'บันทึกตารางพร้อมที่ติ๊กเหล็ก/นำเข้าไว้ — เปิดกลับมาแก้หรือดาวน์โหลดใหม่ได้ (ไม่เก็บไฟล์ BOQ)'}
+        </div>
+      </section>
 
       <section className="card-surface grid grid-cols-2 gap-4 p-4 lg:grid-cols-4">
         {[
@@ -217,6 +365,25 @@ export function DomesticBuilder() {
           </section>
         )
       })}
+
+      <Dialog.Root open={delOpen} onOpenChange={(v) => { if (!busy) setDelOpen(v) }}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40 animate-fade-in" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line bg-surface p-5 shadow-e3 animate-pop-in">
+            <Dialog.Title className="text-lg font-bold text-ink">ลบแผนการใช้วัสดุ</Dialog.Title>
+            <Dialog.Description className="mt-1 text-sm text-muted-token">
+              ลบ &quot;{saved?.name}&quot; พร้อมที่ติ๊กเหล็ก/นำเข้าไว้ · กู้คืนไม่ได้ (ไฟล์ Excel ที่ดาวน์โหลดไว้แล้วไม่ถูกลบ)
+            </Dialog.Description>
+            <div className="mt-5 flex justify-end gap-2">
+              <Dialog.Close disabled={busy !== null} className="btn-secondary">ปิด</Dialog.Close>
+              <button type="button" className="btn-danger" disabled={busy !== null} onClick={() => void onDelete()}>
+                {busy === 'delete' ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                ลบแผน
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   )
 }
