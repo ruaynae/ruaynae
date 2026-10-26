@@ -120,6 +120,8 @@ export type PlanInput = {
   progress?: { items: Record<string, (number | null)[]> }
   /** ใส่การประเมินตาม ว.124 (ตารางในชีตสรุป + เส้นแดง/เส้นเทาในกราฟ) — เจ้าของเลือกต่องาน */
   w124: boolean
+  /** กระดาษที่ใช้พิมพ์ชีตแผนงาน (แนวนอน ย่อให้พอดีความกว้าง) · ไม่ส่ง = A3 */
+  paper?: 'A3' | 'A4'
 }
 
 export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
@@ -147,7 +149,7 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
   wb.calcProperties.fullCalcOnLoad = true
   const ws = wb.addWorksheet(SHEET.plan, {
     views: [{ state: 'frozen', xSplit: 6, ySplit: 9, showGridLines: false }],
-    pageSetup: { orientation: 'landscape', paperSize: 8 as PaperSize /* A3 */, fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+    pageSetup: { orientation: 'landscape', paperSize: (p.paper === 'A4' ? 9 : 8) as PaperSize /* 9 = A4 · 8 = A3 */, fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
   })
   const { put, merge } = kit(ws)
   const layout = progressLayout(p.categories, nW, start, p.days, p.w124)
@@ -389,19 +391,6 @@ export async function buildPlanXlsx(p: PlanInput): Promise<ArrayBuffer> {
     rules: [{ type: 'cellIs', operator: 'lessThan', formulae: ['0'], priority: 3, style: { font: { color: { argb: 'FFB42318' }, bold: true } } }],
   })
   s += 2
-  const notes = [
-    `* หมายเหตุ มูลค่างานเป็นค่างานต้นทุน ไม่รวม Factor F${p.factor ? ` ${p.factor}` : ''} และภาษีมูลค่าเพิ่ม ${p.vat ? Math.round(p.vat * 100) : 7}%`,
-    '* แก้ "ระยะเวลา" และ "เริ่ม" (ช่องสีเหลือง) แล้วแท่งแผนงานกับ S-Curve คำนวณใหม่เอง',
-    `* S-Curve บนตาราง: เส้นน้ำเงิน = แผนงานสะสม${alts.map((a) => ` · เส้น${a.kind === 'fast' ? 'ม่วง' : 'เขียวน้ำทะเล'} = ${a.label}`).join('')}${p.w124 ? ' · เส้นเทา = แผนงานตาม ว.124' : ''} · เส้นส้ม = ผลงานจริงสะสม · แกน % อยู่คอลัมน์ "%"`,
-    ...(p.w124 ? [`* เส้นประแดง = วันตรวจตามหนังสือกรมบัญชีกลาง ว.124 ข้อ 2.2 (เวลาเกิน 1/2 ผลงาน ≥ 25% · เกิน 3/4 ≥ 65% · ครบสัญญา ≥ 85%) · ผลประเมินอยู่ที่ชีต "${SHEET.summary}" · เส้นเทาคิดจากวันในไฟล์ตอนสร้าง (แก้วันแล้วสร้างไฟล์ใหม่)`] : []),
-    `* แถว Actual และแถวเปรียบเทียบดึงจาก % แล้วเสร็จสะสมที่กรอกในคอลัมน์ W1 … Wn ของชีตหมวด (ช่องว่าง = เท่าสัปดาห์ก่อน)`,
-    '* เปลี่ยนวันที่เริ่มสัญญา ให้สร้างไฟล์ใหม่จากระบบ เพื่อให้หัวเดือนตรงกับวันที่',
-  ]
-  notes.forEach((t, i) => {
-    merge(s + i, 1, s + i, cResp)
-    put(`A${s + i}`, t, { border: false, font: { size: 8, color: { argb: C.muted } } })
-  })
-  s += notes.length + 1
 
   // ---- กล่องคำอธิบายผลตาม ว.124 (แบบไฟล์ของเจ้าของ) — แผนตามสัญญา ณ วันตรวจ + ผลประเมินผลงานจริงจากชีตสรุป
   if (p.w124) {

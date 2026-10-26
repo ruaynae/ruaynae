@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
+import { PaperSelect, type Paper } from './paper-select'
 import { useRouter } from 'next/navigation'
 import { AlertTriangle, Download, FileSpreadsheet, Loader2, RotateCcw, Save, Upload } from 'lucide-react'
 import { toast } from 'sonner'
@@ -41,6 +42,7 @@ export function PlanBuilder({ saved }: { saved?: SavedPlan }) {
   const router = useRouter()
   const [fileName, setFileName] = useState(saved?.sourceFile ?? '')
   const [reading, setReading] = useState(false)
+  const [paper, setPaper] = useState<Paper>('A3')
   const [over, setOver] = useState(false)
   const [model, setModel] = useState<BoqModel | null>(
     saved ? { project: saved.project, factor: saved.factor, vat: saved.vat, categories: saved.categories, warnings: [] } : null,
@@ -206,7 +208,7 @@ export function PlanBuilder({ saved }: { saved?: SavedPlan }) {
       const { buildPlanXlsx } = await import('@/lib/boq/workbook')
       const buf = await buildPlanXlsx({
         project, factor: model.factor, vat: model.vat, categories: cats, days, start, w124,
-        progress: saved?.progress,
+        progress: saved?.progress, paper,
       })
       const a = document.createElement('a')
       a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
@@ -544,6 +546,7 @@ export function PlanBuilder({ saved }: { saved?: SavedPlan }) {
           <b className="text-ink">รายละเอียด</b> · <b className="text-ink">สรุปผลเบิกจ่าย</b> (ระยะเวลา · มูลค่าตามสัญญาเทียบที่ได้จริง · สถานะสัปดาห์ล่าสุด · งบประมาณรายปี) ·{' '}
           <b className="text-ink">แบบปริมาณงานที่แล้วเสร็จแยกหมวด</b> (กรอก % รายสัปดาห์ในคอลัมน์ W1 … Wn)
         </div>
+        <PaperSelect value={paper} onChange={setPaper} />
         <button type="button" className="btn-secondary" disabled={exporting || !dist.plan.length} onClick={() => void onExport()}>
           {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
           ดาวน์โหลดแผนงาน Excel
