@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import * as Dialog from '@radix-ui/react-dialog'
-import { Download, Loader2, Pencil, RotateCcw, Save, Trash2 } from 'lucide-react'
+import { Download, Eraser, Loader2, Pencil, RotateCcw, Save, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { planReport } from '@/lib/boq/core'
 import { withW124 } from '@/lib/boq/w124'
@@ -51,6 +51,7 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
   const filled = (i: number) => Object.values(draft.items).some((a) => a[i] != null)
   const [busy, setBusy] = useState<null | 'save' | 'site' | 'export' | 'delete'>(null)
   const [delOpen, setDelOpen] = useState(false)
+  const [clearAllOpen, setClearAllOpen] = useState(false)
   const dirty = draft !== savedProgress
 
   useEffect(() => {
@@ -70,6 +71,16 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
       return { ...d, items }
     })
 
+  /** ล้าง % ที่กรอกของสัปดาห์เดียว (`week`) หรือทุกสัปดาห์ (ไม่ส่ง) — แก้แค่บนจอ ต้องกดบันทึกผลงานต่อ */
+  function clearWeeks(week?: number) {
+    setDraft((d) => {
+      const items: PlanProgress['items'] = {}
+      if (week != null) for (const [key, a] of Object.entries(d.items)) items[key] = pad(a).map((x, i) => (i === week ? null : x))
+      return { ...d, items }
+    })
+  }
+  const anyFilled = Object.values(draft.items).some((a) => a.some((x) => x != null))
+
   function failed(code: string) {
     toast.error(planMessage(code))
     if (code === 'PLAN_CHANGED') router.refresh()
@@ -82,7 +93,7 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
       if (!r.ok) return failed(r.error)
       setUpdatedAt(r.updatedAt)
       setSavedProgress(draft)
-      toast.success(`บันทึกผลงาน W${k + 1} แล้ว`)
+      toast.success("บันทึกผลงานแล้ว")
       router.refresh()
     } catch {
       toast.error('บันทึกไม่สำเร็จ ตรวจการเชื่อมต่อแล้วลองใหม่')
@@ -206,6 +217,22 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
             </button>
           ))}
         </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={!filled(k)}
+            onClick={() => {
+              clearWeeks(k)
+              toast.success(`ล้าง % ของ W${k + 1} แล้ว — กดบันทึกผลงานเพื่อยืนยัน`)
+            }}
+          >
+            <Eraser className="size-4" />ล้าง % ของ W{k + 1}
+          </button>
+          <button type="button" className="btn-secondary text-urgent" disabled={!anyFilled} onClick={() => setClearAllOpen(true)}>
+            <Eraser className="size-4" />ล้าง % ทุกสัปดาห์
+          </button>
+        </div>
         <ProgressEntry
           categories={plan.categories}
           progress={draft}
@@ -236,6 +263,32 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
           <div className="panel px-5 py-6 text-sm text-muted-token">ยังไม่มีผลงาน — เลือกสัปดาห์แล้วกรอก % แล้วเสร็จข้างบน แล้ว S-Curve แผนเทียบจริงจะขึ้นตรงนี้ทันที</div>
         )}
       </section>
+
+      <Dialog.Root open={clearAllOpen} onOpenChange={setClearAllOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40 animate-fade-in" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line bg-surface p-5 shadow-e3 animate-pop-in">
+            <Dialog.Title className="text-lg font-bold text-ink">ล้าง % ทุกสัปดาห์</Dialog.Title>
+            <Dialog.Description className="mt-1 text-sm text-muted-token">
+              ล้าง % แล้วเสร็จที่กรอกไว้ทุกสัปดาห์ของแผนนี้ · แผนงานไม่ถูกแตะ · ยังไม่หายจริงจนกว่าจะกด &quot;บันทึกผลงาน&quot; (กด &quot;ยกเลิกที่แก้&quot; เพื่อเอากลับได้)
+            </Dialog.Description>
+            <div className="mt-5 flex justify-end gap-2">
+              <Dialog.Close className="btn-secondary">ปิด</Dialog.Close>
+              <button
+                type="button"
+                className="btn-danger"
+                onClick={() => {
+                  clearWeeks()
+                  setClearAllOpen(false)
+                  toast.success('ล้าง % ทุกสัปดาห์แล้ว — กดบันทึกผลงานเพื่อยืนยัน')
+                }}
+              >
+                <Eraser className="size-4" />ล้างทุกสัปดาห์
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       <Dialog.Root open={delOpen} onOpenChange={(v) => { if (!busy) setDelOpen(v) }}>
         <Dialog.Portal>
