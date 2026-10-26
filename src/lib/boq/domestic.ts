@@ -54,7 +54,10 @@ export const isSteel = (name: string) =>
     /มอก\.?\s*(20|24|107|1227|1228)\b/.test(name)) &&
   !/ชุบสังกะสี|^\s*-?\s*ทาสี/.test(name)
 
-/** แถวหัวตาราง (มี "รายการ" และ "ราคาค่าวัสดุ") → คอลัมน์ราคาค่าวัสดุต่อหน่วย */
+/**
+ * แถวหัวตาราง (มี "รายการ" และ "ราคาค่าวัสดุ") → คอลัมน์ราคาค่าวัสดุต่อหน่วย
+ * · ชีตครุภัณฑ์ของ BOQ แบบเก่า (ปร.5 รายการละแถว) ใช้หัว "ค่าครุภัณฑ์" แทน — ราคาครุภัณฑ์ = ค่าพัสดุ ไม่ใช่ค่าติดตั้ง
+ */
 function header(g: Grid): { row: number; price: number } | null {
   for (let r = 0; r < Math.min(g.rows, 25); r += 1) {
     let hasList = false
@@ -62,7 +65,7 @@ function header(g: Grid): { row: number; price: number } | null {
     for (let c = 0; c < Math.min(g.cols, 14); c += 1) {
       const t = g.w(r, c)
       if (t === 'รายการ') hasList = true
-      if (price < 0 && /^(ราคา)?ค่าวัสดุ/.test(t)) price = c
+      if (price < 0 && /^(ราคา)?ค่า(วัสดุ|ครุภัณฑ์)/.test(t)) price = c
     }
     if (hasList && price > 0) return { row: r, price }
   }
