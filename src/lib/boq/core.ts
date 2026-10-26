@@ -45,20 +45,61 @@ export const ALT_PLANS: readonly { kind: AltKind; label: string; tag: string }[]
 ]
 /** ช่วงวันของงานในแผนที่เลือก · ไม่ระบุแผน = ตามสัญญา */
 export const spanOf = (t: BoqTask, kind?: AltKind): Span => (kind && t[kind]) || { offset: t.offset, dur: t.dur }
-/** แผนนี้มีแผนเสริมไหม — ดูจากงานที่ติ๊กไว้งานใดงานหนึ่งมีช่วงวันของแผนเสริม */
-export const hasAltPlans = (categories: BoqCategory[]) => categories.some((c) => c.tasks.some((t) => t.fast || t.ops))
+/** แผนเสริมที่เปิดอยู่ — ดูจากงานใดงานหนึ่งมีช่วงวันของแผนนั้น (เปิด/ปิดแยกกันได้ · 26 ต.ค. 2569) */
+export const altKindsOf = (categories: BoqCategory[]): AltKind[] =>
+  ALT_PLANS.map((a) => a.kind).filter((k) => categories.some((c) => c.tasks.some((t) => t[k])))
+export const hasAltPlans = (categories: BoqCategory[]) => altKindsOf(categories).length > 0
 /** บีบช่วงวันให้อยู่ในระยะสัญญา (ใช้ตอนระยะเวลาเปลี่ยน) */
 export function clampSpan(s: Span, days: number): Span {
   const offset = Math.max(0, Math.min(days - 1, Math.round(s.offset)))
   return { offset, dur: Math.max(1, Math.min(Math.round(s.dur), days - offset)) }
 }
-/** เปิด/ปิดแผนเสริม — เปิด = เริ่มจากแผนตามสัญญา · ปิด = ทิ้งช่วงวันของแผนเสริม */
-export function setAltPlans(categories: BoqCategory[], on: boolean): BoqCategory[] {
+/** เปิด/ปิดแผนเสริมหนึ่งแผน — เปิด = เริ่มจากแผนตามสัญญา · ปิด = ทิ้งช่วงวันของแผนนั้น */
+export function setAltPlan(categories: BoqCategory[], kind: AltKind, on: boolean): BoqCategory[] {
   return categories.map((c) => ({
     ...c,
-    tasks: c.tasks.map(({ fast: _f, ops: _o, ...t }) =>
-      on ? { ...t, fast: { offset: t.offset, dur: t.dur }, ops: { offset: t.offset, dur: t.dur } } : t),
+    tasks: c.tasks.map((t) => {
+      const next = { ...t }
+      if (on) next[kind] = { offset: t.offset, dur: t.dur }
+      else delete next[kind]
+      return next
+    }),
   }))
+}
+
+// ---------------------------------------------------------------------------
+// เส้น "แผนงานตาม ว.124" (คำสั่งเจ้าของ 26 ต.ค. 2569) — ผลงานสะสมขั้นต่ำตามหนังสือ ว.124 ข้อ 2.2:
+// เวลาเกิน 1/2 ≥ 25% (ข้อ 2.2.1–2.2.2) · เวลาเกิน 3/4 ≥ 65% (ข้อ 2.2.3) · ครบสัญญา จบที่ 100%
+// ระหว่างจุดเดินตามรูปทรงแผนตามสัญญา (สัดส่วนที่แผนเดินไปในช่วงนั้น) · ช่วงที่แผนไม่ขยับ = เส้นตรงตามวัน
+// 🔴 สูตรเดียวกับชีตคำนวณ (`workbook.ts`) — แผนสะสม ณ วันใด ๆ = สะสมสิ้นสัปดาห์ก่อน + ส่วนของสัปดาห์นั้นตามจำนวนวัน
+
+/** จุดยึดของเส้น: จำนวนวันที่ใช้ไป (นับวันเริ่มเป็นวันที่ 1) → ผลงานสะสม */
+export function w124Anchors(days: number): { e: number; v: number }[] {
+  const at = (frac: number) => Math.min(days, Math.floor(days * frac) + 1)
+  return [{ e: 0, v: 0 }, { e: at(0.5), v: 0.25 }, { e: at(0.75), v: 0.65 }, { e: days, v: 1 }]
+}
+/** แผนสะสม ณ วันที่ใช้ไป `e` วัน จากแผนสะสมรายสัปดาห์ — สัปดาห์สุดท้ายสั้นตามวันที่เหลือ */
+export function cumAtDay(cum: number[], days: number, e: number) {
+  if (e <= 0) return 0
+  const w = Math.min(cum.length, Math.ceil(e / 7))
+  const prev = w > 1 ? cum[w - 2] : 0
+  const len = w === cum.length ? days - 7 * (w - 1) : 7
+  return prev + (cum[w - 1] - prev) * Math.min(1, (e - 7 * (w - 1)) / len)
+}
+/** ค่าเส้น ว.124 ณ สิ้นแต่ละสัปดาห์ */
+export function w124Curve(cum: number[], days: number): number[] {
+  const A = w124Anchors(days)
+  return cum.map((_, k) => {
+    const e = Math.min(days, 7 * (k + 1))
+    const i = Math.max(1, A.findIndex((a, j) => j > 0 && e <= a.e))
+    const a = A[i - 1]
+    const b = A[i]
+    if (b.e <= a.e) return b.v
+    const pa = cumAtDay(cum, days, a.e)
+    const pb = cumAtDay(cum, days, b.e)
+    const t = pb - pa > 1e-9 ? (cum[k] - pa) / (pb - pa) : (e - a.e) / (b.e - a.e)
+    return a.v + (b.v - a.v) * Math.min(1, Math.max(0, t))
+  })
 }
 export type BoqCategory = {
   name: string
@@ -592,25 +633,28 @@ export function distribute(categories: BoqCategory[], days: number, kind?: AltKi
 
 // ---------------------------------------------------------------------------
 // R20i · รายงานแผนเทียบจริงจากแผนที่บันทึกในเว็บ — สูตรเดียวกับ `readProgress()` (อ่านไฟล์ Excel)
-// และชีต "สรุปผลเบิกจ่าย": ช่องว่าง = เท่างวดก่อน · งวดล่าสุด = งวดสุดท้ายที่กรอกผลงานอย่างน้อยหนึ่งช่อง
-// · แผน ณ วันส่งงวดคิดรายวันจากวันเริ่ม/ระยะเวลาของงาน · น้ำหนัก = ค่างานต้นทุนของรายการ
+// · ผลงานกรอกรายสัปดาห์ (26 ต.ค. 2569): ช่องว่าง = เท่าสัปดาห์ก่อน · สัปดาห์ล่าสุด = สัปดาห์สุดท้ายที่กรอกอย่างน้อยหนึ่งช่อง
+// · แต่ละสัปดาห์ที่กรอก = หนึ่งจุดใน `installments` (วันที่ = วันสุดท้ายของสัปดาห์) · น้ำหนัก = ค่างานต้นทุนของรายการ
 // · ผลประเมิน ว.124 เติมทีหลังด้วย `withW124()` (ไฟล์นี้ไม่ import ค่าจากไฟล์อื่น)
 
-type StoredProgress = { dates: (string | null)[]; items: Record<string, (number | null)[]> }
+type StoredProgress = { items: Record<string, (number | null)[]> }
 
 export function planReport(
-  p: { name: string; categories: BoqCategory[]; start: string; days: number; periods: number; w124: boolean; progress: StoredProgress },
+  p: { name: string; categories: BoqCategory[]; start: string; days: number; w124: boolean; progress: StoredProgress },
   todayIso: string,
 ): ProgressReport {
   const DAY = 864e5
   const t0 = Date.parse(`${p.start}T00:00:00Z`)
   const dist = distribute(p.categories, p.days)
+  const weeks = dist.weeks
   const iso = (t: number) => new Date(t).toISOString().slice(0, 10)
   const thShort = (t: number) => new Date(t).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+  /** วันสุดท้ายของสัปดาห์ k (0 = W1) — สัปดาห์สุดท้ายจบที่วันสิ้นสุดสัญญา */
+  const weekEnd = (k: number) => t0 + (Math.min(p.days, 7 * (k + 1)) - 1) * DAY
 
   type Row = { code: string; name: string; category: string; amount: number; offset: number; dur: number; items: { amount: number; eff: number[] }[] }
   const rows: Row[] = []
-  let lastPeriod = 0
+  let lastWeek = 0
   let catNo = 0
   p.categories.forEach((c, ci) => {
     if (!c.tasks.some((t) => t.on)) return
@@ -623,11 +667,11 @@ export function planReport(
         const vals = p.progress.items[`${ci}.${ti}.${ii}`] ?? []
         const eff: number[] = []
         let prev = 0
-        for (let k = 0; k < p.periods; k += 1) {
+        for (let k = 0; k < weeks; k += 1) {
           const v = vals[k]
           if (v != null) {
             prev = Math.min(1, Math.max(0, v))
-            lastPeriod = Math.max(lastPeriod, k + 1)
+            lastWeek = Math.max(lastWeek, k + 1)
           }
           eff.push(prev)
         }
@@ -637,7 +681,6 @@ export function planReport(
     })
   })
   const total = rows.reduce((s, r) => s + r.amount, 0) || 1
-  const weekOf = (t: number) => Math.max(1, Math.min(dist.weeks, Math.floor((t - t0) / DAY / 7) + 1))
   const taskPlan = (r: Row, t: number) => {
     const d0 = t0 + r.offset * DAY
     const d1 = d0 + (r.dur - 1) * DAY
@@ -645,35 +688,30 @@ export function planReport(
     if (t >= d0) return Math.min(1, ((t - d0) / DAY + 1) / r.dur)
     return 0
   }
-  const planAt = (t: number) => rows.reduce((s, r) => s + (r.amount / total) * taskPlan(r, t), 0)
   const actualAt = (k: number) => rows.reduce((s, r) => s + r.items.reduce((q, it) => q + it.amount * it.eff[k], 0), 0) / total
-  const dateOf = (k: number) => {
-    const d = p.progress.dates[k]
-    return d ? Date.parse(`${d}T00:00:00Z`) : null
-  }
-  const installments = Array.from({ length: lastPeriod }, (_, k) => {
-    const t = dateOf(k)
-    return { no: k + 1, date: t == null ? null : iso(t), week: t == null ? null : weekOf(t), plan: t == null ? null : planAt(t), actual: actualAt(k) }
-  })
-  const actualCum: (number | null)[] = new Array(dist.weeks).fill(null)
-  for (const x of installments) if (x.week) actualCum[x.week - 1] = x.actual
-  const lastDate = lastPeriod ? dateOf(lastPeriod - 1) : null
+  const installments = Array.from({ length: lastWeek }, (_, k) => ({
+    no: k + 1, date: iso(weekEnd(k)), week: k + 1, plan: dist.cum[k], actual: actualAt(k),
+  }))
+  const actualCum: (number | null)[] = new Array(weeks).fill(null)
+  for (const x of installments) actualCum[x.week - 1] = x.actual
+  const lastDate = lastWeek ? weekEnd(lastWeek - 1) : null
+  const alts = altKindsOf(p.categories)
   return {
     projectName: p.name,
     start: p.start,
-    labels: Array.from({ length: dist.weeks }, (_, k) => `W${k + 1}`),
-    sublabels: Array.from({ length: dist.weeks }, (_, k) => thShort(t0 + k * 7 * DAY)),
+    labels: Array.from({ length: weeks }, (_, k) => `W${k + 1}`),
+    sublabels: Array.from({ length: weeks }, (_, k) => thShort(t0 + k * 7 * DAY)),
     planWeekly: dist.perWeek,
     planCum: dist.cum,
     actualCum,
-    ...(hasAltPlans(p.categories)
-      ? { fastCum: distribute(p.categories, p.days, 'fast').cum, opsCum: distribute(p.categories, p.days, 'ops').cum }
-      : {}),
+    ...(alts.includes('fast') ? { fastCum: distribute(p.categories, p.days, 'fast').cum } : {}),
+    ...(alts.includes('ops') ? { opsCum: distribute(p.categories, p.days, 'ops').cum } : {}),
+    ...(p.w124 ? { w124Cum: w124Curve(dist.cum, p.days) } : {}),
     installments,
     tasks: rows.map((r) => ({
       code: r.code, name: r.name, category: r.category, amount: r.amount, weight: r.amount / total,
       plan: lastDate == null ? 0 : taskPlan(r, lastDate),
-      actual: lastPeriod && r.amount ? r.items.reduce((q, it) => q + it.amount * it.eff[lastPeriod - 1], 0) / r.amount : 0,
+      actual: lastWeek && r.amount ? r.items.reduce((q, it) => q + it.amount * it.eff[lastWeek - 1], 0) / r.amount : 0,
     })),
     days: p.days,
     asOf: lastDate == null ? todayIso : iso(lastDate),

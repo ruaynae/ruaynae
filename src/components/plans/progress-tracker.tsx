@@ -7,12 +7,12 @@ import type { ProgressReport } from '@/lib/boq/progress-core'
 import { ProgressReportView } from './progress-report'
 
 /**
- * ติดตามผลงาน — อัปโหลดไฟล์แผนงาน (ที่ดาวน์โหลดจากแท็บแรก) หลังกรอกผลงานรายงวดแล้ว
+ * ติดตามผลงาน — อัปโหลดไฟล์แผนงาน (ที่ดาวน์โหลดจากแท็บแรก) หลังกรอกผลงานรายสัปดาห์แล้ว
  * แล้วเห็นแผนเทียบจริงทันที · อ่านในเบราว์เซอร์ ไม่บันทึกที่ไหน (ไฟล์คือที่เก็บข้อมูล)
  */
 
 const MESSAGES: Record<string, string> = {
-  NOT_PLAN_FILE: 'ไม่ใช่ไฟล์แผนงานจากระบบนี้ — ใช้ไฟล์ที่ดาวน์โหลดจากแท็บ "สร้างแผนงาน" แล้วกรอกผลงานรายงวด',
+  NOT_PLAN_FILE: 'ไม่ใช่ไฟล์แผนงานจากระบบนี้ — ใช้ไฟล์ที่ดาวน์โหลดจากแท็บ "สร้างแผนงาน" แล้วกรอกผลงานรายสัปดาห์ (ไฟล์แบบงวดที่ดาวน์โหลดก่อน 26 ต.ค. 2569 ให้ดาวน์โหลดใหม่)',
 }
 
 export function ProgressTracker() {
@@ -33,10 +33,7 @@ export function ProgressTracker() {
       const r = await readPlanFile(await file.arrayBuffer())
       setReport(r)
       setFileName(file.name)
-      if (!r.installments.length) toast.info('ไฟล์นี้ยังไม่มีการกรอกผลงาน — กรอก % แล้วเสร็จที่ชีตหมวด (คอลัมน์ "งวดที่") และวันที่ส่งงวดที่ชีต "สรุปผลเบิกจ่าย" แล้วอัปโหลดใหม่')
-      else if (r.installments.some((p) => !p.date)) toast.warning('มีงวดที่ยังไม่ใส่วันที่ส่งงวด — งวดนั้นเทียบกับแผนไม่ได้')
-      else if (r.start && r.installments.some((p) => p.date && p.date < r.start!))
-        toast.warning('มีวันที่ส่งงวดก่อนวันเริ่มสัญญาในไฟล์ — ตรวจวันที่ในแถว "วันที่ส่งงวด"')
+      if (!r.installments.length) toast.info('ไฟล์นี้ยังไม่มีการกรอกผลงาน — กรอก % แล้วเสร็จสะสมที่ชีตหมวด คอลัมน์ W1 … Wn แล้วอัปโหลดใหม่')
     } catch (e) {
       const code = e instanceof Error ? e.message : ''
       toast.error(MESSAGES[code] ?? 'อ่านไฟล์ไม่ได้ — ถ้าไฟล์เปิดอยู่ใน Excel ให้ปิดก่อนแล้วลองใหม่')
@@ -56,7 +53,7 @@ export function ProgressTracker() {
       <div className="min-w-0 flex-1">
         <div className="break-words font-semibold text-ink">{fileName || 'ยังไม่ได้เลือกไฟล์แผนงาน'}</div>
         <div className="text-sm text-muted-token">
-          ไฟล์แผนงานที่ดาวน์โหลดจากระบบ และกรอกผลงานรายงวดแล้ว · ปิดไฟล์ใน Excel ก่อนเลือก
+          ไฟล์แผนงานที่ดาวน์โหลดจากระบบ และกรอกผลงานรายสัปดาห์แล้ว · ปิดไฟล์ใน Excel ก่อนเลือก
         </div>
       </div>
       <span className={`btn-primary cursor-pointer ${reading ? 'pointer-events-none opacity-60' : ''}`}>
@@ -79,8 +76,7 @@ export function ProgressTracker() {
         <div className="card-surface p-5 text-sm text-ink-2">
           <div className="mb-2 font-semibold text-ink">ใช้อย่างไร</div>
           <ol className="list-decimal space-y-1 pl-5">
-            <li>ส่งงวดเมื่อไหร่ เปิดไฟล์แผนงานที่ดาวน์โหลดไว้ ใส่วันที่ส่งงวดที่ชีต &quot;สรุปผลเบิกจ่าย&quot;</li>
-            <li>ที่ชีตหมวด (เช่น &quot;1 งานสถาปัตยกรรม&quot;) กรอก % แล้วเสร็จสะสมของแต่ละรายการในคอลัมน์ &quot;งวดที่ …&quot; (ช่องสีเหลือง) แล้วบันทึกไฟล์</li>
+            <li>ทุกสัปดาห์ เปิดไฟล์แผนงานที่ดาวน์โหลดไว้ ที่ชีตหมวด (เช่น &quot;1 งานสถาปัตยกรรม&quot;) กรอก % แล้วเสร็จสะสมของแต่ละรายการในคอลัมน์ W ของสัปดาห์นั้น (ช่องสีเหลือง · ว่าง = เท่าสัปดาห์ก่อน) แล้วบันทึกไฟล์</li>
             <li>อัปโหลดไฟล์ที่นี่ — เห็น S-Curve แผนเทียบจริง และงานไหนเร็ว/ช้ากว่าแผน</li>
           </ol>
         </div>

@@ -8,13 +8,13 @@ import { Download, Loader2, Pencil, RotateCcw, Save, Trash2 } from 'lucide-react
 import { toast } from 'sonner'
 import { planReport } from '@/lib/boq/core'
 import { withW124 } from '@/lib/boq/w124'
-import { lastFilledPeriod, planMessage, type PlanProgress, type SavedPlan } from '@/lib/boq/plan-store'
+import { lastFilledWeek, planMessage, planWeeks, type PlanProgress, type SavedPlan } from '@/lib/boq/plan-store'
 import { fmtDate, todayInBangkok } from '@/lib/format'
 import { ProgressEntry } from './progress-entry'
 import { ProgressReportView } from './progress-report'
 
 /**
- * แผนงานที่บันทึกไว้ (R20i) — กรอกผลงานรายงวดบนเว็บ แล้วเห็น S-Curve/ว.124 ทันที
+ * แผนงานที่บันทึกไว้ (R20i) — กรอกผลงานรายสัปดาห์ (W1 … Wn) บนเว็บ แล้วเห็น S-Curve/ว.124 ทันที
  * · รายงานคิดจากที่กรอกบนจอ (ยังไม่บันทึกก็เห็น) ด้วยสูตรเดียวกับไฟล์ Excel (`planReport` ≡ `readProgress`)
  * · ดาวน์โหลด Excel = ไฟล์แผนงานพร้อมผลงานที่กรอกไว้ในช่องสีเหลือง
  */
@@ -37,7 +37,18 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
   const [savedProgress, setSavedProgress] = useState(plan.progress)
   const [updatedAt, setUpdatedAt] = useState(plan.updatedAt)
   const [siteId, setSiteId] = useState(plan.siteId ?? '')
-  const [k, setK] = useState(() => Math.min(plan.periods, Math.max(1, lastFilledPeriod(plan.progress))) - 1)
+  const weeks = planWeeks(plan.days)
+  const DAY = 864e5
+  const t0 = Date.parse(`${plan.start}T00:00:00Z`)
+  /** สัปดาห์ที่เปิดมาครั้งแรก = สัปดาห์ล่าสุดที่กรอก · ยังไม่กรอก = สัปดาห์ของวันนี้ */
+  const [k, setK] = useState(() => {
+    const last = lastFilledWeek(plan.progress)
+    if (last) return last - 1
+    return Math.max(0, Math.min(weeks - 1, Math.floor((Date.parse(`${todayInBangkok()}T00:00:00Z`) - t0) / DAY / 7)))
+  })
+  const weekStart = (i: number) => new Date(t0 + i * 7 * DAY).toISOString().slice(0, 10)
+  const weekEnd = (i: number) => new Date(t0 + (Math.min(plan.days, 7 * (i + 1)) - 1) * DAY).toISOString().slice(0, 10)
+  const filled = (i: number) => Object.values(draft.items).some((a) => a[i] != null)
   const [busy, setBusy] = useState<null | 'save' | 'site' | 'export' | 'delete'>(null)
   const [delOpen, setDelOpen] = useState(false)
   const dirty = draft !== savedProgress
@@ -51,24 +62,13 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
 
   const report = useMemo(() => withW124(planReport({ ...plan, progress: draft }, todayInBangkok())), [plan, draft])
 
-  const pad = (a: (number | null)[] | undefined) => Array.from({ length: plan.periods }, (_, i) => a?.[i] ?? null)
-  /** วันที่ส่งงวดตั้งต้นเมื่อเริ่มกรอก % ในงวดที่ยังไม่มีวันที่ = วันนี้ (ไม่ก่อนวันเริ่มสัญญา)
-   *  — ไม่มีวันที่ = ระบบไม่รู้ว่าผลงานอยู่สัปดาห์ไหน เส้นผลงานจริงจึงไม่ขึ้นเลย (เจ้าของแจ้ง 26 ต.ค. 2569) */
-  const defaultDate = () => {
-    const t = todayInBangkok()
-    return t < plan.start ? plan.start : t
-  }
+  const pad = (a: (number | null)[] | undefined) => Array.from({ length: weeks }, (_, i) => a?.[i] ?? null)
   const setItems = (keys: string[], v: number | null) =>
     setDraft((d) => {
       const items = { ...d.items }
       for (const key of keys) items[key] = pad(items[key]).map((x, i) => (i === k ? v : x))
-      const dates = v != null && !d.dates[k]
-        ? Array.from({ length: plan.periods }, (_, i) => (i === k ? defaultDate() : d.dates[i] ?? null))
-        : d.dates
-      return { ...d, items, dates }
+      return { ...d, items }
     })
-  const setDate = (iso: string | null) =>
-    setDraft((d) => ({ ...d, dates: Array.from({ length: plan.periods }, (_, i) => (i === k ? iso : d.dates[i] ?? null)) }))
 
   function failed(code: string) {
     toast.error(planMessage(code))
@@ -82,7 +82,7 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
       if (!r.ok) return failed(r.error)
       setUpdatedAt(r.updatedAt)
       setSavedProgress(draft)
-      toast.success(`บันทึกผลงานงวดที่ ${k + 1} แล้ว`)
+      toast.success(`บันทึกผลงาน W${k + 1} แล้ว`)
       router.refresh()
     } catch {
       toast.error('บันทึกไม่สำเร็จ ตรวจการเชื่อมต่อแล้วลองใหม่')
@@ -117,7 +117,7 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
       const { buildPlanXlsx } = await import('@/lib/boq/workbook')
       const buf = await buildPlanXlsx({
         project: plan.project, factor: plan.factor, vat: plan.vat, categories: plan.categories,
-        days: plan.days, start: plan.start, periods: plan.periods, w124: plan.w124, progress: draft,
+        days: plan.days, start: plan.start, w124: plan.w124, progress: draft,
       })
       const a = document.createElement('a')
       a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
@@ -153,7 +153,7 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
     <div className="min-w-0 space-y-5">
       <section className="card-surface flex flex-wrap items-end gap-3 p-4">
         <div className="min-w-0 flex-1 text-sm text-ink-2">
-          สัญญา {fmtDate(plan.start)} – {fmtDate(end)} · {plan.days} วัน · {plan.periods} งวด
+          สัญญา {fmtDate(plan.start)} – {fmtDate(end)} · {plan.days} วัน · {weeks} สัปดาห์
           {plan.w124 && ' · ประเมินตาม ว.124'}
           {plan.sourceFile && <div className="break-words text-xs text-muted-token">จาก BOQ: {plan.sourceFile}</div>}
         </div>
@@ -185,9 +185,9 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
       </div>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-ink">กรอกผลงานรายงวด</h2>
+        <h2 className="text-lg font-semibold text-ink">กรอกผลงานรายสัปดาห์</h2>
         <div role="tablist" className="no-scrollbar flex gap-1.5 overflow-x-auto pb-1">
-          {Array.from({ length: plan.periods }, (_, i) => (
+          {Array.from({ length: weeks }, (_, i) => (
             <button
               key={i}
               type="button"
@@ -198,8 +198,11 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
                 i === k ? 'border-brand bg-brand text-white' : 'border-line bg-surface text-ink-2 hover:bg-surface-2'
               }`}
             >
-              งวด {i + 1}
-              {draft.dates[i] && <span className={`block text-xs font-normal ${i === k ? '' : 'text-muted-token'}`}>{fmtDate(draft.dates[i])}</span>}
+              W{i + 1}
+              <span className={`block text-xs font-normal ${i === k ? '' : 'text-muted-token'}`}>
+                {new Date(`${weekStart(i)}T00:00:00Z`).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: 'UTC' })}
+                {filled(i) && <span aria-label="กรอกแล้ว" className={`ml-1 inline-block size-1.5 rounded-full align-middle ${i === k ? 'bg-white' : 'bg-bar-cost-material'}`} />}
+              </span>
             </button>
           ))}
         </div>
@@ -207,13 +210,13 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
           categories={plan.categories}
           progress={draft}
           k={k}
-          onDate={setDate}
+          weekLabel={`W${k + 1} · ${fmtDate(weekStart(k))} – ${fmtDate(weekEnd(k))}`}
           onItem={(key, v) => setItems([key], v)}
           onTask={setItems}
         />
         <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 lg:bottom-4 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface p-3 shadow-e2">
           <span className="min-w-0 flex-1 text-sm text-muted-token">
-            {dirty ? 'มีผลงานที่ยังไม่ได้บันทึก' : 'บันทึกแล้ว'} · ช่องว่าง = เท่างวดก่อน
+            {dirty ? 'มีผลงานที่ยังไม่ได้บันทึก' : 'บันทึกแล้ว'} · ช่องว่าง = เท่าสัปดาห์ก่อน
           </span>
           <button type="button" className="btn-secondary" disabled={!dirty || busy === 'save'} onClick={() => setDraft(savedProgress)}>
             <RotateCcw className="size-4" />ยกเลิกที่แก้
@@ -230,7 +233,7 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
         {report.installments.length ? (
           <ProgressReportView report={report} />
         ) : (
-          <div className="panel px-5 py-6 text-sm text-muted-token">ยังไม่มีผลงาน — กรอกวันที่ส่งงวดและ % แล้วเสร็จข้างบน แล้ว S-Curve แผนเทียบจริงจะขึ้นตรงนี้ทันที</div>
+          <div className="panel px-5 py-6 text-sm text-muted-token">ยังไม่มีผลงาน — เลือกสัปดาห์แล้วกรอก % แล้วเสร็จข้างบน แล้ว S-Curve แผนเทียบจริงจะขึ้นตรงนี้ทันที</div>
         )}
       </section>
 
@@ -240,7 +243,7 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
           <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line bg-surface p-5 shadow-e3 animate-pop-in">
             <Dialog.Title className="text-lg font-bold text-ink">ลบแผนงาน</Dialog.Title>
             <Dialog.Description className="mt-1 text-sm text-muted-token">
-              ลบ &quot;{plan.name}&quot; พร้อมผลงานที่กรอกไว้ทุกงวด · กู้คืนไม่ได้ (ไฟล์ Excel ที่ดาวน์โหลดไว้แล้วไม่ถูกลบ)
+              ลบ &quot;{plan.name}&quot; พร้อมผลงานที่กรอกไว้ทั้งหมด · กู้คืนไม่ได้ (ไฟล์ Excel ที่ดาวน์โหลดไว้แล้วไม่ถูกลบ)
             </Dialog.Description>
             <div className="mt-5 flex justify-end gap-2">
               <Dialog.Close disabled={busy !== null} className="btn-secondary">ปิด</Dialog.Close>
