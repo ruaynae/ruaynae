@@ -4,11 +4,14 @@ import { getSupabaseServer } from '@/lib/supabase/server'
 import { todayInBangkok } from '@/lib/format'
 import { isUuid, MAX_NOTE } from '@/lib/transactions'
 import { adjustDbCode, parseAdjustLines, type AdjustLine } from '@/lib/wage-adjustments'
+import { needsBackdateApproval } from '@/lib/attendance-backdate'
 
 export const runtime = 'nodejs'
 
 /** รหัสเหตุผลที่ guard trigger โยนออกมา — ส่งต่อให้ client อ่านเป็นภาษาคนได้ */
-const GUARD_CODES = ['WORK_UNITS_EXCEEDED', 'EMPLOYEE_INACTIVE', 'EMPLOYEE_NOT_FOUND']
+const GUARD_CODES = [
+  'WORK_UNITS_EXCEEDED', 'EMPLOYEE_INACTIVE', 'EMPLOYEE_NOT_FOUND', 'BACKDATE_NEEDS_APPROVAL',
+]
 const guardCode = (msg: string) => GUARD_CODES.find((c) => msg.includes(c))
 
 /**
@@ -47,6 +50,12 @@ export async function POST(req: NextRequest) {
   // ค่าแรงของวันที่ยังไม่มาถึงคือต้นทุนที่ยังไม่เกิด
   if (workDate > todayInBangkok()) {
     return NextResponse.json({ error: 'DATE_FUTURE' }, { status: 400 })
+  }
+
+  // 🔴 ลงย้อนหลัง (วันก่อนวันนี้) ต้องยื่นคำขอให้เจ้าของอนุมัติ (24 ต.ค. 2569) — ตอบก่อนแตะ
+  // ฐานข้อมูลเพื่อให้หน้าจอรู้ว่าต้องไปทางคำขอ · ด่านจริงคือ trigger guard_attendance_backdate
+  if (needsBackdateApproval(me.role, workDate, todayInBangkok())) {
+    return NextResponse.json({ error: 'BACKDATE_NEEDS_APPROVAL' }, { status: 409 })
   }
 
   const rawUnits = Number(body.workUnits ?? body.work_units ?? 1)

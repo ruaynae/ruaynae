@@ -93,7 +93,8 @@ create type advance_status as enum ('pending','approved','rejected');
 | `site_milestones` | แผนงวดล่วงหน้า (ไม่บังคับ): `seq`, `name`, `planned_amount`, `planned_date` — ยังไม่มีคอลัมน์บอกว่างวดไหนเก็บเงินแล้ว (วางแผนไว้เป็น `collected_txn_id` แต่ยังไม่ได้สร้าง รอเฟสหลัง) | ตามโครงการ |
 | `categories` | `name`, `kind`, `is_active`, `sort_order` | อ่านได้ทุก role · เขียนเฉพาะ owner |
 | `employees` | `full_name`, `job_title`, `wage_type`, `daily_rate`, `monthly_salary`, `default_site_id`, `is_active`, **`profile_id`** (NULL = ไม่มีบัญชีล็อกอิน) | owner ทั้งหมด · supervisor อ่านคนที่เคยเข้าโครงการตัวเอง |
-| `attendance` | `work_date`, `site_id`, `employee_id`, `work_units`, `ot_amount`, **`wage_snapshot`**, `amount` (generated), `mcp_key_id` | supervisor เขียนได้เฉพาะโครงการตัวเองและวันที่ยังไม่ปิดรอบ |
+| `attendance` | `work_date`, `site_id`, `employee_id`, `work_units`, `ot_amount`, **`wage_snapshot`**, `amount` (generated), `mcp_key_id` | supervisor เขียนได้เฉพาะโครงการตัวเองและวันที่ยังไม่ปิดรอบ · **ต้องเป็นวันนี้เท่านั้น — วันก่อนวันนี้หัวหน้าลง/แก้/ลบเองไม่ได้ (R23 · trigger `guard_attendance_backdate`)** |
+| `attendance_backdate_requests` | คำขอลงชื่อย้อนหลังของหัวหน้า (R23): `site_id`, `employee_id`, `work_date`, `work_units`, `reason`, `status` (`pending`/`approved`/`rejected`/`cancelled`), `requested_by`, `decided_by/_at`, `rejected_reason`, `attendance_id` (แถวที่เกิดตอนอนุมัติ) · ยื่นค้างได้ใบเดียวต่อ คน×โครงการ×วัน (partial unique) · **คำขอไม่ใช่ `attendance` = ไม่มีต้นทุนจนกว่าอนุมัติ** | เจ้าของอ่านทั้งหมด · หัวหน้าอ่านของตัวเอง · **ไม่มี policy เขียน** — ผ่าน RPC `attendance_backdate_request/decide/cancel` |
 | `wage_adjustment_presets` | รายการปรับค่าแรงสำเร็จรูป (R10): `name`, `kind` (`add`/`deduct`), `amount` (ยอดเริ่มต้น), `sort_order`, `is_active` · ตั้งที่ `/settings/wage-adjustments` | **owner เท่านั้น** |
 | `attendance_adjustments` | บรรทัดปรับของการลงชื่อแต่ละครั้ง: `attendance_id`, `preset_id` (null = พิมพ์เอง), `name` (สำเนา), `kind`, `amount` (บวกเสมอ ทิศทางอยู่ที่ `kind`) · **trigger `sync_attendance_ot` เขียนยอดสุทธิลง `attendance_wages.ot_amount`** — ห้ามใครเขียน `ot_amount` ตรง ให้เรียก `set_attendance_ot()` | **owner เท่านั้น** |
 | `transactions` | `kind`, `site_id` (NULL = ส่วนกลาง), `category_id`, `amount`, `txn_date`, `pay_method`, `status`, `income_kind`, `installment_no`, **`mcp_key_id`** (NULL = คนคีย์เอง · มีค่า = AI คีย์ผ่านคีย์ใบนั้น) · **R15:** `owed_employee_id` (คนงานที่ออกเงินแทนบริษัท/ได้โบนัส) · `owed_kind` (`reimburse`/`bonus`) · `settled_run_id` (คืนเงินในรอบไหน · เขียนได้เฉพาะ `close_payroll_run`) | supervisor เขียน `pending` ของโครงการตัวเอง · **แก้เป็น `approved` ได้เฉพาะ owner** |
@@ -699,6 +700,11 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
 - [ ] **R22 · แผนการใช้พัสดุ/เหล็กที่ผลิตภายในประเทศ** (23 ต.ค. 2569) — แท็บ `?tab=domestic` ในเมนู `/plans` · อัปโหลด BOQ → ตาราง Excel ตามแบบที่ห้างยื่นอยู่เดิม
       · ส่วนรายละเอียด ปร.4 ของชีตที่ `parseBoq` ใช้ · **เฉพาะราคาค่าวัสดุ** · ตัดหัวข้อไม่มีค่าวัสดุ/รายการค่าแรงล้วน · ติ๊ก "นำเข้า"/"เหล็ก" บนเว็บ
       · มีเหล็ก = ชีต "เหล็กในประเทศ" · ชีตสรุปเทียบเกณฑ์ พัสดุ ≥ 60% · เหล็ก ≥ 90% · ไม่แตะฐานข้อมูล · ตารางตรวจรับ `docs/test-plan/R22-domestic-materials.md`
+- [ ] **R23 · ลงชื่อย้อนหลังต้องให้เจ้าของอนุมัติ** (24 ต.ค. 2569) — หัวหน้าโครงการลง/แก้/ลบ `attendance` ของวันก่อนวันนี้ (เวลาไทย) เองไม่ได้
+      · ด่านที่ trigger `guard_attendance_backdate` (เจ้าของ + `auth.uid() is null` ผ่าน) · ยื่น `attendance_backdate_request()` พร้อมเหตุผล → คิว `/approvals`
+      → เจ้าของอนุมัติ `attendance_backdate_decide()` = ระบบลงชื่อให้ในนามเจ้าของ (guard เดิมครบ) · ตีกลับต้องมีเหตุผล · enum แจ้งเตือน `backdate_*`
+      · ⚠️ **ยังไม่ได้ apply migration `20261024090000_attendance_backdate_approval.sql`** และยังไม่ได้รัน `verify-backdate-db.mjs` · LINE push ยังไม่ครอบคลุม
+      · ตารางตรวจรับ `docs/test-plan/R23-attendance-backdate.md`
 - [x] **R9 · รอบคำสั่งเจ้าของ 4 ก.ย. 2569** — เรียกหน่วยงานว่า "โครงการ" ทั้งระบบ · ปิดการ์ด
       "งานวันนี้" · ต้นทุนสะสมแยกสามก้อน (ค่าแรง/ค่าวัสดุ/อื่น ๆ) + ธง `categories.is_material`
       · ยอดรวมแยกหมวดในหน้าโครงการ · **จ่ายค่าแรงรายคนปุ่มเดียว** (เลิกใช้คำว่า "รอบจ่าย"
@@ -1086,6 +1092,12 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
    · ช่องรูปแนบหนังสือ: `onChange={() => { void add(e.target.files); e.target.value = '' }}` แล้ว `add` ไป `await import(…)` ก่อน `Array.from(files)`
    · `FileList` เป็นของสดผูกกับช่อง — ล้างช่องแล้วมันว่างตาม · อาการ: เลือกรูปแล้ว "ไม่ขึ้น" ไม่มี error ไม่มี toast
    · **แก้:** `Array.from(files)` บรรทัดแรกของฟังก์ชัน ก่อน `await` ใด ๆ · ตรวจด้วย Playwright `setInputFiles` (โค้ดเดิม 0 รูป · ใหม่ 2 รูป)
+
+43. **กฎ "ห้ามย้อนหลัง" ที่ใส่แค่ที่ route = รูที่ทางอื่นยังเปิดอยู่** (R23 · 24 ต.ค. 2569)
+   · `attendance` ถูกเขียนจากหลายทาง: `POST/DELETE /api/attendance` · `save_attendance_day` · บอท LINE · MCP · cascade ตอนลบโครงการ/คนงาน
+   · ด่านจึงอยู่ที่ trigger และยกเว้นเฉพาะ `auth.uid() is null` (สคริปต์/service) กับ `is_owner()` — ทางอื่นที่สวมสิทธิ์เจ้าของจริงผ่านเอง
+   · route ตอบ `BACKDATE_NEEDS_APPROVAL` ก่อนแตะฐานข้อมูลเพื่อให้หน้าจอรู้ทาง แต่ไม่ใช่ด่าน
+   · คำขอที่รออนุมัติต้องเป็น**ตารางแยก** ไม่ใช่แถว `attendance` สถานะ pending — ไม่งั้นทุกสูตรค่าแรงที่นับ `attendance` ต้องตามกรองสถานะ (ซ้ำรอยข้อ 29)
 
 ## 18. ตัวแปรสภาพแวดล้อม
 

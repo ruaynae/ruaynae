@@ -52,11 +52,20 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
   const report = useMemo(() => withW124(planReport({ ...plan, progress: draft }, todayInBangkok())), [plan, draft])
 
   const pad = (a: (number | null)[] | undefined) => Array.from({ length: plan.periods }, (_, i) => a?.[i] ?? null)
+  /** วันที่ส่งงวดตั้งต้นเมื่อเริ่มกรอก % ในงวดที่ยังไม่มีวันที่ = วันนี้ (ไม่ก่อนวันเริ่มสัญญา)
+   *  — ไม่มีวันที่ = ระบบไม่รู้ว่าผลงานอยู่สัปดาห์ไหน เส้นผลงานจริงจึงไม่ขึ้นเลย (เจ้าของแจ้ง 26 ต.ค. 2569) */
+  const defaultDate = () => {
+    const t = todayInBangkok()
+    return t < plan.start ? plan.start : t
+  }
   const setItems = (keys: string[], v: number | null) =>
     setDraft((d) => {
       const items = { ...d.items }
       for (const key of keys) items[key] = pad(items[key]).map((x, i) => (i === k ? v : x))
-      return { ...d, items }
+      const dates = v != null && !d.dates[k]
+        ? Array.from({ length: plan.periods }, (_, i) => (i === k ? defaultDate() : d.dates[i] ?? null))
+        : d.dates
+      return { ...d, items, dates }
     })
   const setDate = (iso: string | null) =>
     setDraft((d) => ({ ...d, dates: Array.from({ length: plan.periods }, (_, i) => (i === k ? iso : d.dates[i] ?? null)) }))

@@ -22,7 +22,8 @@ export function ApprovalActions({
   kind = 'transaction',
 }: {
   id: string
-  amount: number
+  /** ไม่มีสำหรับคำขอลงชื่อย้อนหลัง (ไม่ใช่เรื่องเงินตรง ๆ) */
+  amount?: number
   /** คิวเดียวกันใช้ปุ่มคู่เดียวกัน — ต่างกันแค่ยิงไปคนละตาราง */
   kind?: ApprovalKind
 }) {
@@ -63,23 +64,28 @@ export function ApprovalActions({
           className="btn-secondary disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Undo2 className="size-4" />
-          {kind === 'advance' ? 'ไม่อนุมัติ' : 'ตีกลับ'}
+          {kind === 'transaction' ? 'ตีกลับ' : 'ไม่อนุมัติ'}
         </Dialog.Trigger>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40 animate-fade-in" />
           <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[90svh] w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-line bg-surface p-5 shadow-e3 animate-pop-in">
             <Dialog.Title className="text-lg font-bold text-ink">
-              {kind === 'advance' ? 'ไม่อนุมัติคำขอเบิก' : 'ตีกลับรายการ'} {fmtBaht(amount)}
+              {kind === 'advance'
+                ? 'ไม่อนุมัติคำขอเบิก'
+                : kind === 'backdate'
+                  ? 'ไม่อนุมัติคำขอลงชื่อย้อนหลัง'
+                  : 'ตีกลับรายการ'}
+              {amount !== undefined && ` ${fmtBaht(amount)}`}
             </Dialog.Title>
             <Dialog.Description className="mt-0.5 text-sm text-muted-token">
-              {kind === 'advance'
+              {kind === 'advance' || kind === 'backdate'
                 ? 'หัวหน้าโครงการที่ยื่นจะได้รับแจ้งเตือนพร้อมเหตุผลนี้ และแก้แล้วส่งใหม่ได้'
                 : 'คนที่คีย์จะได้รับแจ้งเตือนพร้อมเหตุผลนี้ เพื่อให้แก้แล้วส่งใหม่ได้'}
             </Dialog.Description>
 
             <div className="mt-4">
               <label htmlFor={`reason-${id}`} className="label-base">
-                {kind === 'advance' ? 'เหตุผลที่ไม่อนุมัติ' : 'เหตุผลที่ตีกลับ'}
+                {kind === 'transaction' ? 'เหตุผลที่ตีกลับ' : 'เหตุผลที่ไม่อนุมัติ'}
               </label>
               <textarea
                 id={`reason-${id}`}
@@ -90,7 +96,13 @@ export function ApprovalActions({
                 }}
                 maxLength={MAX_NOTE}
                 rows={3}
-                placeholder={kind === 'advance' ? 'เช่น เพิ่งเบิกไปเมื่อวาน' : 'เช่น สลิปเบลอ อ่านยอดไม่ออก'}
+                placeholder={
+                  kind === 'advance'
+                    ? 'เช่น เพิ่งเบิกไปเมื่อวาน'
+                    : kind === 'backdate'
+                      ? 'เช่น วันนั้นไม่มีงาน คนนี้ลา'
+                      : 'เช่น สลิปเบลอ อ่านยอดไม่ออก'
+                }
                 aria-invalid={fieldError ? 'true' : undefined}
                 className="input-base"
                 autoFocus
@@ -113,7 +125,7 @@ export function ApprovalActions({
                 ) : (
                   <Undo2 className="size-4" />
                 )}
-                {kind === 'advance' ? 'ยืนยันไม่อนุมัติ' : 'ยืนยันตีกลับ'}
+                {kind === 'transaction' ? 'ยืนยันตีกลับ' : 'ยืนยันไม่อนุมัติ'}
               </button>
             </div>
           </Dialog.Content>

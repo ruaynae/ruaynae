@@ -47,6 +47,7 @@ export default async function AppLayout({ children }: LayoutProps<'/'>) {
     { count: advancePendingCount, error: apErr },
     { count: advanceRejectedCount, error: arErr },
     { data: mrOpen, error: mrErr },
+    { count: backdatePendingCount, error: bdErr },
   ] = await Promise.all([
       sb
         .from('notifications')
@@ -81,9 +82,17 @@ export default async function AppLayout({ children }: LayoutProps<'/'>) {
       sb.from('advances').select('id', { count: 'exact', head: true }).eq('status', 'rejected'),
       // ใบขอเบิกวัสดุที่รอจ่าย (R18) — ขอบเขตตามบทบาทอยู่ใน RPC
       sb.rpc('material_requests_open_count'),
+      // คำขอลงชื่อย้อนหลังที่รอเจ้าของกด — บวกเข้าป้าย "รออนุมัติ" (คิวเดียวกัน)
+      user.role === 'owner'
+        ? sb
+            .from('attendance_backdate_requests')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'pending')
+        : Promise.resolve({ count: 0, error: null }),
     ])
 
   if (mrErr) console.error('[shell] นับใบขอเบิกไม่ได้', mrErr.message)
+  if (bdErr) console.error('[shell] นับคำขอลงชื่อย้อนหลังไม่ได้', bdErr.message)
   if (nErr || cErr || pErr || rErr || apErr || arErr) {
     // กระดิ่ง/ตัวเลขเมนูพังต้องไม่ทำให้ทั้งแอปพัง — บันทึกไว้แล้วแสดงเป็นค่าว่าง
     console.error(
@@ -97,7 +106,7 @@ export default async function AppLayout({ children }: LayoutProps<'/'>) {
   // เพิ่มเมนูที่มีของค้างในอนาคตให้เติมคีย์ตรงนี้ที่เดียว แล้วมันจะไปโผล่
   // ครบทั้งสองแถบ และถูกรวมยอดขึ้นปุ่ม "เพิ่มเติม" ให้เองถ้าเมนูนั้นถูกซ่อน
   const navBadges: NavBadges = {
-    '/approvals': (pendingCount ?? 0) + (advancePendingCount ?? 0),
+    '/approvals': (pendingCount ?? 0) + (advancePendingCount ?? 0) + (backdatePendingCount ?? 0),
     '/ledger': rejectedCount ?? 0,
     '/advances': advanceRejectedCount ?? 0,
     '/pickup': user.role === 'site_supervisor' ? 0 : ((mrOpen as number | null) ?? 0),
