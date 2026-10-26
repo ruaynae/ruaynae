@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import { Scale } from 'lucide-react'
+import { AlertTriangle, Scale } from 'lucide-react'
 import { statusOf, type ProgressReport, type Status } from '@/lib/boq/progress-core'
 import { W124_LABEL, type W124State } from '@/lib/boq/w124'
 import { fmtMoney } from '@/lib/format'
@@ -59,6 +59,8 @@ export function ProgressReportView({ report }: { report: ProgressReport }) {
   const curLabel = cur ? `งวดที่ ${cur.no}` : 'ยังไม่กรอก'
   const rows = report.tasks.map((t) => ({ ...t, diff: t.actual - t.plan, status: statusOf(t.actual - t.plan, 0.01) }))
   const behind = rows.filter((t) => t.status === 'behind').length
+  // งวดที่กรอกผลงานแล้วแต่ไม่มีวันที่ส่งงวด — ไม่รู้ว่าอยู่สัปดาห์ไหน จึงวาดเส้นผลงานจริงไม่ได้
+  const undated = report.installments.filter((x) => x.date == null && x.actual > 0).map((x) => x.no)
   const shown = onlyBehind ? rows.filter((t) => t.status === 'behind') : rows
 
   return (
@@ -93,6 +95,15 @@ export function ProgressReportView({ report }: { report: ProgressReport }) {
             {report.w124.length > 0 && <span><i className="mr-1 inline-block h-3 w-0 border-l-2 border-dashed border-urgent align-middle" />วันตรวจ ว.124</span>}
           </span>
         </h2>
+        {undated.length > 0 && (
+          <p className="mb-3 flex items-start gap-2 rounded-md bg-status-progress-bg px-3 py-2 text-sm text-status-progress">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <span>
+              งวดที่ {undated.join(', ')} กรอกผลงานแล้วแต่ยังไม่มี <b>วันที่ส่งงวด</b> — เส้นผลงานจริง (สีส้ม) จะขึ้นเมื่อใส่วันที่
+              เพราะระบบต้องรู้ว่าผลงานนั้นอยู่สัปดาห์ไหน
+            </span>
+          </p>
+        )}
         <canvas ref={canvas} className="block h-[300px] w-full max-w-full" role="img" aria-label="กราฟ S-Curve แผนงานเทียบผลงานจริง" />
       </section>
 

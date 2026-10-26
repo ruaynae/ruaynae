@@ -85,6 +85,9 @@ export function ProgressEntry({
           value={progress.dates[k] ?? ''}
           onChange={(e) => onDate(e.target.value || null)}
         />
+        <span className="mt-1 block text-xs text-muted-token">
+          ต้องมีวันที่ เส้นผลงานจริง (สีส้ม) จึงขึ้นในกราฟ · ยังไม่ใส่แล้วกรอก % = ใช้วันนี้ แก้ได้
+        </span>
       </label>
 
       {categories.map((c, ci) => {
