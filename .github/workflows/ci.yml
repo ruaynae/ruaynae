@@ -19,6 +19,14 @@ jobs:
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_dummy
       SUPABASE_SECRET_KEY: sb_secret_ci_dummy
       NEXT_PUBLIC_VAPID_PUBLIC_KEY: ci_dummy
+      # โมดูลที่ห้ามมีค่า fallback ล้มตอนโหลดถ้าไม่ตั้ง (pin.ts ฯลฯ) — ค่าหลอกสำหรับ build เท่านั้น
+      PIN_PEPPER: ci_dummy_pepper_not_a_secret_000000
+      MCP_KEY_PEPPER: ci_dummy_pepper_not_a_secret_000000
+      CRON_SECRET: ci_dummy_cron_not_a_secret_00000000
+      R2_ACCOUNT_ID: ci_dummy
+      R2_BUCKET: ci-dummy
+      R2_ACCESS_KEY_ID: ci_dummy
+      R2_SECRET_ACCESS_KEY: ci_dummy
       NEXT_TELEMETRY_DISABLED: '1'
     steps:
       - uses: actions/checkout@v4
