@@ -713,6 +713,10 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
       → เจ้าของอนุมัติ `attendance_backdate_decide()` = ระบบลงชื่อให้ในนามเจ้าของ (guard เดิมครบ) · ตีกลับต้องมีเหตุผล · enum แจ้งเตือน `backdate_*`
       · ✅ migration `20261024090000_attendance_backdate_approval.sql` apply แล้ว (เจ้าของตรวจ `to_regclass` 27 ต.ค. 2569) · ⚠️ ยังไม่ได้รัน `verify-backdate-db.mjs` · LINE push ยังไม่ครอบคลุม
       · ตารางตรวจรับ `docs/test-plan/R23-attendance-backdate.md`
+- [ ] **R24 · อ่านสลิปด้วย AI ในบอท LINE** (31 ต.ค. 2569) — เจ้าของเลือก **Gemini แบบฟรี** ก่อน · คีย์ใน Vault (`set_slip_ai_key` · การ์ดใน `/settings/line`)
+      · ส่งรูปเข้าแชท → `lib/slip-ai/gemini.ts` อ่าน ยอด/วันที่/ผู้รับ/เลขอ้างอิง → **เป็นข้อเสนอ** ต้องกด "ใช่ ฿…" หรือพิมพ์ยอดเอง แล้วหมวด/โครงการ/บันทึกเหมือนเดิม
+      · ตัวตรวจคำตอบ AI อยู่ที่ `lib/slip-ai/parse.ts` (ไฟล์ล้วน · unit test) · ปิด/โควตาหมด/คีย์ผิด = ถามยอดแบบเดิม ไม่ล้ม
+      · ⚠️ **migration `20261031090000_slip_ai_key.sql` ยังไม่ได้ apply** · ตารางตรวจรับ `docs/test-plan/R24-slip-ai.md`
 - [x] **R9 · รอบคำสั่งเจ้าของ 4 ก.ย. 2569** — เรียกหน่วยงานว่า "โครงการ" ทั้งระบบ · ปิดการ์ด
       "งานวันนี้" · ต้นทุนสะสมแยกสามก้อน (ค่าแรง/ค่าวัสดุ/อื่น ๆ) + ธง `categories.is_material`
       · ยอดรวมแยกหมวดในหน้าโครงการ · **จ่ายค่าแรงรายคนปุ่มเดียว** (เลิกใช้คำว่า "รอบจ่าย"

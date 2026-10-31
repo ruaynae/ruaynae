@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import type { Slip } from '@/lib/attachments'
-import { MAX_ATTACHMENTS } from '@/lib/constants'
+import { IMAGE, MAX_ATTACHMENTS } from '@/lib/constants'
+import { readSlip, type SlipAiResult } from '@/lib/slip-ai/gemini'
+import { slipNote } from '@/lib/slip-ai/parse'
+import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { rpc, send, sessionGet, setState } from '../api'
 import { copy, dbErrorText } from '../copy'
 import { bubble, carousel, choices, data, matchByName, menuItems, text, type QuickItem } from '../messages'
@@ -30,6 +33,10 @@ type Payload = {
   owedName?: string | null
   /** กำลังเลือก "ใครจ่ายเงินไป" — ข้อความที่พิมพ์คือชื่อคน ไม่ใช่หมายเหตุ */
   picking?: boolean
+  /** ค่าที่ AI อ่านจากสลิป (31 ต.ค. 2569) — เป็นแค่ข้อเสนอ ยอดเข้าจริงเมื่อเจ้าของกด "ใช่" หรือพิมพ์ยอดเอง */
+  aiAmount?: number
+  aiDate?: string | null
+  aiNote?: string
 }
 
 const payloadOf = (turn: Turn): Payload => {
@@ -43,20 +50,25 @@ const cancelItem: QuickItem = { label: copy.exp.cancel, text: 'ยกเลิ�
 
 /** กดเมนู "คีย์รายจ่าย" · ถ้าส่งรูปมาก่อนแล้วให้เก็บรูปไว้ */
 export async function startExpense(turn: Turn) {
-  const keep = turn.session.state === 'exp_amount' ? payloadOf(turn).slips : []
-  await setState(turn, 'exp_amount', { slips: keep })
+  const prev = turn.session.state === 'exp_amount' ? payloadOf(turn) : null
+  const keep = prev?.slips ?? []
+  await setState(turn, 'exp_amount', {
+    slips: keep,
+    ...(prev?.aiAmount !== undefined ? { aiAmount: prev.aiAmount, aiDate: prev.aiDate ?? null, aiNote: prev.aiNote ?? '' } : {}),
+  })
   const head = keep.length ? `${copy.exp.photoGotAmount(keep.length)}\n` : ''
   return send(turn, [text(head + copy.exp.askAmount, [cancelItem])])
 }
 
 /** รูปบิลเข้ามาในแชท (จากสถานะไหนก็ได้) */
 export async function addPhoto(turn: Turn, messageId: string, ownerProfileId: string) {
-  let slip: Slip
+  let stored: { slip: Slip; image: Buffer }
   try {
-    slip = await storeLineImage(messageId, ownerProfileId)
+    stored = await storeLineImage(messageId, ownerProfileId)
   } catch {
     return send(turn, [text(copy.exp.photoFail)])
   }
+  const { slip, image } = stored
   const r = await rpc<{ state: string; count: number; full: boolean; started: boolean }>('bot_session_photo', {
     p_line_user: turn.lineUserId,
     p_slip: slip,
@@ -68,9 +80,84 @@ export async function addPhoto(turn: Turn, messageId: string, ownerProfileId: st
   turn.session = await sessionGet(turn.lineUserId)
   if (r.state === 'exp_confirm') return showConfirm(turn, copy.exp.photoGotAmount(r.count))
   if (r.state === 'exp_amount') {
-    return send(turn, [text(copy.exp.photoGot(r.count), [cancelItem])])
+    // ยังไม่มียอดที่อ่านได้ = ลองให้ AI อ่านรูปนี้ (ปิดอยู่/อ่านไม่ได้ = ถามยอดแบบเดิม)
+    if (payloadOf(turn).aiAmount === undefined) {
+      const res = await readSlip(image, IMAGE.type, today())
+      if (await offerAiRead(turn, res, r.count)) return
+      return send(turn, [text(aiFallback(res, r.count), [cancelItem])])
+    }
+    return send(turn, [text(copy.exp.photoGotAmount(r.count), aiItems(payloadOf(turn)))])
   }
   return send(turn, [text(copy.exp.photoGotAmount(r.count))])
+}
+
+/** ปุ่มตอบด่วนระหว่างรอยืนยันยอดจากสลิป */
+function aiItems(p: Payload): QuickItem[] {
+  return p.aiAmount !== undefined
+    ? [{ label: copy.exp.aiYes(baht(p.aiAmount)), data: data({ a: 'xa' }) }, cancelItem]
+    : [cancelItem]
+}
+
+function aiFallback(res: SlipAiResult, count: number): string {
+  // อ่านได้แต่ไม่ได้เสนอ = เจ้าของพิมพ์ยอดไปแล้วระหว่างรอ AI
+  if (res.ok) return copy.exp.photoGotAmount(count)
+  if (res.reason === 'OFF' || res.reason === 'ERROR') return copy.exp.photoGot(count)
+  if (res.reason === 'QUOTA') return copy.exp.aiQuota(count)
+  if (res.reason === 'KEY_REJECTED') return copy.exp.aiKey(count)
+  return copy.exp.aiUnreadable(count)
+}
+
+/** สลิปนี้เคยถูกบันทึกแล้วไหม — ดูจากเลขอ้างอิงที่บอทเติมไว้ในหมายเหตุ (เตือน ไม่ใช่ห้าม) */
+async function refSeen(ref: string): Promise<boolean> {
+  const pattern = `%อ้างอิง ${ref.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
+  const { data: rows, error } = await getSupabaseAdmin()
+    .from('transactions')
+    .select('id')
+    .ilike('note', pattern)
+    .order('created_at', { ascending: false })
+    .range(0, 0)
+  if (error) {
+    console.error('[line] ตรวจสลิปซ้ำไม่ได้', error.message)
+    return false
+  }
+  return (rows ?? []).length > 0
+}
+
+/** AI อ่านยอดได้ → เก็บเป็นข้อเสนอ แล้วถามยืนยันยอด · คืน false เมื่อไม่มีอะไรจะเสนอ (ผู้เรียกตอบแบบเดิม) */
+async function offerAiRead(turn: Turn, res: SlipAiResult, count: number): Promise<boolean> {
+  if (!res.ok) return false
+  const { read } = res
+  const dup = read.ref ? await refSeen(read.ref) : false
+
+  // 🔴 อ่านเซสชันใหม่ก่อนเขียน — ระหว่างรอ AI (ไม่กี่วินาที) รูปอื่นอาจต่อเข้ามา หรือเจ้าของพิมพ์ยอดไปแล้ว
+  //    เขียนทับด้วยค่าเก่า = รูปที่เพิ่งต่อเข้ามาหาย (§17 ข้อ 35)
+  turn.session = await sessionGet(turn.lineUserId)
+  const p = payloadOf(turn)
+  if (turn.session.state !== 'exp_amount' || p.aiAmount !== undefined) return false
+  const next: Payload = { ...p, aiAmount: read.amount, aiDate: read.date, aiNote: slipNote(read) }
+  await setState(turn, 'exp_amount', next)
+
+  const lines = [
+    copy.exp.aiHead(p.slips.length || count),
+    `ยอด ${baht(read.amount)}`,
+    ...(read.date ? [`วันที่ ${thaiDate(read.date)}`] : []),
+    ...(read.payee ? [`ผู้รับ ${read.payee}`] : []),
+    ...(read.ref ? [`อ้างอิง ${read.ref}`] : []),
+    ...(dup ? [copy.exp.aiDuplicate] : []),
+    copy.exp.aiAsk(baht(read.amount)),
+  ]
+  await send(turn, [text(lines.join('\n'), aiItems(next))])
+  return true
+}
+
+/** เจ้าของกด "ใช่ ฿…" — ใช้ยอดที่ AI อ่านได้ */
+export async function useAiAmount(turn: Turn) {
+  const p = payloadOf(turn)
+  if (turn.session.state !== 'exp_amount' || p.aiAmount === undefined) {
+    return send(turn, [text(copy.expired, menuItems())])
+  }
+  await setState(turn, 'exp_cat', { ...p, amount: p.aiAmount, ...(p.aiNote ? { note: p.aiNote } : {}) })
+  return askCategory(turn)
 }
 
 /** ข้อความที่พิมพ์เข้ามาระหว่างคีย์รายจ่าย */
@@ -106,7 +193,10 @@ export async function onText(turn: Turn, raw: string) {
 async function onAmount(turn: Turn, raw: string) {
   const hit = parseAmountNote(raw)
   if (!hit) return send(turn, [text(copy.exp.badAmount, [cancelItem])])
-  await setState(turn, 'exp_cat', { ...payloadOf(turn), amount: hit.amount, ...(hit.note ? { note: hit.note } : {}) })
+  // พิมพ์ยอดเอง = ใช้ยอดที่พิมพ์ · หมายเหตุที่ไม่ได้พิมพ์ใช้ผู้รับ/เลขอ้างอิงจากสลิปแทน (ถ้ามี)
+  const p = payloadOf(turn)
+  const note = hit.note || p.aiNote || ''
+  await setState(turn, 'exp_cat', { ...p, amount: hit.amount, ...(note ? { note } : {}) })
   return askCategory(turn)
 }
 
@@ -158,7 +248,8 @@ async function enterConfirm(turn: Turn, site: string | null, siteName: string | 
     ...payloadOf(turn),
     site,
     siteName,
-    date: today(),
+    // วันที่บนสลิป (ถ้า AI อ่านได้) · ไม่มี = วันนี้ · เจ้าของเปลี่ยนได้บนการ์ดยืนยัน
+    date: payloadOf(turn).aiDate ?? today(),
     method: 'transfer',
     ref: randomUUID(),
   })

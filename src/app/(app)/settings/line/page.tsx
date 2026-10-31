@@ -8,6 +8,7 @@ import { DeliveryCard } from './delivery-card'
 import { KeysForm, type KeyState } from './keys-form'
 import { LinkPanel } from './link-panel'
 import { QuotaCard } from './quota-card'
+import { SlipAiCard } from './slip-ai-card'
 
 export const metadata = { title: 'LINE บอท' }
 
@@ -19,13 +20,15 @@ type KeyStatus = { channel_secret: KeyState; access_token: KeyState }
  */
 export default async function LineSettingsPage() {
   const sb = await getSupabaseServer()
-  const [status, accounts] = await Promise.all([
+  const [status, accounts, slipAi] = await Promise.all([
     sb.rpc('line_key_status'),
     sb
       .from('line_accounts')
       .select('id, profile_id, display_name, created_at, notify_pending')
       .order('created_at', { ascending: false })
       .range(0, PAGE_SIZE - 1),
+    // 🔴 ไม่ร้ายแรง: ยังไม่ได้รัน migration ของการอ่านสลิป = การ์ดบอกให้รันก่อน หน้าที่เหลือยังใช้ได้
+    sb.rpc('slip_ai_key_status'),
   ])
 
   if (status.error || accounts.error) {
@@ -39,6 +42,8 @@ export default async function LineSettingsPage() {
   }
 
   const keys = status.data as unknown as KeyStatus
+  if (slipAi.error) console.error('[line-settings] อ่านสถานะคีย์อ่านสลิปไม่ได้', slipAi.error.message)
+  const slipAiState = (slipAi.data as unknown as KeyState | null) ?? { set: false, last4: null }
   const h = await headers()
   const host = h.get('x-forwarded-host') ?? h.get('host') ?? ''
   const proto = h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https')
@@ -67,6 +72,8 @@ export default async function LineSettingsPage() {
       </section>
 
       <QuotaCard hasToken={keys.access_token.set} />
+
+      <SlipAiCard state={slipAiState} installed={!slipAi.error} />
 
       <DeliveryCard accounts={accounts.data ?? []} hasToken={keys.access_token.set} />
 
