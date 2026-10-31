@@ -51,6 +51,7 @@ type Payload = {
 type QueueItem = Pick<Payload, 'aiAmount' | 'aiDate' | 'aiNote' | 'aiMemo' | 'aiRef' | 'aiLines'> & { slip: Slip }
 type Took = { role: 'current' | 'queued' | 'attached' | 'full' | 'full_photos'; queued: number; photos?: number; position?: number }
 const MAX_QUEUE = 10
+const YES = /^(ใช่|ใช่ครับ|ใช่ค่ะ|ใช่คับ|ok|โอเค|ตกลง|ถูก|ถูกต้อง)$/i
 
 const payloadOf = (turn: Turn): Payload => {
   const p = turn.session.payload as Partial<Payload>
@@ -180,9 +181,15 @@ async function takeSlip(turn: Turn, slip: Slip, read: SlipRead): Promise<boolean
     case 'current':
       await send(turn, [offerMessage(p, copy.exp.aiHead(took.photos ?? p.slips.length))])
       return true
-    case 'queued':
-      await send(turn, [text(copy.exp.queued(took.position ?? took.queued, baht(read.amount)))])
+    case 'queued': {
+      // 🔴 ปุ่มตอบด่วนของ LINE โชว์เฉพาะข้อความล่าสุด — ข้อความ "เข้าคิวแล้ว" ที่มาทีหลังจะกลบปุ่ม "ใช่ ฿…"
+      //    ของใบที่กำลังทำ (เจ้าของแจ้ง 31 ต.ค. 2569) → ทุกข้อความต้องพกปุ่มของใบปัจจุบันไปด้วย
+      const waiting = turn.session.state === 'exp_amount' && p.aiAmount !== undefined
+      const body = copy.exp.queued(took.position ?? took.queued, baht(read.amount)) +
+        (waiting ? `\n${copy.exp.currentHint(baht(p.aiAmount ?? 0))}` : '')
+      await send(turn, [text(body, waiting ? aiItems({ ...p, queueLeft: took.queued }) : [])])
       return true
+    }
     case 'attached':
       await send(turn, [text(copy.exp.sameSlip(took.photos ?? p.slips.length))])
       return true
@@ -295,6 +302,8 @@ export async function onText(turn: Turn, raw: string) {
 }
 
 async function onAmount(turn: Turn, raw: string) {
+  // พิมพ์ "ใช่" แทนการกดปุ่ม (ปุ่มอาจถูกข้อความอื่นกลบไปแล้ว)
+  if (YES.test(raw.trim()) && payloadOf(turn).aiAmount !== undefined) return useAiAmount(turn)
   const hit = parseAmountNote(raw)
   if (!hit) {
     // มียอดจากสลิปรออยู่ + พิมพ์ข้อความที่ไม่ใช่ตัวเลข = รายละเอียดเพิ่ม (เช่นชื่อโครงการ) ไม่ใช่ยอดผิด
