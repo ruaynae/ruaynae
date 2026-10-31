@@ -2,7 +2,7 @@ name: ci
 
 # ตรวจทุกครั้งที่ push เข้า main / เปิด PR (1 พ.ย. 2569 · แบบเดียวกับ Matador)
 #   เทสต์สูตร (node:test) → npm run gate (tsc · import ฝั่ง client · สี · build · คลาสสี)
-#   lint รายงานอย่างเดียวจนกว่าจะเคลียร์ของเดิมหมด
+#   → eslint (error = แดง · warning ไม่นับ)
 # 🔴 ไม่แตะฐานข้อมูลจริง — สคริปต์ verify-*-db ยังต้องรันเองในเครื่องที่มี .env.local
 on:
   push:
@@ -29,8 +29,8 @@ jobs:
       R2_SECRET_ACCESS_KEY: ci_dummy
       NEXT_TELEMETRY_DISABLED: '1'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -98,6 +98,5 @@ jobs:
             echo "::error title=คลาสสีที่ build ออกมา::$msg"
           fi
           exit $code
-      - name: eslint (ยังไม่บังคับ)
+      - name: eslint
         run: npm run lint
-        continue-on-error: true

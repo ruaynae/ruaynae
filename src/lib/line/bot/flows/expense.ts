@@ -312,7 +312,7 @@ async function offerAiRead(turn: Turn, res: SlipAiResult, count: number): Promis
 }
 
 /** เจ้าของกด "ใช่ ฿…" — ใช้ยอดที่ AI อ่านได้ */
-export async function useAiAmount(turn: Turn, id?: string) {
+export async function acceptAiAmount(turn: Turn, id?: string) {
   const p = payloadOf(turn)
   if (turn.session.state !== 'exp_amount' || p.aiAmount === undefined) {
     return send(turn, [text(copy.expired, menuItems())])
@@ -354,7 +354,7 @@ export async function onText(turn: Turn, raw: string) {
 
 async function onAmount(turn: Turn, raw: string) {
   // พิมพ์ "ใช่" แทนการกดปุ่ม (ปุ่มอาจถูกข้อความอื่นกลบไปแล้ว)
-  if (YES.test(raw.trim()) && payloadOf(turn).aiAmount !== undefined) return useAiAmount(turn)
+  if (YES.test(raw.trim()) && payloadOf(turn).aiAmount !== undefined) return acceptAiAmount(turn)
   const hit = parseAmountNote(raw)
   if (!hit) {
     // มียอดจากสลิปรออยู่ + พิมพ์ข้อความที่ไม่ใช่ตัวเลข = รายละเอียดเพิ่ม (เช่นชื่อโครงการ) ไม่ใช่ยอดผิด
