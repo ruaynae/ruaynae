@@ -1,0 +1,112 @@
+name: ci
+
+# ตรวจทุกครั้งที่ push เข้า main / เปิด PR (1 พ.ย. 2569 · แบบเดียวกับ Matador)
+#   เทสต์สูตร (node:test) → npm run gate (tsc · import ฝั่ง client · สี · build · คลาสสี)
+#   → eslint (error = แดง · warning ไม่นับ)
+# 🔴 ไม่แตะฐานข้อมูลจริง — สคริปต์ verify-*-db ยังต้องรันเองในเครื่องที่มี .env.local
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # ค่าหลอกให้ next build ผ่านโดยไม่ใช้ความลับจริง (build ไม่เรียกฐานข้อมูล)
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_dummy
+      SUPABASE_SECRET_KEY: sb_secret_ci_dummy
+      NEXT_PUBLIC_VAPID_PUBLIC_KEY: ci_dummy
+      # โมดูลที่ห้ามมีค่า fallback ล้มตอนโหลดถ้าไม่ตั้ง (pin.ts ฯลฯ) — ค่าหลอกสำหรับ build เท่านั้น
+      PIN_PEPPER: ci_dummy_pepper_not_a_secret_000000
+      MCP_KEY_PEPPER: ci_dummy_pepper_not_a_secret_000000
+      CRON_SECRET: ci_dummy_cron_not_a_secret_00000000
+      R2_ACCOUNT_ID: ci_dummy
+      R2_BUCKET: ci-dummy
+      R2_ACCESS_KEY_ID: ci_dummy
+      R2_SECRET_ACCESS_KEY: ci_dummy
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: เทสต์สูตร (node:test)
+        run: npm test
+      # แยกขั้นของ npm run gate ให้รู้ว่าพังตรงไหน
+      - name: tsc
+        shell: bash
+        run: |
+          set +e
+          npm run typecheck > out.txt 2>&1; code=$?
+          cat out.txt
+          # ส่งท้ายผลลัพธ์เป็น annotation — อ่านได้จากหน้า PR โดยไม่ต้องเปิด log
+          if [ $code -ne 0 ]; then
+            msg=$(tail -n 40 out.txt | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=tsc::$msg"
+          fi
+          exit $code
+      - name: import ฝั่ง client
+        shell: bash
+        run: |
+          set +e
+          npm run verify:boundary > out.txt 2>&1; code=$?
+          cat out.txt
+          # ส่งท้ายผลลัพธ์เป็น annotation — อ่านได้จากหน้า PR โดยไม่ต้องเปิด log
+          if [ $code -ne 0 ]; then
+            msg=$(tail -n 40 out.txt | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=import ฝั่ง client::$msg"
+          fi
+          exit $code
+      - name: สีผ่านเกณฑ์
+        shell: bash
+        run: |
+          set +e
+          npm run verify:contrast > out.txt 2>&1; code=$?
+          cat out.txt
+          # ส่งท้ายผลลัพธ์เป็น annotation — อ่านได้จากหน้า PR โดยไม่ต้องเปิด log
+          if [ $code -ne 0 ]; then
+            msg=$(tail -n 40 out.txt | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=สีผ่านเกณฑ์::$msg"
+          fi
+          exit $code
+      - name: next build
+        shell: bash
+        run: |
+          set +e
+          npm run build > out.txt 2>&1; code=$?
+          cat out.txt
+          # ส่งท้ายผลลัพธ์เป็น annotation — อ่านได้จากหน้า PR โดยไม่ต้องเปิด log
+          if [ $code -ne 0 ]; then
+            msg=$(tail -n 40 out.txt | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=next build::$msg"
+          fi
+          exit $code
+      - name: คลาสสีที่ build ออกมา
+        shell: bash
+        run: |
+          set +e
+          npm run verify:tokens > out.txt 2>&1; code=$?
+          cat out.txt
+          # ส่งท้ายผลลัพธ์เป็น annotation — อ่านได้จากหน้า PR โดยไม่ต้องเปิด log
+          if [ $code -ne 0 ]; then
+            msg=$(tail -n 40 out.txt | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=คลาสสีที่ build ออกมา::$msg"
+          fi
+          exit $code
+      - name: eslint
+        shell: bash
+        run: |
+          set +e
+          # --quiet = เฉพาะ error (warning ไม่ทำให้แดง และไม่ไปเบียดที่ annotation)
+          npx eslint --quiet > out.txt 2>&1; code=$?
+          cat out.txt
+          if [ $code -ne 0 ]; then
+            msg=$(tail -n 60 out.txt | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=eslint::$msg"
+          fi
+          exit $code

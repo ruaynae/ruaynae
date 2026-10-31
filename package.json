@@ -9,6 +9,7 @@
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "verify:contrast": "node scripts/verify-contrast.mjs src/app/globals.css",
+    "test": "node --test \"tests/unit/*.test.mjs\"",
     "gate": "npm run typecheck && npm run verify:boundary && npm run verify:contrast && npm run build && npm run verify:tokens",
     "verify:all": "node scripts/verify-all.mjs",
     "verify:e2e": "node scripts/verify-e2e.mjs",
