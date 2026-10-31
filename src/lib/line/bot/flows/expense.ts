@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Slip } from '@/lib/attachments'
 import { IMAGE, MAX_ATTACHMENTS } from '@/lib/constants'
 import { readSlip, type SlipAiResult } from '@/lib/slip-ai/gemini'
-import { slipNote } from '@/lib/slip-ai/parse'
+import { siteFromMemo, slipNote } from '@/lib/slip-ai/parse'
 import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { rpc, send, sessionGet, setState } from '../api'
 import { copy, dbErrorText } from '../copy'
@@ -37,6 +37,8 @@ type Payload = {
   aiAmount?: number
   aiDate?: string | null
   aiNote?: string
+  /** ข้อความที่พิมพ์ไว้ในสลิป — ใช้หาโครงการที่น่าจะใช่ตอนถามโครงการ */
+  aiMemo?: string | null
 }
 
 const payloadOf = (turn: Turn): Payload => {
@@ -54,7 +56,7 @@ export async function startExpense(turn: Turn) {
   const keep = prev?.slips ?? []
   await setState(turn, 'exp_amount', {
     slips: keep,
-    ...(prev?.aiAmount !== undefined ? { aiAmount: prev.aiAmount, aiDate: prev.aiDate ?? null, aiNote: prev.aiNote ?? '' } : {}),
+    ...(prev?.aiAmount !== undefined ? { aiAmount: prev.aiAmount, aiDate: prev.aiDate ?? null, aiNote: prev.aiNote ?? '', aiMemo: prev.aiMemo ?? null } : {}),
   })
   const head = keep.length ? `${copy.exp.photoGotAmount(keep.length)}\n` : ''
   return send(turn, [text(head + copy.exp.askAmount, [cancelItem])])
@@ -134,7 +136,7 @@ async function offerAiRead(turn: Turn, res: SlipAiResult, count: number): Promis
   turn.session = await sessionGet(turn.lineUserId)
   const p = payloadOf(turn)
   if (turn.session.state !== 'exp_amount' || p.aiAmount !== undefined) return false
-  const next: Payload = { ...p, aiAmount: read.amount, aiDate: read.date, aiNote: slipNote(read) }
+  const next: Payload = { ...p, aiAmount: read.amount, aiDate: read.date, aiNote: slipNote(read), aiMemo: read.memo }
   await setState(turn, 'exp_amount', next)
 
   const lines = [
@@ -142,6 +144,7 @@ async function offerAiRead(turn: Turn, res: SlipAiResult, count: number): Promis
     `ยอด ${baht(read.amount)}`,
     ...(read.date ? [`วันที่ ${thaiDate(read.date)}`] : []),
     ...(read.payee ? [`ผู้รับ ${read.payee}`] : []),
+    ...(read.memo ? [`บันทึก ${read.memo}`] : []),
     ...(read.ref ? [`อ้างอิง ${read.ref}`] : []),
     ...(dup ? [copy.exp.aiDuplicate] : []),
     copy.exp.aiAsk(baht(read.amount)),
@@ -225,11 +228,15 @@ export async function pickCategory(turn: Turn, categoryId: string) {
 async function askSite(turn: Turn) {
   const { sites } = await options(turn)
   if (sites.length === 0) return enterConfirm(turn, null, null)
+  // ข้อความในสลิปเอ่ยชื่อโครงการ = ยกโครงการนั้นขึ้นก่อน (ยังต้องแตะเลือกเอง — ไม่เดาแทนเจ้าของ)
+  const hint = siteFromMemo(payloadOf(turn).aiMemo, sites)
+  const ordered = hint ? [hint, ...sites.filter((s) => s.id !== hint.id)] : sites
   return send(turn, [
-    text(copy.exp.pickSite, [cancelItem]),
+    text(hint ? copy.exp.pickSiteHint(hint.name) : copy.exp.pickSite, [cancelItem]),
     choices('เลือกโครงการ', 'เลือกโครงการ', [
+      ...(hint ? [{ label: hint.name, data: data({ a: 'xs', s: hint.id }) }] : []),
       { label: copy.exp.central, data: data({ a: 'xs', s: 'none' }) },
-      ...sites.map((s) => ({ label: s.name, data: data({ a: 'xs', s: s.id }) })),
+      ...ordered.filter((s) => s.id !== hint?.id).map((s) => ({ label: s.name, data: data({ a: 'xs', s: s.id }) })),
     ]),
   ])
 }

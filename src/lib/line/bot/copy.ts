@@ -83,6 +83,7 @@ export const copy = {
     pickCategory: (amount: string) => `ยอด ${amount} · เลือกหมวด`,
     noCategory: 'ยังไม่มีหมวดรายจ่าย ให้เจ้าของเพิ่มที่หน้าตั้งค่าในเว็บก่อน',
     pickSite: 'ผูกกับโครงการไหน',
+    pickSiteHint: (name: string) => `ผูกกับโครงการไหน (บันทึกในสลิปตรงกับโครงการ ${name} — อยู่ปุ่มแรก)`,
     central: 'ส่วนกลาง (ไม่ผูกโครงการ)',
     otherDate: 'เลือกวันอื่น',
     otherDateAsk: 'เลือกวันที่จ่ายเงิน',

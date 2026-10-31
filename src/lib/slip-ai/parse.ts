@@ -14,6 +14,8 @@ export type SlipRead = {
   payee: string | null
   /** เลขอ้างอิงรายการ (สลิปโอน) */
   ref: string | null
+  /** ข้อความที่คนโอนพิมพ์ไว้ในสลิป (ช่อง "บันทึก"/"หมายเหตุ") เช่น "รางไฟ รพ แมว" */
+  memo: string | null
 }
 
 /** คำสั่งที่ส่งให้ AI — ขอ JSON ล้วนตามรูปนี้ */
@@ -21,8 +23,9 @@ export const SLIP_PROMPT = `รูปนี้คือสลิปโอนเ�
 อ่านแล้วตอบเป็น JSON อย่างเดียว ห้ามมีข้อความอื่น ตามรูปนี้:
 {"is_receipt": true/false, "amount": ตัวเลขยอดที่จ่ายจริง (ยอดรวมสุทธิ ไม่ใช่ราคาต่อชิ้น ไม่ใส่คอมมา) หรือ null,
  "date": "YYYY-MM-DD" วันที่จ่ายตามที่พิมพ์ในรูป (ถ้าเป็นปี พ.ศ. ให้คงเป็น พ.ศ. ตามที่เห็น) หรือ null,
- "payee": ชื่อผู้รับเงินหรือชื่อร้าน (สั้น ๆ) หรือ null,
- "ref": เลขที่รายการ/เลขอ้างอิงของสลิปโอน หรือ null}
+ "payee": ชื่อผู้รับเงินหรือชื่อร้านปลายทาง (ฝั่ง "ไปที่"/ผู้รับ ไม่ใช่ชื่อเจ้าของบัญชีที่โอนออก) หรือ null,
+ "ref": เลขที่รายการ/เลขอ้างอิงของธนาคาร (ถ้ามีหลายเลข ให้เลือกเลขที่อ้างอิงของรายการที่ยาวที่สุด) หรือ null,
+ "memo": ข้อความที่ผู้โอนพิมพ์ไว้เอง ในช่อง "บันทึก" "หมายเหตุ" "บันทึกช่วยจำ" หรือกล่องข้อความท้ายสลิป ตามที่เห็นทุกตัวอักษร หรือ null}
 ถ้ารูปไม่ใช่สลิปหรือบิล ให้ is_receipt เป็น false · ถ้าไม่แน่ใจช่องไหนให้ใส่ null อย่าเดา`
 
 const MAX_AMOUNT = 99_999_999
@@ -99,11 +102,39 @@ export function parseSlipReply(text: string, today: string): SlipRead | null {
     amount,
     date: cleanDate(r.date, today),
     payee: cleanText(r.payee, 60),
+    memo: cleanText(r.memo, 100),
     ref: ref && /^[\w-]{4,40}$/.test(ref.replace(/\s/g, '')) ? ref.replace(/\s/g, '') : null,
   }
 }
 
-/** หมายเหตุที่เติมให้: "ผู้รับ · อ้างอิง xxx" (≤ 200 ตัว — เพดานเดียวกับหมายเหตุของบอท) */
+/**
+ * หมายเหตุที่เติมให้: "ข้อความในสลิป · ผู้รับ · อ้างอิง xxx" (≤ 200 ตัว — เพดานเดียวกับหมายเหตุของบอท)
+ * ข้อความที่เจ้าของพิมพ์ไว้ในสลิปมาก่อน เพราะเป็นชื่อของที่ซื้อ/โครงการที่เจ้าของตั้งใจจด
+ */
 export function slipNote(r: SlipRead): string {
-  return [r.payee, r.ref ? `อ้างอิง ${r.ref}` : null].filter(Boolean).join(' · ').slice(0, 200)
+  return [r.memo, r.payee, r.ref ? `อ้างอิง ${r.ref}` : null].filter(Boolean).join(' · ').slice(0, 200)
+}
+
+const squash = (v: string) => v.toLowerCase().replace(/[\s.\-_/()]/g, '')
+
+/**
+ * ข้อความในสลิปเอ่ยถึงโครงการไหน — ชื่อย่อของโครงการ (ไม่นับช่องว่าง/จุด) อยู่ในข้อความ
+ * เช่น "รางไฟ รพ แมว" + โครงการ "รพ.แมว" → ตรง · ตรงหลายโครงการหรือไม่ตรงเลย = null (ไม่เดา)
+ * ชื่อสั้นกว่า 2 ตัวไม่นับ (กันตรงมั่ว)
+ */
+export function siteFromMemo<T extends { id: string; name: string }>(memo: string | null | undefined, sites: T[]): T | null {
+  if (!memo) return null
+  const m = squash(memo)
+  const hits = sites.filter((x) => {
+    const n = squash(x.name)
+    return n.length >= 2 && m.includes(n)
+  })
+  if (hits.length === 1) return hits[0]
+  // ตรงหลายโครงการเพราะชื่อหนึ่งเป็นส่วนของอีกชื่อ ("รพ" กับ "รพแมว") → เอาชื่อที่ยาวที่สุดถ้ายาวกว่าตัวอื่นชัดเจน
+  if (hits.length > 1) {
+    const sorted = [...hits].sort((a, b) => squash(b.name).length - squash(a.name).length)
+    const top = squash(sorted[0].name)
+    if (sorted.slice(1).every((x) => top.includes(squash(x.name)) && top !== squash(x.name))) return sorted[0]
+  }
+  return null
 }

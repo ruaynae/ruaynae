@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { cleanDate, parseSlipReply, slipNote } from '../../src/lib/slip-ai/parse.ts'
+import { cleanDate, parseSlipReply, siteFromMemo, slipNote } from '../../src/lib/slip-ai/parse.ts'
 
 const TODAY = '2026-10-31'
 
@@ -9,7 +9,7 @@ test('สลิปโอนปกติ: ยอด วันที่ พ.ศ. �
     '{"is_receipt":true,"amount":1250.5,"date":"2569-10-30","payee":"ร้านวัสดุ ABC","ref":"016303123456ABC"}',
     TODAY,
   )
-  assert.deepEqual(r, { amount: 1250.5, date: '2026-10-30', payee: 'ร้านวัสดุ ABC', ref: '016303123456ABC' })
+  assert.deepEqual(r, { amount: 1250.5, date: '2026-10-30', payee: 'ร้านวัสดุ ABC', ref: '016303123456ABC', memo: null })
 })
 
 test('ห่อด้วย ```json และยอดเป็นข้อความมีคอมมา', () => {
@@ -49,7 +49,35 @@ test('เลขอ้างอิงที่มีอักขระแปล�
   assert.equal(parseSlipReply('{"amount":10,"ref":"0163 0312 3456"}', TODAY)?.ref, '016303123456')
 })
 
-test('หมายเหตุ: ผู้รับ · อ้างอิง', () => {
-  assert.equal(slipNote({ amount: 1, date: null, payee: 'นายสมชาย', ref: 'A1234' }), 'นายสมชาย · อ้างอิง A1234')
-  assert.equal(slipNote({ amount: 1, date: null, payee: null, ref: null }), '')
+test('หมายเหตุ: ข้อความในสลิป · ผู้รับ · อ้างอิง', () => {
+  assert.equal(slipNote({ amount: 1, date: null, payee: 'นายสมชาย', ref: 'A1234', memo: null }), 'นายสมชาย · อ้างอิง A1234')
+  assert.equal(
+    slipNote({ amount: 4427, date: null, payee: 'บริษัท คลังไฟฟ้า จำกัด', ref: '2026102813341224001728208', memo: 'รางไฟ รพ แมว' }),
+    'รางไฟ รพ แมว · บริษัท คลังไฟฟ้า จำกัด · อ้างอิง 2026102813341224001728208',
+  )
+  assert.equal(slipNote({ amount: 1, date: null, payee: null, ref: null, memo: null }), '')
+})
+
+test('สลิปกรุงเทพจริง (ตัวอย่างเจ้าของ): ข้อความ "บันทึก" ไปกับหมายเหตุ', () => {
+  const r = parseSlipReply(
+    '{"is_receipt":true,"amount":4427,"date":"2569-10-28","payee":"บริษัท คลังไฟฟ้า จำกัด","ref":"2026102813341224001728208","memo":"รางไฟ รพ แมว"}',
+    TODAY,
+  )
+  assert.equal(r?.date, '2026-10-28')
+  assert.equal(r?.memo, 'รางไฟ รพ แมว')
+})
+
+test('หาโครงการจากข้อความในสลิป', () => {
+  const sites = [
+    { id: 'a', name: 'รพ.แมว' },
+    { id: 'b', name: 'สำนักทะเบียน' },
+    { id: 'c', name: 'รพ' },
+    { id: 'd', name: 'ก' },
+  ]
+  assert.equal(siteFromMemo('รางไฟ รพ แมว', sites)?.id, 'a')
+  assert.equal(siteFromMemo('บัว สำนักทะเบียน', sites)?.id, 'b')
+  assert.equal(siteFromMemo('ค่าปูน', sites), null)
+  assert.equal(siteFromMemo(null, sites), null)
+  // ชื่อสองโครงการเท่ากันหลังตัดช่องว่าง = ไม่เดา
+  assert.equal(siteFromMemo('งาน รพ แมว', [{ id: 'x', name: 'รพ แมว' }, { id: 'y', name: 'รพ.แมว' }]), null)
 })
