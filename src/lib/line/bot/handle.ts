@@ -112,7 +112,9 @@ async function onText(turn: Turn, raw: string) {
   const body = raw.trim()
   if (body === 'ยกเลิก') {
     await setState(turn, 'idle')
-    return send(turn, [text(copy.cancelled, menuItems())])
+    // ทิ้งคิวสลิปด้วย · ยังไม่ได้รัน migration ของคิว = ไม่มีอะไรให้ทิ้ง
+    const dropped = await rpc<number>('bot_slip_clear', { p_line_user: turn.lineUserId }).catch(() => 0)
+    return send(turn, [text(dropped > 0 ? copy.cancelledQueue(dropped) : copy.cancelled, menuItems())])
   }
   switch (turn.session.state) {
     case 'apr_reason':
