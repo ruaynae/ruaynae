@@ -6,7 +6,9 @@ import { joinNote, siteFromMemo, slipNote, type SlipRead } from '@/lib/slip-ai/p
 import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { rpc, send, sessionGet, setState } from '../api'
 import { copy, dbErrorText } from '../copy'
-import { bubble, carousel, choices, data, matchByName, menuItems, text, type QuickItem } from '../messages'
+import type { LineMessage } from '@/lib/line/client'
+import { slipPreviewUrl } from '@/lib/line/slip-preview'
+import { bubble, carousel, choices, data, flex, matchByName, menuItems, text, type QuickItem } from '../messages'
 import { attachToTransaction, storeLineImage } from '../photo'
 import type { Turn } from '../types'
 import { addDays, baht, isDate, parseAmountNote, today, thaiDate } from '../util'
@@ -116,10 +118,20 @@ export async function addPhoto(turn: Turn, messageId: string, ownerProfileId: st
 
 /** ปุ่มตอบด่วนระหว่างรอยืนยันยอดจากสลิป · มีคิว = "ข้ามใบนี้" + "ยกเลิกทั้งหมด" */
 function aiItems(p: Payload): QuickItem[] {
+  const i = slipId(p)
   const tail: QuickItem[] = (p.queueLeft ?? 0) > 0
-    ? [{ label: copy.exp.skip, data: data({ a: 'xcx' }) }, { label: copy.exp.cancelAll, text: 'ยกเลิก' }]
+    ? [{ label: copy.exp.skip, data: data({ a: 'xcx', i }) }, { label: copy.exp.cancelAll, text: 'ยกเลิก' }]
     : [cancelItem]
-  return p.aiAmount !== undefined ? [{ label: copy.exp.aiYes(baht(p.aiAmount)), data: data({ a: 'xa' }) }, ...tail] : tail
+  return p.aiAmount !== undefined ? [{ label: copy.exp.aiYes(baht(p.aiAmount)), data: data({ a: 'xa', i }) }, ...tail] : tail
+}
+
+/**
+ * รหัสสั้นของสลิปใบปัจจุบัน (ส่วนต้นของ uuid ในชื่อไฟล์) ผูกไว้กับปุ่ม
+ * 🔴 ปุ่มบนการ์ดเก่ายังกดได้เสมอ — ไม่ผูกรหัส = กด "ใช่ ฿869" บนการ์ดเก่า แต่ไปยืนยันยอดของใบที่กำลังทำอยู่
+ */
+function slipId(p: Payload): string {
+  const k = p.slips[0]?.objectKey ?? ''
+  return k.replace(/^slips\//, '').slice(0, 12)
 }
 
 /** บรรทัดที่ AI อ่านได้ (ไม่มีหัว/คำถาม) */
@@ -136,14 +148,53 @@ function readLines(read: SlipRead, dup: boolean): string[] {
 }
 
 /** ข้อความเสนอยอดของใบปัจจุบัน (ใช้ทั้งตอนรับรูป และตอนสลิปออกจากคิว) */
-function offerMessage(p: Payload, head: string) {
+function offerMessage(p: Payload, head: string): LineMessage {
   const left = p.queueLeft ?? 0
-  const lines = [
-    head + (left > 0 ? ` · ในคิวอีก ${left} ใบ` : ''),
-    ...(p.aiLines ?? []),
-    copy.exp.aiAsk(baht(p.aiAmount ?? 0)),
+  const headLine = head + (left > 0 ? ` · ในคิวอีก ${left} ใบ` : '')
+  const amount = baht(p.aiAmount ?? 0)
+  const img = slipPreviewUrl(p.slips[0]?.objectKey)
+  if (!img) {
+    // ยังไม่รู้ที่อยู่เว็บ/ไม่มีกุญแจ → ข้อความล้วนแบบเดิม (ใช้งานได้ แค่ไม่มีรูปในการ์ด)
+    return text([headLine, ...(p.aiLines ?? []), copy.exp.aiAsk(amount)].join('\n'), aiItems(p))
+  }
+
+  // การ์ดที่มีรูปสลิปอยู่ในตัว (เจ้าของแจ้ง 31 ต.ค. 2569: ต้องเลื่อนขึ้นลงหาสลิปทุกใบ)
+  // ปุ่มอยู่ในการ์ด ไม่หายเมื่อมีข้อความใหม่ตามมา (ต่างจากปุ่มตอบด่วน)
+  const i = slipId(p)
+  const lines = (p.aiLines ?? []).filter((l) => !l.startsWith('ยอด '))
+  const buttons = [
+    { type: 'button', style: 'primary', height: 'sm',
+      action: { type: 'postback', label: copy.exp.aiYes(amount).slice(0, 20), data: data({ a: 'xa', i }), displayText: copy.exp.aiYes(amount) } },
+    ...(left > 0
+      ? [
+          { type: 'button', style: 'secondary', height: 'sm',
+            action: { type: 'postback', label: copy.exp.skip, data: data({ a: 'xcx', i }), displayText: copy.exp.skip } },
+          { type: 'button', style: 'secondary', height: 'sm',
+            action: { type: 'message', label: copy.exp.cancelAll, text: 'ยกเลิก' } },
+        ]
+      : [{ type: 'button', style: 'secondary', height: 'sm', action: { type: 'message', label: copy.exp.cancel, text: 'ยกเลิก' } }]),
   ]
-  return text(lines.join('\n'), aiItems(p))
+  return {
+    ...flex(`${headLine} · ${amount}`, {
+      type: 'bubble',
+      size: 'mega',
+      hero: {
+        type: 'image', url: img, size: 'full', aspectRatio: '3:4', aspectMode: 'fit',
+        backgroundColor: '#E2E8F0', action: { type: 'uri', label: 'ดูรูปเต็ม', uri: img },
+      },
+      body: {
+        type: 'box', layout: 'vertical', spacing: 'sm',
+        contents: [
+          { type: 'text', text: headLine.slice(0, 80), size: 'xs', color: '#64748B', wrap: true },
+          { type: 'text', text: amount, size: 'xxl', weight: 'bold', color: '#0F172A' },
+          ...lines.map((l) => ({ type: 'text', text: l.slice(0, 160), size: 'sm', wrap: true })),
+          { type: 'text', text: copy.exp.aiCardHint, size: 'xs', color: '#64748B', wrap: true },
+        ],
+      },
+      footer: { type: 'box', layout: 'vertical', spacing: 'sm', contents: buttons },
+    }),
+    quickReply: text('', aiItems(p)).quickReply,
+  }
 }
 
 /**
@@ -182,12 +233,11 @@ async function takeSlip(turn: Turn, slip: Slip, read: SlipRead): Promise<boolean
       await send(turn, [offerMessage(p, copy.exp.aiHead(took.photos ?? p.slips.length))])
       return true
     case 'queued': {
-      // 🔴 ปุ่มตอบด่วนของ LINE โชว์เฉพาะข้อความล่าสุด — ข้อความ "เข้าคิวแล้ว" ที่มาทีหลังจะกลบปุ่ม "ใช่ ฿…"
-      //    ของใบที่กำลังทำ (เจ้าของแจ้ง 31 ต.ค. 2569) → ทุกข้อความต้องพกปุ่มของใบปัจจุบันไปด้วย
+      // ตอบเฉพาะใบแรกที่เข้าคิว — ส่ง 10 รูปแล้วได้ "เข้าคิวแล้ว" 9 ข้อความ = แชทยาวโดยไม่ได้อะไร (เจ้าของแจ้ง 31 ต.ค. 2569)
+      // 🔴 ปุ่มตอบด่วนโชว์เฉพาะข้อความล่าสุด → ข้อความนี้พกปุ่มของใบที่กำลังทำไปด้วย (ปุ่มบนการ์ดก็ยังอยู่)
+      if ((took.position ?? took.queued) > 1) return true
       const waiting = turn.session.state === 'exp_amount' && p.aiAmount !== undefined
-      const body = copy.exp.queued(took.position ?? took.queued, baht(read.amount)) +
-        (waiting ? `\n${copy.exp.currentHint(baht(p.aiAmount ?? 0))}` : '')
-      await send(turn, [text(body, waiting ? aiItems({ ...p, queueLeft: took.queued }) : [])])
+      await send(turn, [text(copy.exp.queuedFirst, waiting ? aiItems({ ...p, queueLeft: took.queued }) : [])])
       return true
     }
     case 'attached':
@@ -262,11 +312,12 @@ async function offerAiRead(turn: Turn, res: SlipAiResult, count: number): Promis
 }
 
 /** เจ้าของกด "ใช่ ฿…" — ใช้ยอดที่ AI อ่านได้ */
-export async function useAiAmount(turn: Turn) {
+export async function useAiAmount(turn: Turn, id?: string) {
   const p = payloadOf(turn)
   if (turn.session.state !== 'exp_amount' || p.aiAmount === undefined) {
     return send(turn, [text(copy.expired, menuItems())])
   }
+  if (id && id !== slipId(p)) return send(turn, [text(copy.exp.otherSlip), offerMessage(p, copy.exp.nowHead)])
   await setState(turn, 'exp_cat', { ...p, amount: p.aiAmount, ...(p.aiNote ? { note: p.aiNote } : {}) })
   return askCategory(turn)
 }
@@ -471,7 +522,11 @@ export async function toggleMethod(turn: Turn) {
 }
 
 /** ปุ่ม "ยกเลิก"/"ข้ามใบนี้" ของรายจ่าย — ทิ้งใบปัจจุบัน แล้วขึ้นใบถัดไปในคิว (ถ้ามี) */
-export async function cancel(turn: Turn) {
+export async function cancel(turn: Turn, id?: string) {
+  // ปุ่ม "ข้ามใบนี้" บนการ์ดเก่า → ไม่ข้ามใบที่กำลังทำอยู่
+  if (id && turn.session.state === 'exp_amount' && id !== slipId(payloadOf(turn))) {
+    return send(turn, [text(copy.exp.otherSlip), offerMessage(payloadOf(turn), copy.exp.nowHead)])
+  }
   await setState(turn, 'idle')
   const next = await nextSlip(turn)
   if (next) return send(turn, [text(copy.exp.skipped), next])

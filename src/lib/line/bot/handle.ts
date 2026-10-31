@@ -82,7 +82,7 @@ async function onPostback(turn: Turn, ev: NonNullable<LineEvent['postback']>) {
     case 'alc':
       return allowance.cancel(turn)
     case 'xa':
-      return expense.useAiAmount(turn)
+      return expense.useAiAmount(turn, d.i)
     case 'xc':
       return expense.pickCategory(turn, d.c ?? '')
     case 'xs':
@@ -94,7 +94,7 @@ async function onPostback(turn: Turn, ev: NonNullable<LineEvent['postback']>) {
     case 'xok':
       return expense.save(turn)
     case 'xcx':
-      return expense.cancel(turn)
+      return expense.cancel(turn, d.i)
     case 'xw':
       return expense.askWho(turn)
     case 'xe':
