@@ -29,8 +29,67 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: เทสต์สูตร (node:test)
         run: npm test
-      - name: tsc · import ฝั่ง client · สี · build · คลาสสี
-        run: npm run gate
+      # แยกขั้นของ npm run gate ให้รู้ว่าพังตรงไหน
+      - name: tsc
+        shell: bash
+        run: |
+          set +e
+          npm run typecheck > out.txt 2>&1; code=$?
+          cat out.txt
+          # ส่งท้ายผลลัพธ์เป็น annotation — อ่านได้จากหน้า PR โดยไม่ต้องเปิด log
+          if [ $code -ne 0 ]; then
+            msg=$(tail -n 40 out.txt | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=tsc::$msg"
+          fi
+          exit $code
+      - name: import ฝั่ง client
+        shell: bash
+        run: |
+          set +e
+          npm run verify:boundary > out.txt 2>&1; code=$?
+          cat out.txt
+          # ส่งท้ายผลลัพธ์เป็น annotation — อ่านได้จากหน้า PR โดยไม่ต้องเปิด log
+          if [ $code -ne 0 ]; then
+            msg=$(tail -n 40 out.txt | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=import ฝั่ง client::$msg"
+          fi
+          exit $code
+      - name: สีผ่านเกณฑ์
+        shell: bash
+        run: |
+          set +e
+          npm run verify:contrast > out.txt 2>&1; code=$?
+          cat out.txt
+          # ส่งท้ายผลลัพธ์เป็น annotation — อ่านได้จากหน้า PR โดยไม่ต้องเปิด log
+          if [ $code -ne 0 ]; then
+            msg=$(tail -n 40 out.txt | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=สีผ่านเกณฑ์::$msg"
+          fi
+          exit $code
+      - name: next build
+        shell: bash
+        run: |
+          set +e
+          npm run build > out.txt 2>&1; code=$?
+          cat out.txt
+          # ส่งท้ายผลลัพธ์เป็น annotation — อ่านได้จากหน้า PR โดยไม่ต้องเปิด log
+          if [ $code -ne 0 ]; then
+            msg=$(tail -n 40 out.txt | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=next build::$msg"
+          fi
+          exit $code
+      - name: คลาสสีที่ build ออกมา
+        shell: bash
+        run: |
+          set +e
+          npm run verify:tokens > out.txt 2>&1; code=$?
+          cat out.txt
+          # ส่งท้ายผลลัพธ์เป็น annotation — อ่านได้จากหน้า PR โดยไม่ต้องเปิด log
+          if [ $code -ne 0 ]; then
+            msg=$(tail -n 40 out.txt | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=คลาสสีที่ build ออกมา::$msg"
+          fi
+          exit $code
       - name: eslint (ยังไม่บังคับ)
         run: npm run lint
         continue-on-error: true
