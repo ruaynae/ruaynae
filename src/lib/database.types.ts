@@ -2387,6 +2387,9 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _slip_ai_key: { Args: never; Returns: string }
+      set_slip_ai_key: { Args: { p_key: string }; Returns: undefined }
+      slip_ai_key_status: { Args: never; Returns: Json }
       _loyverse_token: { Args: never; Returns: string }
       _bot_as: { Args: { p_line_user: string }; Returns: string }
       _line_key: { Args: { p_name: string }; Returns: string }

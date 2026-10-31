@@ -81,6 +81,8 @@ async function onPostback(turn: Turn, ev: NonNullable<LineEvent['postback']>) {
       return allowance.confirmGive(turn)
     case 'alc':
       return allowance.cancel(turn)
+    case 'xa':
+      return expense.useAiAmount(turn)
     case 'xc':
       return expense.pickCategory(turn, d.c ?? '')
     case 'xs':

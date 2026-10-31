@@ -13,8 +13,11 @@ import { objectKey, r2, r2Bucket } from '@/lib/r2'
 const INTENT_TTL_MS = 24 * 60 * 60 * 1000
 const MAX_INPUT_BYTES = 12 * 1024 * 1024
 
-/** ดึงรูปจาก LINE → WebP 1600 + thumb 320 → R2 · จดเจตนาอัปไว้ให้ตัวกวาดรู้ว่ามีเจ้าของ */
-export async function storeLineImage(messageId: string, ownerProfileId: string): Promise<Slip> {
+/**
+ * ดึงรูปจาก LINE → WebP 1600 + thumb 320 → R2 · จดเจตนาอัปไว้ให้ตัวกวาดรู้ว่ามีเจ้าของ
+ * คืนไบต์รูปเต็มที่บีบแล้วด้วย ให้ตัวอ่านสลิปใช้ต่อโดยไม่ต้องดึงจาก LINE ซ้ำ
+ */
+export async function storeLineImage(messageId: string, ownerProfileId: string): Promise<{ slip: Slip; image: Buffer }> {
   const raw = await getContent(messageId)
   if (raw.byteLength > MAX_INPUT_BYTES) throw new Error('IMAGE_TOO_LARGE')
 
@@ -55,7 +58,7 @@ export async function storeLineImage(messageId: string, ownerProfileId: string):
       }),
     )
   await Promise.all([put(slip.objectKey, full), put(slip.thumbKey, thumb)])
-  return slip
+  return { slip, image: full }
 }
 
 /** ผูกรูปที่อัปแล้วเข้ากับรายการ · คืน true เมื่อสำเร็จครบ */
