@@ -1,0 +1,36 @@
+name: ci
+
+# ตรวจทุกครั้งที่ push เข้า main / เปิด PR (1 พ.ย. 2569 · แบบเดียวกับ Matador)
+#   เทสต์สูตร (node:test) → npm run gate (tsc · import ฝั่ง client · สี · build · คลาสสี)
+#   lint รายงานอย่างเดียวจนกว่าจะเคลียร์ของเดิมหมด
+# 🔴 ไม่แตะฐานข้อมูลจริง — สคริปต์ verify-*-db ยังต้องรันเองในเครื่องที่มี .env.local
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # ค่าหลอกให้ next build ผ่านโดยไม่ใช้ความลับจริง (build ไม่เรียกฐานข้อมูล)
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_dummy
+      SUPABASE_SECRET_KEY: sb_secret_ci_dummy
+      NEXT_PUBLIC_VAPID_PUBLIC_KEY: ci_dummy
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: เทสต์สูตร (node:test)
+        run: npm test
+      - name: tsc · import ฝั่ง client · สี · build · คลาสสี
+        run: npm run gate
+      - name: eslint (ยังไม่บังคับ)
+        run: npm run lint
+        continue-on-error: true

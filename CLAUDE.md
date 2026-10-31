@@ -774,6 +774,10 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
 
 ตรวจทุกครั้งทั้ง **โหมดสว่างและมืด** และที่ความกว้าง **390 / 768 / 1440**
 
+**CI (1 พ.ย. 2569 · `.github/workflows/ci.yml`):** ทุก push เข้า main / PR รัน `npm test` (เทสต์สูตร `tests/unit/*.test.mjs`
+ด้วย `node:test` · ไฟล์ที่เทสต์ต้องเป็นไฟล์ล้วนไม่มี import alias `@/`) → `npm run gate` (ค่า env หลอกตอน build) → `eslint` แบบไม่บังคับ
+· Vercel ไม่รันเทสต์สูตร → ดูผลที่แท็บ Actions / เครื่องหมายบน PR ก่อน merge · CI **ไม่แตะฐานข้อมูล** — `verify-*-db` ยังรันเองตามเดิม
+
 ## 17. กับดักที่เจอแล้ว
 
 > เจอใหม่เติมทันที พร้อมอาการที่เห็นจริง ไม่ใช่แค่ชื่อปัญหา
