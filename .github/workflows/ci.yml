@@ -99,4 +99,14 @@ jobs:
           fi
           exit $code
       - name: eslint
-        run: npm run lint
+        shell: bash
+        run: |
+          set +e
+          # --quiet = เฉพาะ error (warning ไม่ทำให้แดง และไม่ไปเบียดที่ annotation)
+          npx eslint --quiet > out.txt 2>&1; code=$?
+          cat out.txt
+          if [ $code -ne 0 ]; then
+            msg=$(tail -n 60 out.txt | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=eslint::$msg"
+          fi
+          exit $code
