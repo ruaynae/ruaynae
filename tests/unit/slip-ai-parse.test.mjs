@@ -100,3 +100,15 @@ test('หมายเหตุที่พิมพ์เองต่อหน�
   assert.equal(joinNote('', 'ไทวัสดุ'), 'ไทวัสดุ')
   assert.equal(joinNote('ค่าปูน', null), 'ค่าปูน')
 })
+
+test('ชื่อโครงการตรงบางส่วน (สลิปจริงของเจ้าของ: "เหล็ก ทต เกาะคา")', () => {
+  const sites = [
+    { id: 'k', name: 'ขยายไหล่ทาง ทต.เกาะคา' },
+    { id: 'm', name: 'รพ.แมว' },
+  ]
+  assert.equal(siteFromMemo('เหล็ก ทต เกาะคา', sites)?.id, 'k')
+  // สองโครงการใน ทต. เดียวกัน = ไม่เดา
+  assert.equal(siteFromMemo('เหล็ก ทต เกาะคา', [...sites, { id: 'k2', name: 'ถนน คสล. ทต.เกาะคา' }]), null)
+  // ส่วนที่ตรงสั้นเกินไป = ไม่เดา
+  assert.equal(siteFromMemo('ค่า รพ', sites), null)
+})

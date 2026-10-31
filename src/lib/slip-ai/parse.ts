@@ -153,6 +153,30 @@ export function siteFromMemo<T extends { id: string; name: string }>(memo: strin
     const sorted = [...hits].sort((a, b) => squash(b.name).length - squash(a.name).length)
     const top = squash(sorted[0].name)
     if (sorted.slice(1).every((x) => top.includes(squash(x.name)) && top !== squash(x.name))) return sorted[0]
+    return null
   }
+  // ไม่มีชื่อเต็มในข้อความ → ดูส่วนที่ตรงกันยาวที่สุด (เช่น "เหล็ก ทต เกาะคา" กับ "ขยายไหล่ทาง ทต.เกาะคา" ตรงกัน "ทตเกาะคา")
+  // ต้องยาว ≥ 6 ตัว และชนะโครงการอื่นชัดเจน (≥ 2 ตัว) — สองโครงการใน ทต. เดียวกัน = ไม่เดา
+  const scored = sites
+    .map((x) => ({ x, n: longestCommon(m, squash(x.name)) }))
+    .sort((a, b) => b.n - a.n)
+  const [best, second] = scored
+  if (best && best.n >= 6 && (!second || best.n - second.n >= 2)) return best.x
   return null
+}
+
+/** ความยาวของข้อความย่อยที่ต่อเนื่องและตรงกันยาวที่สุด (ข้อความสั้น — คิดตรง ๆ ได้) */
+function longestCommon(a: string, b: string): number {
+  let best = 0
+  const prev = new Array(b.length + 1).fill(0)
+  for (let i = 1; i <= a.length; i += 1) {
+    let diag = 0
+    for (let j = 1; j <= b.length; j += 1) {
+      const keep = prev[j]
+      prev[j] = a[i - 1] === b[j - 1] ? diag + 1 : 0
+      if (prev[j] > best) best = prev[j]
+      diag = keep
+    }
+  }
+  return best
 }
