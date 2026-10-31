@@ -41,7 +41,18 @@ async function slipAiKey(): Promise<string | null> {
   return value
 }
 
-type Reply = { status: number; text: string | null }
+type Reply = { status: number; text: string | null; reason?: string }
+
+/** คำตอบ error ของ Google → เหตุผลสั้น ๆ (ไม่มีคีย์ปน) · ไว้แยก "คีย์ผิด" ออกจาก "คำขอผิด" และเขียน log */
+async function errorReason(res: Response): Promise<string> {
+  const b = (await res.json().catch(() => null)) as {
+    error?: { status?: string; message?: string; details?: { reason?: string }[] }
+  } | null
+  const reason = b?.error?.details?.find((d) => d.reason)?.reason ?? b?.error?.status ?? ''
+  return `${reason} ${(b?.error?.message ?? '').slice(0, 160)}`.trim()
+}
+
+const KEY_PROBLEM = /API_KEY|PERMISSION_DENIED|UNAUTHENTICATED|SERVICE_DISABLED|BILLING/i
 
 async function call(model: string, key: string, image: Buffer, mime: string): Promise<Reply> {
   const res = await fetch(`${API}/${model}:generateContent`, {
@@ -54,7 +65,7 @@ async function call(model: string, key: string, image: Buffer, mime: string): Pr
     cache: 'no-store',
     signal: AbortSignal.timeout(TIMEOUT_MS),
   })
-  if (!res.ok) return { status: res.status, text: null }
+  if (!res.ok) return { status: res.status, text: null, reason: await errorReason(res) }
   const body = (await res.json().catch(() => null)) as {
     candidates?: { content?: { parts?: { text?: string }[] } }[]
   } | null
@@ -72,12 +83,9 @@ export async function readSlip(image: Buffer, mime: string, today: string): Prom
       const r = await call(model, key, image, mime)
       if (r.status === 404) continue // ชื่อรุ่นถูกเลิกใช้ → ลองตัวถัดไป
       if (r.status === 429) return { ok: false, reason: 'QUOTA' }
-      if (r.status === 400 || r.status === 401 || r.status === 403) {
-        console.error('[slip-ai] คีย์ถูกปฏิเสธหรือคำขอผิด', r.status, model)
-        return { ok: false, reason: 'KEY_REJECTED' }
-      }
       if (r.text === null) {
-        console.error('[slip-ai] ตอบผิดพลาด', r.status, model)
+        console.error('[slip-ai] Google ตอบผิดพลาด', r.status, model, r.reason ?? '')
+        if (r.status === 401 || r.status === 403 || KEY_PROBLEM.test(r.reason ?? '')) return { ok: false, reason: 'KEY_REJECTED' }
         return { ok: false, reason: 'ERROR' }
       }
       const read = parseSlipReply(r.text, today)
@@ -108,7 +116,9 @@ export async function pingSlipAi(): Promise<{ ok: true; model: string } | { ok: 
       if (res.status === 404) continue
       if (res.ok) return { ok: true, model }
       if (res.status === 429) return { ok: false, reason: 'QUOTA' }
-      if (res.status === 400 || res.status === 401 || res.status === 403) return { ok: false, reason: 'KEY_REJECTED' }
+      const reason = await errorReason(res)
+      console.error('[slip-ai] ทดสอบคีย์ไม่ผ่าน', res.status, model, reason)
+      if (res.status === 401 || res.status === 403 || KEY_PROBLEM.test(reason)) return { ok: false, reason: 'KEY_REJECTED' }
       return { ok: false, reason: 'ERROR' }
     }
     return { ok: false, reason: 'ERROR' }

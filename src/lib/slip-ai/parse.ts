@@ -16,17 +16,23 @@ export type SlipRead = {
   ref: string | null
   /** ข้อความที่คนโอนพิมพ์ไว้ในสลิป (ช่อง "บันทึก"/"หมายเหตุ") เช่น "รางไฟ รพ แมว" */
   memo: string | null
+  /** ชื่อสินค้าในบิล/หน้าคำสั่งซื้อออนไลน์ (31 ต.ค. 2569 · เจ้าของส่งหน้าจอคำสั่งซื้อไทวัสดุ) */
+  items: string | null
 }
 
 /** คำสั่งที่ส่งให้ AI — ขอ JSON ล้วนตามรูปนี้ */
-export const SLIP_PROMPT = `รูปนี้คือสลิปโอนเงิน ใบเสร็จ หรือบิลค่าใช้จ่ายของบริษัทรับเหมาก่อสร้างในประเทศไทย
+export const SLIP_PROMPT = `รูปนี้คือหลักฐานการจ่ายเงินของบริษัทรับเหมาก่อสร้างในประเทศไทย อาจเป็น สลิปโอนเงิน ใบเสร็จ บิลร้านค้า
+หรือภาพหน้าจอคำสั่งซื้อออนไลน์ (เช่น แอปไทวัสดุ โฮมโปร Shopee Lazada)
 อ่านแล้วตอบเป็น JSON อย่างเดียว ห้ามมีข้อความอื่น ตามรูปนี้:
-{"is_receipt": true/false, "amount": ตัวเลขยอดที่จ่ายจริง (ยอดรวมสุทธิ ไม่ใช่ราคาต่อชิ้น ไม่ใส่คอมมา) หรือ null,
- "date": "YYYY-MM-DD" วันที่จ่ายตามที่พิมพ์ในรูป (ถ้าเป็นปี พ.ศ. ให้คงเป็น พ.ศ. ตามที่เห็น) หรือ null,
- "payee": ชื่อผู้รับเงินหรือชื่อร้านปลายทาง (ฝั่ง "ไปที่"/ผู้รับ ไม่ใช่ชื่อเจ้าของบัญชีที่โอนออก) หรือ null,
- "ref": เลขที่รายการ/เลขอ้างอิงของธนาคาร (ถ้ามีหลายเลข ให้เลือกเลขที่อ้างอิงของรายการที่ยาวที่สุด) หรือ null,
- "memo": ข้อความที่ผู้โอนพิมพ์ไว้เอง ในช่อง "บันทึก" "หมายเหตุ" "บันทึกช่วยจำ" หรือกล่องข้อความท้ายสลิป ตามที่เห็นทุกตัวอักษร หรือ null}
-ถ้ารูปไม่ใช่สลิปหรือบิล ให้ is_receipt เป็น false · ถ้าไม่แน่ใจช่องไหนให้ใส่ null อย่าเดา`
+{"is_receipt": true/false,
+ "amount": ตัวเลขยอดที่จ่ายจริงทั้งใบ (ยอดชำระ/ยอดสุทธิ ไม่ใช่ราคาต่อชิ้น ไม่ใส่คอมมา) หรือ null
+   — ถ้าในรูปมีหลายยอดที่ขัดกัน ให้ใช้ยอด "ชำระ/สุทธิ/ยอดรวม" ที่ตรงกับผลรวมราคาสินค้า ถ้ายังไม่แน่ใจให้ใช้ผลรวมราคาสินค้าทุกบรรทัด,
+ "date": "YYYY-MM-DD" วันที่จ่าย/วันที่สั่งซื้อตามที่พิมพ์ในรูป (ปี พ.ศ. ให้คงเป็น พ.ศ. ตามที่เห็น · รูปแบบ วัน/เดือน/ปี ให้แปลงเป็น ปี-เดือน-วัน) หรือ null,
+ "payee": ชื่อผู้รับเงินหรือชื่อร้าน/สาขาที่ขาย (ฝั่ง "ไปที่"/ผู้รับ ไม่ใช่ชื่อเจ้าของบัญชีที่โอนออก) หรือ null,
+ "ref": เลขอ้างอิงของธนาคาร หรือเลขที่ใบเสร็จ/เลขที่คำสั่งซื้อ (ถ้ามีหลายเลข เลือกเลขอ้างอิงรายการที่ยาวที่สุด) หรือ null,
+ "memo": ข้อความที่ผู้จ่ายพิมพ์ไว้เอง ในช่อง "บันทึก" "หมายเหตุ" "บันทึกช่วยจำ" หรือกล่องข้อความท้ายสลิป ตามที่เห็นทุกตัวอักษร หรือ null,
+ "items": ชื่อสินค้าที่ซื้อ สั้น ๆ (ตัดรหัสสินค้าออก) คั่นด้วย ", " ถ้ามีหลายรายการ ใส่ไม่เกิน 3 รายการแรก หรือ null ถ้าเป็นสลิปโอนที่ไม่มีชื่อสินค้า}
+ถ้ารูปไม่ใช่หลักฐานการจ่ายเงิน ให้ is_receipt เป็น false · ถ้าไม่แน่ใจช่องไหนให้ใส่ null อย่าเดา`
 
 const MAX_AMOUNT = 99_999_999
 
@@ -60,10 +66,12 @@ function isRealDate(y: number, m: number, d: number) {
 export function cleanDate(v: unknown, today: string, maxAgeDays = 400): string | null {
   if (typeof v !== 'string') return null
   const m = v.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
-  if (!m) return null
-  let y = Number(m[1])
-  const mo = Number(m[2])
-  const d = Number(m[3])
+  // เผื่อ AI ส่งรูปแบบไทย วัน/เดือน/ปี มา (เช่น 13/10/2026) — ปีต้องมี 4 หลักเท่านั้น
+  const dmy = m ? null : v.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+  if (!m && !dmy) return null
+  let y = Number(m ? m[1] : dmy![3])
+  const mo = Number(m ? m[2] : dmy![2])
+  const d = Number(m ? m[3] : dmy![1])
   if (y >= 2400 && y <= 2799) y -= 543
   if (!isRealDate(y, mo, d)) return null
   const iso = `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`
@@ -103,6 +111,7 @@ export function parseSlipReply(text: string, today: string): SlipRead | null {
     date: cleanDate(r.date, today),
     payee: cleanText(r.payee, 60),
     memo: cleanText(r.memo, 100),
+    items: cleanText(r.items, 120),
     ref: ref && /^[\w-]{4,40}$/.test(ref.replace(/\s/g, '')) ? ref.replace(/\s/g, '') : null,
   }
 }
@@ -112,7 +121,16 @@ export function parseSlipReply(text: string, today: string): SlipRead | null {
  * ข้อความที่เจ้าของพิมพ์ไว้ในสลิปมาก่อน เพราะเป็นชื่อของที่ซื้อ/โครงการที่เจ้าของตั้งใจจด
  */
 export function slipNote(r: SlipRead): string {
-  return [r.memo, r.payee, r.ref ? `อ้างอิง ${r.ref}` : null].filter(Boolean).join(' · ').slice(0, 200)
+  return [r.memo, r.items, r.payee, r.ref ? `อ้างอิง ${r.ref}` : null].filter(Boolean).join(' · ').slice(0, 200)
+}
+
+/** หมายเหตุที่เจ้าของพิมพ์เอง + สิ่งที่ AI อ่านได้ (ไม่ทิ้งของ AI · ≤ 200 ตัว) */
+export function joinNote(typed: string | null | undefined, ai: string | null | undefined): string {
+  const t = (typed ?? '').trim()
+  const a = (ai ?? '').trim()
+  if (!t) return a.slice(0, 200)
+  if (!a || a.includes(t)) return (a || t).slice(0, 200)
+  return `${t} · ${a}`.slice(0, 200)
 }
 
 const squash = (v: string) => v.toLowerCase().replace(/[\s.\-_/()]/g, '')
@@ -135,6 +153,30 @@ export function siteFromMemo<T extends { id: string; name: string }>(memo: strin
     const sorted = [...hits].sort((a, b) => squash(b.name).length - squash(a.name).length)
     const top = squash(sorted[0].name)
     if (sorted.slice(1).every((x) => top.includes(squash(x.name)) && top !== squash(x.name))) return sorted[0]
+    return null
   }
+  // ไม่มีชื่อเต็มในข้อความ → ดูส่วนที่ตรงกันยาวที่สุด (เช่น "เหล็ก ทต เกาะคา" กับ "ขยายไหล่ทาง ทต.เกาะคา" ตรงกัน "ทตเกาะคา")
+  // ต้องยาว ≥ 6 ตัว และชนะโครงการอื่นชัดเจน (≥ 2 ตัว) — สองโครงการใน ทต. เดียวกัน = ไม่เดา
+  const scored = sites
+    .map((x) => ({ x, n: longestCommon(m, squash(x.name)) }))
+    .sort((a, b) => b.n - a.n)
+  const [best, second] = scored
+  if (best && best.n >= 6 && (!second || best.n - second.n >= 2)) return best.x
   return null
+}
+
+/** ความยาวของข้อความย่อยที่ต่อเนื่องและตรงกันยาวที่สุด (ข้อความสั้น — คิดตรง ๆ ได้) */
+function longestCommon(a: string, b: string): number {
+  let best = 0
+  const prev = new Array(b.length + 1).fill(0)
+  for (let i = 1; i <= a.length; i += 1) {
+    let diag = 0
+    for (let j = 1; j <= b.length; j += 1) {
+      const keep = prev[j]
+      prev[j] = a[i - 1] === b[j - 1] ? diag + 1 : 0
+      if (prev[j] > best) best = prev[j]
+      diag = keep
+    }
+  }
+  return best
 }
