@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { cleanDate, joinNote, parseSlipReply, siteFromMemo, slipNote } from '../../src/lib/slip-ai/parse.ts'
+import { cleanDate, joinNote, parseSlipReply, refDate, siteFromMemo, slipNote } from '../../src/lib/slip-ai/parse.ts'
 
 const TODAY = '2026-10-31'
 
@@ -43,7 +43,7 @@ test('วันที่: อนาคต/ไม่มีจริง/เก่�
   assert.equal(cleanDate(null, TODAY), null)
   assert.equal(cleanDate('31/10/2569', TODAY), '2026-10-31')
   assert.equal(cleanDate('13/10/2026', TODAY), '2026-10-13')
-  assert.equal(cleanDate('13/10/26', TODAY), null)
+  assert.equal(cleanDate('13/10/26', TODAY), null) // 2526 = เก่าเกิน
 })
 
 test('เลขอ้างอิงที่มีอักขระแปลก (อาจแทรก LIKE) ถูกทิ้ง · ช่องว่างถูกตัด', () => {
@@ -111,4 +111,20 @@ test('ชื่อโครงการตรงบางส่วน (สลิ
   assert.equal(siteFromMemo('เหล็ก ทต เกาะคา', [...sites, { id: 'k2', name: 'ถนน คสล. ทต.เกาะคา' }]), null)
   // ส่วนที่ตรงสั้นเกินไป = ไม่เดา
   assert.equal(siteFromMemo('ค่า รพ', sites), null)
+})
+
+test('ปีย่อ 2 หลักบนสลิปไทย (เจ้าของแจ้ง: "15 ต.ค. 69" ได้วันที่วันนี้)', () => {
+  assert.equal(cleanDate('69-10-15', TODAY), '2026-10-15')
+  assert.equal(cleanDate('2069-10-15', TODAY), '2026-10-15')
+  assert.equal(cleanDate('15/10/69', TODAY), '2026-10-15')
+  assert.equal(cleanDate('2569-10-15', TODAY), '2026-10-15')
+  assert.equal(cleanDate('2026-10-15', TODAY), '2026-10-15')
+})
+
+test('วันที่จากเลขอ้างอิงธนาคารเมื่ออ่านจากรูปไม่ได้', () => {
+  assert.equal(refDate('2026101511014924000742108', TODAY), '2026-10-15')
+  assert.equal(refDate('461720', TODAY), null)
+  assert.equal(refDate('2026123111014924000742108', TODAY), null) // อนาคต
+  const r = parseSlipReply('{"amount":1213,"date":"15 ต.ค. 69","ref":"2026101511014924000742108"}', TODAY)
+  assert.equal(r?.date, '2026-10-15')
 })

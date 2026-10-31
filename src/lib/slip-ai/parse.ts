@@ -27,7 +27,8 @@ export const SLIP_PROMPT = `รูปนี้คือหลักฐานก�
 {"is_receipt": true/false,
  "amount": ตัวเลขยอดที่จ่ายจริงทั้งใบ (ยอดชำระ/ยอดสุทธิ ไม่ใช่ราคาต่อชิ้น ไม่ใส่คอมมา) หรือ null
    — ถ้าในรูปมีหลายยอดที่ขัดกัน ให้ใช้ยอด "ชำระ/สุทธิ/ยอดรวม" ที่ตรงกับผลรวมราคาสินค้า ถ้ายังไม่แน่ใจให้ใช้ผลรวมราคาสินค้าทุกบรรทัด,
- "date": "YYYY-MM-DD" วันที่จ่าย/วันที่สั่งซื้อตามที่พิมพ์ในรูป (ปี พ.ศ. ให้คงเป็น พ.ศ. ตามที่เห็น · รูปแบบ วัน/เดือน/ปี ให้แปลงเป็น ปี-เดือน-วัน) หรือ null,
+ "date": "YYYY-MM-DD" วันที่จ่าย/วันที่สั่งซื้อตามที่พิมพ์ในรูป เป็นปี พ.ศ. 4 หลัก
+   (สลิปไทยมักเขียนปีย่อ 2 หลัก เช่น "15 ต.ค. 69" = "2569-10-15" · ปี ค.ศ. เช่น 13/10/2026 ให้คงเป็น "2026-10-13") หรือ null,
  "payee": ชื่อผู้รับเงินหรือชื่อร้าน/สาขาที่ขาย (ฝั่ง "ไปที่"/ผู้รับ ไม่ใช่ชื่อเจ้าของบัญชีที่โอนออก) หรือ null,
  "ref": เลขอ้างอิงของธนาคาร หรือเลขที่ใบเสร็จ/เลขที่คำสั่งซื้อ (ถ้ามีหลายเลข เลือกเลขอ้างอิงรายการที่ยาวที่สุด) หรือ null,
  "memo": ข้อความที่ผู้จ่ายพิมพ์ไว้เอง ในช่อง "บันทึก" "หมายเหตุ" "บันทึกช่วยจำ" หรือกล่องข้อความท้ายสลิป ตามที่เห็นทุกตัวอักษร หรือ null,
@@ -65,19 +66,33 @@ function isRealDate(y: number, m: number, d: number) {
  */
 export function cleanDate(v: unknown, today: string, maxAgeDays = 400): string | null {
   if (typeof v !== 'string') return null
-  const m = v.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
-  // เผื่อ AI ส่งรูปแบบไทย วัน/เดือน/ปี มา (เช่น 13/10/2026) — ปีต้องมี 4 หลักเท่านั้น
-  const dmy = m ? null : v.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+  const m = v.trim().match(/^(\d{2}|\d{4})-(\d{1,2})-(\d{1,2})/)
+  // เผื่อ AI ส่งรูปแบบไทย วัน/เดือน/ปี มา (เช่น 13/10/2026 · 15/10/69)
+  const dmy = m ? null : v.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})(?!\d)/)
   if (!m && !dmy) return null
   let y = Number(m ? m[1] : dmy![3])
   const mo = Number(m ? m[2] : dmy![2])
   const d = Number(m ? m[3] : dmy![1])
+  // ปีย่อ 2 หลักบนสลิปไทยเป็น พ.ศ. เสมอ ("15 ต.ค. 69" = 2569) · AI บางครั้งเติมเป็น 2069 → ถือเป็น พ.ศ. 2569 เช่นกัน
+  // (เจ้าของแจ้ง 31 ต.ค. 2569: สลิปกรุงเทพ "15 ต.ค. 69" ได้วันที่วันนี้แทน)
+  if (y < 100) y += 2500
+  else if (y >= 2040 && y <= 2099) y += 500
   if (y >= 2400 && y <= 2799) y -= 543
   if (!isRealDate(y, mo, d)) return null
   const iso = `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`
   if (iso > today) return null
   const age = (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${iso}T00:00:00Z`)) / 86_400_000
   return age <= maxAgeDays ? iso : null
+}
+
+/**
+ * วันที่จากเลขอ้างอิงของธนาคาร — สลิปกรุงเทพ/กสิกร ฯลฯ ขึ้นต้นเลขที่อ้างอิงด้วย YYYYMMDD ค.ศ.
+ * (เช่น 20261015110149… = 15 ต.ค. 2026) · ใช้เมื่ออ่านวันที่จากรูปไม่ได้เท่านั้น
+ */
+export function refDate(ref: unknown, today: string): string | null {
+  if (typeof ref !== 'string') return null
+  const m = ref.replace(/\s/g, '').match(/^(20\d{2})(\d{2})(\d{2})\d{6,}/)
+  return m ? cleanDate(`${m[1]}-${m[2]}-${m[3]}`, today, 120) : null
 }
 
 /** ดึง JSON ก้อนแรกออกจากข้อความ (เผื่อ AI ห่อด้วย ```json … ```) */
@@ -108,7 +123,7 @@ export function parseSlipReply(text: string, today: string): SlipRead | null {
   const ref = cleanText(r.ref, 40)
   return {
     amount,
-    date: cleanDate(r.date, today),
+    date: cleanDate(r.date, today) ?? refDate(r.ref, today),
     payee: cleanText(r.payee, 60),
     memo: cleanText(r.memo, 100),
     items: cleanText(r.items, 120),

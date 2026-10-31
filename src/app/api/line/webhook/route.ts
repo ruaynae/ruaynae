@@ -1,6 +1,7 @@
 import { after, NextResponse, type NextRequest } from 'next/server'
 import { clearLineKeys, lineSecret } from '@/lib/line/config'
 import { signatureOk } from '@/lib/line/signature'
+import { setPublicOrigin } from '@/lib/line/slip-preview'
 import { handleEvents } from '@/lib/line/bot/handle'
 import type { LineEvent } from '@/lib/line/bot/types'
 
@@ -39,6 +40,10 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'BAD_REQUEST' }, { status: 400 })
   }
+
+  // ที่อยู่เว็บสำหรับลิงก์รูปสลิปในการ์ด (LINE ดึงรูปจากเว็บเรา)
+  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host')
+  setPublicOrigin(host ? `https://${host}` : null)
 
   after(async () => {
     try {
