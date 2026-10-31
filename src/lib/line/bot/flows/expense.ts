@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Slip } from '@/lib/attachments'
 import { IMAGE, MAX_ATTACHMENTS } from '@/lib/constants'
 import { readSlip, type SlipAiResult } from '@/lib/slip-ai/gemini'
-import { siteFromMemo, slipNote } from '@/lib/slip-ai/parse'
+import { joinNote, siteFromMemo, slipNote } from '@/lib/slip-ai/parse'
 import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { rpc, send, sessionGet, setState } from '../api'
 import { copy, dbErrorText } from '../copy'
@@ -103,7 +103,8 @@ function aiItems(p: Payload): QuickItem[] {
 function aiFallback(res: SlipAiResult, count: number): string {
   // อ่านได้แต่ไม่ได้เสนอ = เจ้าของพิมพ์ยอดไปแล้วระหว่างรอ AI
   if (res.ok) return copy.exp.photoGotAmount(count)
-  if (res.reason === 'OFF' || res.reason === 'ERROR') return copy.exp.photoGot(count)
+  if (res.reason === 'OFF') return copy.exp.photoGot(count)
+  if (res.reason === 'ERROR') return copy.exp.aiError(count)
   if (res.reason === 'QUOTA') return copy.exp.aiQuota(count)
   if (res.reason === 'KEY_REJECTED') return copy.exp.aiKey(count)
   return copy.exp.aiUnreadable(count)
@@ -144,6 +145,7 @@ async function offerAiRead(turn: Turn, res: SlipAiResult, count: number): Promis
     `ยอด ${baht(read.amount)}`,
     ...(read.date ? [`วันที่ ${thaiDate(read.date)}`] : []),
     ...(read.payee ? [`ผู้รับ ${read.payee}`] : []),
+    ...(read.items ? [`สินค้า ${read.items}`] : []),
     ...(read.memo ? [`บันทึก ${read.memo}`] : []),
     ...(read.ref ? [`อ้างอิง ${read.ref}`] : []),
     ...(dup ? [copy.exp.aiDuplicate] : []),
@@ -195,10 +197,20 @@ export async function onText(turn: Turn, raw: string) {
 
 async function onAmount(turn: Turn, raw: string) {
   const hit = parseAmountNote(raw)
-  if (!hit) return send(turn, [text(copy.exp.badAmount, [cancelItem])])
+  if (!hit) {
+    // มียอดจากสลิปรออยู่ + พิมพ์ข้อความที่ไม่ใช่ตัวเลข = รายละเอียดเพิ่ม (เช่นชื่อโครงการ) ไม่ใช่ยอดผิด
+    const p0 = payloadOf(turn)
+    const extra = raw.trim().slice(0, 200)
+    if (p0.aiAmount !== undefined && extra) {
+      const next: Payload = { ...p0, aiNote: joinNote(extra, p0.aiNote), aiMemo: joinNote(extra, p0.aiMemo) }
+      await setState(turn, 'exp_amount', next)
+      return send(turn, [text(copy.exp.aiNoteAdded(next.aiNote ?? '', baht(p0.aiAmount)), aiItems(next))])
+    }
+    return send(turn, [text(copy.exp.badAmount, [cancelItem])])
+  }
   // พิมพ์ยอดเอง = ใช้ยอดที่พิมพ์ · หมายเหตุที่ไม่ได้พิมพ์ใช้ผู้รับ/เลขอ้างอิงจากสลิปแทน (ถ้ามี)
   const p = payloadOf(turn)
-  const note = hit.note || p.aiNote || ''
+  const note = joinNote(hit.note, p.aiNote)
   await setState(turn, 'exp_cat', { ...p, amount: hit.amount, ...(note ? { note } : {}) })
   return askCategory(turn)
 }
@@ -229,7 +241,8 @@ async function askSite(turn: Turn) {
   const { sites } = await options(turn)
   if (sites.length === 0) return enterConfirm(turn, null, null)
   // ข้อความในสลิปเอ่ยชื่อโครงการ = ยกโครงการนั้นขึ้นก่อน (ยังต้องแตะเลือกเอง — ไม่เดาแทนเจ้าของ)
-  const hint = siteFromMemo(payloadOf(turn).aiMemo, sites)
+  const pp = payloadOf(turn)
+  const hint = siteFromMemo([pp.aiMemo, pp.note].filter(Boolean).join(' '), sites)
   const ordered = hint ? [hint, ...sites.filter((s) => s.id !== hint.id)] : sites
   return send(turn, [
     text(hint ? copy.exp.pickSiteHint(hint.name) : copy.exp.pickSite, [cancelItem]),
