@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Slip } from '@/lib/attachments'
 import { IMAGE, MAX_ATTACHMENTS } from '@/lib/constants'
 import { readSlip, type SlipAiResult } from '@/lib/slip-ai/gemini'
-import { joinNote, siteFromMemo, slipNote } from '@/lib/slip-ai/parse'
+import { joinNote, siteFromMemo, slipNote, type SlipRead } from '@/lib/slip-ai/parse'
 import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { rpc, send, sessionGet, setState } from '../api'
 import { copy, dbErrorText } from '../copy'
@@ -39,7 +39,18 @@ type Payload = {
   aiNote?: string
   /** ข้อความที่พิมพ์ไว้ในสลิป — ใช้หาโครงการที่น่าจะใช่ตอนถามโครงการ */
   aiMemo?: string | null
+  /** เลขอ้างอิงของสลิปใบนี้ — รูปที่อ่านได้เลขเดียวกัน = รูปอีกมุมของใบเดิม (แนบเพิ่ม ไม่ใช่รายการใหม่) */
+  aiRef?: string | null
+  /** บรรทัดที่ AI อ่านได้ (ยอด · วันที่ · ผู้รับ …) เก็บไว้โชว์ซ้ำตอนสลิปออกจากคิว */
+  aiLines?: string[]
+  /** สลิปที่รออยู่ในคิว ณ ตอนที่ใบนี้ขึ้นมา (ใช้แค่เลือกป้ายปุ่ม — ตัวเลขจริงอยู่ในตาราง line_slip_queue) */
+  queueLeft?: number
 }
+
+/** ค่าที่ bot_slip_take ต้องการต่อสลิปหนึ่งใบ (ช่องเดียวกับ Payload) */
+type QueueItem = Pick<Payload, 'aiAmount' | 'aiDate' | 'aiNote' | 'aiMemo' | 'aiRef' | 'aiLines'> & { slip: Slip }
+type Took = { role: 'current' | 'queued' | 'attached' | 'full' | 'full_photos'; queued: number; photos?: number; position?: number }
+const MAX_QUEUE = 10
 
 const payloadOf = (turn: Turn): Payload => {
   const p = turn.session.payload as Partial<Payload>
@@ -52,12 +63,14 @@ const cancelItem: QuickItem = { label: copy.exp.cancel, text: 'ยกเลิ�
 
 /** กดเมนู "คีย์รายจ่าย" · ถ้าส่งรูปมาก่อนแล้วให้เก็บรูปไว้ */
 export async function startExpense(turn: Turn) {
+  // มีสลิปค้างในคิว (เช่นเซสชันหมดอายุไปก่อน) → ทำใบในคิวต่อ ไม่เริ่มใบเปล่า
+  if (!turn.session.state.startsWith('exp_')) {
+    const queued = await nextSlip(turn)
+    if (queued) return send(turn, [queued])
+  }
   const prev = turn.session.state === 'exp_amount' ? payloadOf(turn) : null
   const keep = prev?.slips ?? []
-  await setState(turn, 'exp_amount', {
-    slips: keep,
-    ...(prev?.aiAmount !== undefined ? { aiAmount: prev.aiAmount, aiDate: prev.aiDate ?? null, aiNote: prev.aiNote ?? '', aiMemo: prev.aiMemo ?? null } : {}),
-  })
+  await setState(turn, 'exp_amount', prev ? { ...prev } : { slips: [] })
   const head = keep.length ? `${copy.exp.photoGotAmount(keep.length)}\n` : ''
   return send(turn, [text(head + copy.exp.askAmount, [cancelItem])])
 }
@@ -71,6 +84,14 @@ export async function addPhoto(turn: Turn, messageId: string, ownerProfileId: st
     return send(turn, [text(copy.exp.photoFail)])
   }
   const { slip, image } = stored
+
+  // AI อ่านก่อน (ปิดอยู่ = ตอบทันทีโดยไม่เรียกใคร) · อ่านได้ = สลิปหนึ่งใบ → ใบปัจจุบันหรือเข้าคิว
+  const res = await readSlip(image, IMAGE.type, today())
+  if (res.ok) {
+    const done = await takeSlip(turn, slip, res.read)
+    if (done) return
+  }
+
   const r = await rpc<{ state: string; count: number; full: boolean; started: boolean }>('bot_session_photo', {
     p_line_user: turn.lineUserId,
     p_slip: slip,
@@ -84,7 +105,6 @@ export async function addPhoto(turn: Turn, messageId: string, ownerProfileId: st
   if (r.state === 'exp_amount') {
     // ยังไม่มียอดที่อ่านได้ = ลองให้ AI อ่านรูปนี้ (ปิดอยู่/อ่านไม่ได้ = ถามยอดแบบเดิม)
     if (payloadOf(turn).aiAmount === undefined) {
-      const res = await readSlip(image, IMAGE.type, today())
       if (await offerAiRead(turn, res, r.count)) return
       return send(turn, [text(aiFallback(res, r.count), [cancelItem])])
     }
@@ -93,11 +113,99 @@ export async function addPhoto(turn: Turn, messageId: string, ownerProfileId: st
   return send(turn, [text(copy.exp.photoGotAmount(r.count))])
 }
 
-/** ปุ่มตอบด่วนระหว่างรอยืนยันยอดจากสลิป */
+/** ปุ่มตอบด่วนระหว่างรอยืนยันยอดจากสลิป · มีคิว = "ข้ามใบนี้" + "ยกเลิกทั้งหมด" */
 function aiItems(p: Payload): QuickItem[] {
-  return p.aiAmount !== undefined
-    ? [{ label: copy.exp.aiYes(baht(p.aiAmount)), data: data({ a: 'xa' }) }, cancelItem]
+  const tail: QuickItem[] = (p.queueLeft ?? 0) > 0
+    ? [{ label: copy.exp.skip, data: data({ a: 'xcx' }) }, { label: copy.exp.cancelAll, text: 'ยกเลิก' }]
     : [cancelItem]
+  return p.aiAmount !== undefined ? [{ label: copy.exp.aiYes(baht(p.aiAmount)), data: data({ a: 'xa' }) }, ...tail] : tail
+}
+
+/** บรรทัดที่ AI อ่านได้ (ไม่มีหัว/คำถาม) */
+function readLines(read: SlipRead, dup: boolean): string[] {
+  return [
+    `ยอด ${baht(read.amount)}`,
+    ...(read.date ? [`วันที่ ${thaiDate(read.date)}`] : []),
+    ...(read.payee ? [`ผู้รับ ${read.payee}`] : []),
+    ...(read.items ? [`สินค้า ${read.items}`] : []),
+    ...(read.memo ? [`บันทึก ${read.memo}`] : []),
+    ...(read.ref ? [`อ้างอิง ${read.ref}`] : []),
+    ...(dup ? [copy.exp.aiDuplicate] : []),
+  ]
+}
+
+/** ข้อความเสนอยอดของใบปัจจุบัน (ใช้ทั้งตอนรับรูป และตอนสลิปออกจากคิว) */
+function offerMessage(p: Payload, head: string) {
+  const left = p.queueLeft ?? 0
+  const lines = [
+    head + (left > 0 ? ` · ในคิวอีก ${left} ใบ` : ''),
+    ...(p.aiLines ?? []),
+    copy.exp.aiAsk(baht(p.aiAmount ?? 0)),
+  ]
+  return text(lines.join('\n'), aiItems(p))
+}
+
+/**
+ * สลิปที่ AI อ่านได้ → ใบปัจจุบัน / เข้าคิว / แนบเพิ่มในใบเดิม (อะตอมมิกใน bot_slip_take)
+ * คืน false = ยังไม่ได้รัน migration ของคิว → ผู้เรียกใช้ทางเดิม (สลิปเดียวต่อครั้ง)
+ */
+async function takeSlip(turn: Turn, slip: Slip, read: SlipRead): Promise<boolean> {
+  const dup = read.ref ? await refSeen(read.ref) : false
+  const item: QueueItem = {
+    slip,
+    aiAmount: read.amount,
+    aiDate: read.date,
+    aiNote: slipNote(read),
+    aiMemo: read.memo,
+    aiRef: read.ref,
+    aiLines: readLines(read, dup),
+  }
+  let took: Took
+  try {
+    took = await rpc<Took>('bot_slip_take', {
+      p_line_user: turn.lineUserId,
+      p_item: item,
+      p_max: MAX_QUEUE,
+      p_max_photos: MAX_ATTACHMENTS,
+      p_ttl_sec: 1800,
+    })
+  } catch (e) {
+    console.error('[line] คิวสลิปใช้ไม่ได้ (ยังไม่ได้รัน migration?)', (e as Error).message)
+    return false
+  }
+
+  turn.session = await sessionGet(turn.lineUserId)
+  const p = payloadOf(turn)
+  switch (took.role) {
+    case 'current':
+      await send(turn, [offerMessage(p, copy.exp.aiHead(took.photos ?? p.slips.length))])
+      return true
+    case 'queued':
+      await send(turn, [text(copy.exp.queued(took.position ?? took.queued, baht(read.amount)))])
+      return true
+    case 'attached':
+      await send(turn, [text(copy.exp.sameSlip(took.photos ?? p.slips.length))])
+      return true
+    case 'full_photos':
+      await send(turn, [text(copy.exp.photoFull)])
+      return true
+    default:
+      await send(turn, [text(copy.exp.queueFull(MAX_QUEUE))])
+      return true
+  }
+}
+
+/** ใบปัจจุบันจบแล้ว (บันทึก/ข้าม) → ดึงใบถัดไปจากคิว · null = คิวว่าง หรือคิวยังใช้ไม่ได้ */
+async function nextSlip(turn: Turn) {
+  let r: { payload: Payload; left: number } | null
+  try {
+    r = await rpc<{ payload: Payload; left: number } | null>('bot_slip_next', { p_line_user: turn.lineUserId, p_ttl_sec: 1800 })
+  } catch {
+    return null
+  }
+  if (!r) return null
+  turn.session = { state: 'exp_amount', payload: r.payload as unknown as Record<string, unknown> }
+  return offerMessage(payloadOf(turn), copy.exp.nextHead)
 }
 
 function aiFallback(res: SlipAiResult, count: number): string {
@@ -137,21 +245,12 @@ async function offerAiRead(turn: Turn, res: SlipAiResult, count: number): Promis
   turn.session = await sessionGet(turn.lineUserId)
   const p = payloadOf(turn)
   if (turn.session.state !== 'exp_amount' || p.aiAmount !== undefined) return false
-  const next: Payload = { ...p, aiAmount: read.amount, aiDate: read.date, aiNote: slipNote(read), aiMemo: read.memo }
+  const next: Payload = {
+    ...p, aiAmount: read.amount, aiDate: read.date, aiNote: slipNote(read), aiMemo: read.memo,
+    aiRef: read.ref, aiLines: readLines(read, dup),
+  }
   await setState(turn, 'exp_amount', next)
-
-  const lines = [
-    copy.exp.aiHead(p.slips.length || count),
-    `ยอด ${baht(read.amount)}`,
-    ...(read.date ? [`วันที่ ${thaiDate(read.date)}`] : []),
-    ...(read.payee ? [`ผู้รับ ${read.payee}`] : []),
-    ...(read.items ? [`สินค้า ${read.items}`] : []),
-    ...(read.memo ? [`บันทึก ${read.memo}`] : []),
-    ...(read.ref ? [`อ้างอิง ${read.ref}`] : []),
-    ...(dup ? [copy.exp.aiDuplicate] : []),
-    copy.exp.aiAsk(baht(read.amount)),
-  ]
-  await send(turn, [text(lines.join('\n'), aiItems(next))])
+  await send(turn, [offerMessage(next, copy.exp.aiHead(p.slips.length || count))])
   return true
 }
 
@@ -362,8 +461,11 @@ export async function toggleMethod(turn: Turn) {
   return showConfirm(turn)
 }
 
+/** ปุ่ม "ยกเลิก"/"ข้ามใบนี้" ของรายจ่าย — ทิ้งใบปัจจุบัน แล้วขึ้นใบถัดไปในคิว (ถ้ามี) */
 export async function cancel(turn: Turn) {
   await setState(turn, 'idle')
+  const next = await nextSlip(turn)
+  if (next) return send(turn, [text(copy.exp.skipped), next])
   return send(turn, [text(copy.cancelled, menuItems())])
 }
 
@@ -411,7 +513,8 @@ export async function save(turn: Turn) {
   }
 
   await setState(turn, 'idle')
-  if (r.duplicate) return send(turn, [text(copy.exp.duplicate, menuItems())])
+  const next = await nextSlip(turn)
+  if (r.duplicate) return send(turn, [text(copy.exp.duplicate, next ? [] : menuItems()), ...(next ? [next] : [])])
 
   const attached = r.transaction_id ? await attachToTransaction(r.transaction_id, p.slips) : true
   const where = r.site ? `โครงการ ${r.site}` : copy.exp.central
@@ -421,5 +524,6 @@ export async function save(turn: Turn) {
       ...menuItems().slice(1),
     ]),
     ...(attached ? [] : [text(copy.exp.slipFail)]),
+    ...(next ? [next] : []),
   ])
 }
