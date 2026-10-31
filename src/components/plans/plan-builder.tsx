@@ -63,10 +63,10 @@ export function PlanBuilder({ saved }: { saved?: SavedPlan }) {
   const alts = kinds.length > 0
   /** ปุ่มเลือกแผนที่แก้วัน · คำอธิบายเส้น — แผนตามสัญญา + แผนเสริมที่เปิดอยู่ */
   const views: [View, string][] = [['plan', 'แผนงานตามสัญญา'], ...ALT_PLANS.filter((a) => kinds.includes(a.kind)).map((a) => [a.kind, a.label] as [View, string])]
+  // แผนเสริมที่เปิดอยู่มาจาก cats เท่านั้น → ขึ้นกับ cats/days พอ (เดิมใส่ kinds.join() ใน deps ซึ่ง eslint ห้าม)
   const altCum = useMemo(
-    () => Object.fromEntries(kinds.map((k) => [k, distribute(cats, days, k).cum])),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [kinds.join(), cats, days],
+    () => Object.fromEntries(altKindsOf(cats).map((k) => [k, distribute(cats, days, k).cum])),
+    [cats, days],
   )
   const kind = view === 'plan' || !kinds.includes(view) ? undefined : view
 

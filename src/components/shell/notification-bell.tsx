@@ -54,7 +54,10 @@ export function NotificationBell({
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const refresh = useRef(router.refresh)
-  refresh.current = router.refresh
+  // อัปเดต ref หลังเรนเดอร์ (เขียน ref ระหว่างเรนเดอร์ = eslint react-hooks/refs error)
+  useEffect(() => {
+    refresh.current = router.refresh
+  })
 
   // ── realtime ────────────────────────────────────────────────────────
   // 🔴 ต้อง **ลองใหม่** ไม่ใช่ยอมแพ้ที่ CHANNEL_ERROR ครั้งแรก
