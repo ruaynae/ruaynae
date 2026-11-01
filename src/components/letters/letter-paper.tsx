@@ -1,4 +1,6 @@
 import { BLANK, bodyBlocks, letterDateLine, type LetterPaperData } from '@/lib/letters'
+import { hasItems, type ChangeOrder } from '@/lib/change-order'
+import { ChangeOrderPaper } from '@/components/letters/change-order-paper'
 
 /**
  * กระดาษหนังสือบริษัท A4 (R19) — ผังเดียวกับไฟล์ Word ที่ `letter-docx.ts` สร้าง
@@ -33,6 +35,7 @@ export function LetterPaper({
   photoLayout = '1',
   breakAt = null,
   copyLabel = null,
+  changeOrder = null,
 }: {
   letter: LetterPaperData
   logoUrl: string | null
@@ -43,6 +46,8 @@ export function LetterPaper({
   breakAt?: number | null
   /** "สำเนาคู่ฉบับ" กลางหน้าบนสุด — ตรงกับไฟล์ Word · null = ไม่มีป้าย */
   copyLabel?: string | null
+  /** ตารางงานเพิ่ม-ลด (R25) — แผ่นแนบต่อจากหนังสือ ก่อนรูปภาพ · ไปกับต้นฉบับเท่านั้น */
+  changeOrder?: ChangeOrder | null
 }) {
   const lh = letter.letterhead
   const rows = [
@@ -113,6 +118,8 @@ export function LetterPaper({
           </div>
         )}
       </article>
+
+      {changeOrder && hasItems(changeOrder) && <ChangeOrderPaper co={changeOrder} />}
 
       {photos.length > 0 && (
         <article className="paper letter-sheet">

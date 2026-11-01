@@ -15,10 +15,12 @@ import { LetterQuickFields } from '@/components/letters/letter-quick-fields'
 import { LetterRefPicker } from '@/components/letters/letter-ref-picker'
 import { LetterContractPicker, putContractRef, type SiteContract } from '@/components/letters/letter-contract-picker'
 import { LetterPhotos, type LetterPhoto } from '@/components/letters/letter-photos'
+import { ChangeOrderSection } from '@/components/letters/change-order-section'
+import { coTotals, emptyChangeOrder, hasItems, type ChangeOrder } from '@/lib/change-order'
 import { LETTER_TEMPLATES, findLetterTemplate } from '@/lib/letter-templates'
 import {
   CLOSING_OPTIONS, DEFAULT_CLOSING, autoFieldValue, bumpCounters, fillCompany, fillProject, formatLetterNo,
-  generateFromTemplate, letterFileName, letterMessage, nextSeq, splitLines, stripItemNo, yearCeOf,
+  generateFromTemplate, letterFileName, letterMessage, letterMoney, nextSeq, splitLines, stripItemNo, yearCeOf,
   type GeneratedText, type Letterhead, type LetterPaperData, type RegisterEntry,
 } from '@/lib/letters'
 
@@ -52,6 +54,8 @@ export type FormLetter = {
   showReceipt: boolean
   templateId: string | null
   fields: Record<string, string>
+  /** ตารางงานเพิ่ม-ลด (R25 · แบบ "งานเพิ่ม / งานลด") */
+  changeOrder?: ChangeOrder | null
 }
 
 type Draft = {
@@ -120,7 +124,7 @@ export function LetterForm({
   const company = letterhead.companyName
   const [entries, setEntries] = useState(initialEntries)
   const [savedId, setSavedId] = useState<string | null>(mode === 'edit' ? initial?.id ?? null : null)
-  const [busy, setBusy] = useState<null | 'docx' | 'print' | 'delete'>(null)
+  const [busy, setBusy] = useState<null | 'docx' | 'print' | 'delete' | 'save'>(null)
   const [refOpen, setRefOpen] = useState(false)
   const [contractOpen, setContractOpen] = useState(false)
   /** พิมพ์/ดาวน์โหลด 2 ฉบับ — ต้นฉบับยื่นหน่วยงาน · สำเนาให้เจ้าหน้าที่เซ็นรับแล้วเก็บกลับมา (เจ้าของขอ 22 ต.ค. 2569) */
@@ -132,7 +136,7 @@ export function LetterForm({
   /** หนังสือนี้มีรูปเก็บอยู่ในระบบ — ลบรูปหมดแล้วบันทึก ต้องส่งรายการว่างไปลบด้วย */
   const hadPhotos = useRef(Boolean(initialPhotos?.photos.length))
   const warnedPhotos = useRef(false)
-  const [gen, setGen] = useState<GeneratedText>(EMPTY_GEN)
+  const [co, setCoState] = useState<ChangeOrder | null>(initial?.changeOrder ?? null)
 
   const [d, setD] = useState<Draft>(() => {
     if (initial) {
@@ -187,6 +191,12 @@ export function LetterForm({
     }
   })
 
+  // ข้อความอัตโนมัติของหนังสือที่เปิดมา — แก้ช่องด่วน/ตารางแล้วข้อความที่ยังไม่ถูกแก้เองตามได้ (เดิมเริ่มว่าง = ไม่ตามเลย)
+  const [gen, setGen] = useState<GeneratedText>(() => {
+    const t = findLetterTemplate(d.templateId)
+    return t && initial ? generateFromTemplate(t, d.fields, company) : EMPTY_GEN
+  })
+
   const cur = series.find((x) => x.id === d.seriesId)
   const prefix = cur?.prefix ?? ''
   const yearCe = yearCeOf(d.date)
@@ -223,8 +233,12 @@ export function LetterForm({
 
   /** แก้ช่องด่วน → เติมข้อความใหม่เฉพาะช่องที่ยังเป็นข้อความอัตโนมัติ (R19-UI-04) */
   function setField(k: string, v: string) {
+    setFields({ [k]: v })
+  }
+
+  function setFields(patch: Record<string, string>) {
     if (!template) return
-    const fields = { ...d.fields, [k]: v }
+    const fields = { ...d.fields, ...patch }
     const g = generateFromTemplate(template, fields, company)
     setD((p) => {
       const next = { ...p, fields }
@@ -233,6 +247,31 @@ export function LetterForm({
     })
     if (photoTitle === gen.photoTitle) setPhotoTitle(g.photoTitle)
     setGen(g)
+  }
+
+  /* ── ตารางงานเพิ่ม-ลด (R25) — ส่วนต่างไปลง "ประเภท" กับ "จำนวนเงิน" ของใบปะหน้า ── */
+  const isChange = template?.id === 'change'
+  const coLocked = isChange && hasItems(co)
+  const coProject = () => {
+    const p = seriesProject(cur, contracts)
+    return { project: p ? p.fullName || p.name : '', location: p?.address ?? '', owner: p?.owner ?? '' }
+  }
+  function setCo(next: ChangeOrder | null) {
+    setCoState(next)
+    if (!isChange || !next || !hasItems(next)) return
+    const t = coTotals(next)
+    const amount = t.amount.toFixed(2)
+    if (t.kind && (d.fields.kind !== t.kind || d.fields.amount !== amount)) setFields({ kind: t.kind, amount })
+  }
+
+  async function save() {
+    if (busy) return
+    setBusy('save')
+    try {
+      if (await persist()) toast.success(`บันทึก ${letterNo} แล้ว`)
+    } finally {
+      setBusy(null)
+    }
   }
 
   function changeSeries(id: string) {
@@ -270,6 +309,7 @@ export function LetterForm({
       showReceipt: d.showReceipt,
       templateId: d.templateId,
       fields: d.fields,
+      changeOrder: isChange ? co : null,
     }
     try {
       const r = await fetch(savedId ? `/api/letters/${savedId}` : '/api/letters', {
@@ -491,8 +531,27 @@ export function LetterForm({
                 <Step n={2} /> ข้อมูลเฉพาะเรื่องนี้
                 <span className="ml-auto text-xs font-normal text-muted-token">ข้อความด้านล่างเติมให้เอง</span>
               </h2>
-              <LetterQuickFields template={template} values={d.fields} onChange={setField} />
+              <LetterQuickFields
+                template={template}
+                values={d.fields}
+                onChange={setField}
+                locked={coLocked ? { kind: 'คิดจากตารางงานเพิ่ม-ลด', amount: 'คิดจากตารางงานเพิ่ม-ลด' } : undefined}
+              />
             </section>
+          )}
+
+          {isChange && (
+            <ChangeOrderSection
+              value={co}
+              onChange={setCo}
+              newTable={() => emptyChangeOrder(coProject())}
+              siteId={cur?.siteId ?? null}
+              headerFromProject={coProject}
+              onSave={save}
+              saving={busy === 'save'}
+              stale={coLocked && !d.body.includes(letterMoney(d.fields.amount ?? ''))}
+              onFixText={() => setD((p) => ({ ...p, subject: gen.subject, body: gen.body }))}
+            />
           )}
 
           <section className="card-surface space-y-3.5 p-4">
@@ -661,6 +720,7 @@ export function LetterForm({
             photos={photos.map((p) => ({ url: p.url, caption: p.caption }))}
             photoTitle={photoTitle}
             photoLayout={photoLayout}
+            changeOrder={isChange ? co : null}
           />
         </div>
       </div>

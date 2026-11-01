@@ -105,7 +105,8 @@ export const LETTER_TEMPLATES: readonly LetterTemplate[] = [
       { k: 'reason', label: 'เนื่องจาก', wide: true, ph: 'ทางคณะกรรมการให้ยกเลิกระบบควบคุมการเข้า-ออก (Access Control System) จำนวน 3 ชุด' },
     ],
     subject: 'ขออนุมัติ{kind}',
-    atts: [],
+    // ตารางงานเพิ่ม-ลด (R25) — สร้างได้ในหน้าหนังสือ แล้วพิมพ์ต่อท้าย · ข้อความต้องตรงกับ `CO_ATTACHMENT`
+    atts: ['แบบแสดงรายการ ปริมาณงาน และราคา งานเพิ่ม-ลด 1 ชุด'],
     body: 'ทาง{บริษัท} มีความประสงค์ขออนุมัติ{kind} เนื่องจาก{reason} ทั้งนี้สรุปเป็น{kind} {amount} บาท ({amountText})',
   },
   {

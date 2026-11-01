@@ -12,6 +12,8 @@ export type SiteContract = {
   /** ชื่อเต็มตามสัญญา + ที่ตั้ง — ย่อหน้าแนะนำของหนังสือดึงไปใช้ */
   fullName: string | null
   address: string | null
+  /** ผู้ว่าจ้าง (`sites.client_name`) — หัวตารางงานเพิ่ม-ลด "หน่วยงานเจ้าของโครงการ" */
+  owner: string | null
   /** ยังไม่ปิดงาน/ยกเลิก — โชว์ก่อน */
   active: boolean
   contractNo: string | null

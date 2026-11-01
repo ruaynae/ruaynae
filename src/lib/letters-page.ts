@@ -5,6 +5,7 @@ import { getSupabaseServer } from '@/lib/supabase/server'
 import { todayInBangkok } from '@/lib/format'
 import { currentLetterhead } from '@/lib/letters-server'
 import type { RegisterEntry } from '@/lib/letters'
+import { parseChangeOrder } from '@/lib/change-order'
 import type { FormLetter, SeriesOption } from '@/components/letters/letter-form'
 import type { SiteContract } from '@/components/letters/letter-contract-picker'
 
@@ -31,7 +32,7 @@ export async function loadLetterFormContext() {
     currentLetterhead(),
     getBranding(),
     // "อ้างถึงสัญญาของโครงการ" — เลขที่/วันที่สัญญาอยู่ที่ `site_finance` (เจ้าของเท่านั้น เหมือนเมนูนี้)
-    sb.from('sites').select('id, name, status, address').order('name', { ascending: true }).range(0, 499),
+    sb.from('sites').select('id, name, status, address, client_name').order('name', { ascending: true }).range(0, 499),
     // ชื่อเต็มอ่านแยก — ยังไม่รัน migration `20261022120000` ฟอร์มหนังสือต้องไม่พัง (ใช้ชื่อย่อแทน)
     sb.from('sites').select('id, full_name').order('id').range(0, 499),
     sb.from('site_finance').select('site_id, contract_no, contract_date').order('site_id').range(0, 499),
@@ -46,6 +47,7 @@ export async function loadLetterFormContext() {
     name: s.name,
     fullName: fullNames.get(s.id)?.trim() || null,
     address: s.address?.trim() || null,
+    owner: s.client_name?.trim() || null,
     active: s.status !== 'done' && s.status !== 'cancelled',
     contractNo: finance.get(s.id)?.contract_no?.trim() || null,
     contractDate: finance.get(s.id)?.contract_date ?? null,
@@ -108,8 +110,11 @@ type LetterRowData = {
 export function toFormLetter(r: LetterRowData): FormLetter {
   const fields: Record<string, string> = {}
   if (r.fields && typeof r.fields === 'object' && !Array.isArray(r.fields)) {
-    for (const [k, v] of Object.entries(r.fields as Record<string, unknown>)) fields[k] = String(v ?? '')
+    for (const [k, v] of Object.entries(r.fields as Record<string, unknown>)) {
+      if (k !== 'changeOrder') fields[k] = String(v ?? '')
+    }
   }
+  const co = r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).changeOrder : null
   return {
     id: r.id,
     seriesId: r.series_id,
@@ -126,5 +131,6 @@ export function toFormLetter(r: LetterRowData): FormLetter {
     showReceipt: r.show_receipt,
     templateId: r.template_id,
     fields,
+    changeOrder: parseChangeOrder(co),
   }
 }
