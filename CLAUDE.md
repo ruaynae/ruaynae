@@ -711,14 +711,14 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
 - [ ] **R23 · ลงชื่อย้อนหลังต้องให้เจ้าของอนุมัติ** (24 ต.ค. 2569) — หัวหน้าโครงการลง/แก้/ลบ `attendance` ของวันก่อนวันนี้ (เวลาไทย) เองไม่ได้
       · ด่านที่ trigger `guard_attendance_backdate` (เจ้าของ + `auth.uid() is null` ผ่าน) · ยื่น `attendance_backdate_request()` พร้อมเหตุผล → คิว `/approvals`
       → เจ้าของอนุมัติ `attendance_backdate_decide()` = ระบบลงชื่อให้ในนามเจ้าของ (guard เดิมครบ) · ตีกลับต้องมีเหตุผล · enum แจ้งเตือน `backdate_*`
-      · ✅ migration `20261024090000_attendance_backdate_approval.sql` apply แล้ว (เจ้าของตรวจ `to_regclass` 27 ต.ค. 2569) · ⚠️ ยังไม่ได้รัน `verify-backdate-db.mjs` · LINE push ยังไม่ครอบคลุม
+      · ✅ migration `20261024090000_attendance_backdate_approval.sql` apply แล้ว (เจ้าของตรวจ `to_regclass` 27 ต.ค. 2569) · ✅ LINE push แจ้งเจ้าของเมื่อมีคำขอแล้ว (PR #32) · ⚠️ ยังไม่ได้รัน `verify-backdate-db.mjs` บนฐานจริง
       · ตารางตรวจรับ `docs/test-plan/R23-attendance-backdate.md`
 - [ ] **R24 · อ่านสลิปด้วย AI ในบอท LINE** (31 ต.ค. 2569) — เจ้าของเลือก **Gemini แบบฟรี** ก่อน · คีย์ใน Vault (`set_slip_ai_key` · การ์ดใน `/settings/line`)
       · ส่งรูปเข้าแชท → `lib/slip-ai/gemini.ts` อ่าน ยอด/วันที่/ผู้รับ/เลขอ้างอิง → **เป็นข้อเสนอ** ต้องกด "ใช่ ฿…" หรือพิมพ์ยอดเอง แล้วหมวด/โครงการ/บันทึกเหมือนเดิม
       · ตัวตรวจคำตอบ AI อยู่ที่ `lib/slip-ai/parse.ts` (ไฟล์ล้วน · unit test) · ปิด/โควตาหมด/คีย์ผิด = ถามยอดแบบเดิม ไม่ล้ม
       · ✅ migration `20261031090000_slip_ai_key.sql` apply แล้ว (เจ้าของใส่คีย์และลองสลิปจริง 31 ต.ค. 2569) · ตารางตรวจรับ `docs/test-plan/R24-slip-ai.md`
       · **R24b ส่งสลิปหลายใบพร้อมกัน:** คิวแยกตาราง `line_slip_queue` (ไม่อยู่ใน `line_sessions.payload` — เทิร์นอื่นเขียน payload ทั้งก้อนจะทับคิว) · `bot_slip_take/next/clear` ใช้ advisory lock เดียวกับ `bot_session_photo`
-        · ใบปัจจุบัน → บันทึก/ข้าม → `bot_slip_next` ขึ้นใบถัดไป · พิมพ์ "ยกเลิก" ทิ้งทั้งคิว · ⚠️ **migration `20261031120000_line_slip_queue.sql` ยังไม่ได้ apply** (ไม่รัน = ทำงานแบบใบเดียว)
+        · ใบปัจจุบัน → บันทึก/ข้าม → `bot_slip_next` ขึ้นใบถัดไป · พิมพ์ "ยกเลิก" ทิ้งทั้งคิว · ✅ migration `20261031120000_line_slip_queue.sql` apply แล้ว (เจ้าของทดลองส่งหลายใบจริง 31 ต.ค. 2569)
 - [x] **R9 · รอบคำสั่งเจ้าของ 4 ก.ย. 2569** — เรียกหน่วยงานว่า "โครงการ" ทั้งระบบ · ปิดการ์ด
       "งานวันนี้" · ต้นทุนสะสมแยกสามก้อน (ค่าแรง/ค่าวัสดุ/อื่น ๆ) + ธง `categories.is_material`
       · ยอดรวมแยกหมวดในหน้าโครงการ · **จ่ายค่าแรงรายคนปุ่มเดียว** (เลิกใช้คำว่า "รอบจ่าย"
