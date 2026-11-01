@@ -620,6 +620,7 @@
   }
   .co-sheet .co-table th { background: #e5e7eb; font-weight: 700; text-align: center; vertical-align: middle; }
   .co-sheet .co-table tr { break-inside: avoid; }
+  .co-sheet .co-table + .co-table { break-before: page; page-break-before: always; margin-top: 12pt; }
   .co-sheet .co-band-cut td { background: #dbeafe; }
   .co-sheet .co-band-add td { background: #fde2e2; }
   .co-sheet .co-sub td { font-style: italic; color: #374151; background: #f9fafb; }
