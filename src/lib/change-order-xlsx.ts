@@ -140,8 +140,7 @@ function block(ws: Worksheet, start: number, b: CoBlock, side: 'cut' | 'add', fa
       ['F', f(`F${nTr}+F${eTr}`, round2(tn.totalMat + te.totalMat))],
       ['H', f(`H${nTr}+H${eTr}`, round2(tn.totalLab + te.totalLab))],
       ['I', f(`I${nTr}+I${eTr}`, round2(tn.total + te.total))],
-    ], BAND[side])
-    ws.getCell(`I${tr}`).fill = fill('FFF3EAD7')
+    ], 'FFD1FAE5')
     return { next: tr + 2, refs: { total: tr } }
   }
   return { next: showN ? r : r + 1, refs: { total: showE ? eTr : nTr } }
@@ -217,12 +216,12 @@ export async function buildChangeOrderXlsx(co: ChangeOrder): Promise<ArrayBuffer
   }
   const diff = `${addTotal ?? 0}-${cutTotal ?? 0}`
   ws.mergeCells(`B${r}:H${r}`)
-  ws.getCell(`B${r}`).value = f(`IF(${diff}>=0,"ส่วนต่าง งานเพิ่ม","ส่วนต่าง งานลด")`, `ส่วนต่าง ${t.kind ?? ''}`.trim())
+  ws.getCell(`B${r}`).value = f(`IF(${diff}>=0,"รวมงานเพิ่มทั้งสิ้น","รวมงานลดทั้งสิ้น")`, t.kind ? `รวม${t.kind}ทั้งสิ้น` : 'รวมทั้งสิ้น')
   ws.getCell(`B${r}`).alignment = { horizontal: 'center' }
   ws.getCell(`I${r}`).value = f(`ABS(${diff})`, t.amount)
   ws.getCell(`I${r}`).numFmt = MONEY
   styleRow(ws, r, { bold: true })
-  ws.getCell(`I${r}`).fill = fill('FFDBEAFE')
+  for (const c of COLS) ws.getCell(`${c}${r}`).fill = fill('FFFDE68A')
 
   ws.views = [{ state: 'frozen', ySplit: 8 }]
   ws.pageSetup = {

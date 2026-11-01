@@ -102,7 +102,7 @@ function Side({ b, side, factor }: { b: CoBlock; side: 'cut' | 'add'; factor: nu
       {showN && <Section rows={normal} title={title} side={side} factor={factor} mode="f" />}
       {showE && <Section rows={equip} title={title} side={side} factor={factor} mode="vat" />}
       {showN && showE && (
-        <tr className={`${MARK[side]} co-b`}>
+        <tr className="co-summary co-b">
           <td />
           <td colSpan={4} className="co-c">รวมทั้งสิ้น {title.split(' ')[0]} (Factor F + ภาษีมูลค่าเพิ่ม)</td>
           <td className="co-n">{coMoney(round2(tn.totalMat + te.totalMat), false)}</td>
@@ -175,7 +175,7 @@ export function ChangeOrderPaper({ co }: { co: ChangeOrder }) {
           {co.add.rows.length > 0 && <Side b={co.add} side="add" factor={co.factor} />}
           <tr className="co-diff">
             <td />
-            <td colSpan={7} className="co-c">ส่วนต่าง {t.kind ?? ''}</td>
+            <td colSpan={7} className="co-c">{t.kind ? `รวม${t.kind}ทั้งสิ้น` : 'รวมทั้งสิ้น'}</td>
             <td className="co-n">{coMoney(t.amount, false)}</td>
             <td />
           </tr>
