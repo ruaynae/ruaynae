@@ -120,7 +120,7 @@ test('หัวข้อย่อยเหนือรายการ (เช่
     ['1.1', 'หมวดงานรื้อถอน'],
     [null, 'Built In ตู้ : B-01'],
     [null, ' - รื้อฝ้า', 20, 'ตร.ม.', null, null, null, null, 40000],
-    [null, 'Built In ตู้ : B-02'],
+    [null, 'Built In ตู้ : B-02', 0, null, null, null, null, null, 0],
     [null, ' - รื้อพื้น', 100, 'ตร.ม.', null, null, null, null, 60000],
     [null, 'รวมหมวดงานรื้อถอน', null, null, null, null, null, null, 100000],
     ['1.2', 'งานพื้น'],
