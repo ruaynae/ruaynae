@@ -94,6 +94,13 @@ export type BlockTotals = {
   /** จำนวนรายการปกติ (คูณ Factor F) / ครุภัณฑ์ (บวก VAT) */
   normalItems: number
   equipItems: number
+  /** ยอดรวมแยกส่วน: รายการที่คูณ Factor F (ทั่วไป) / รายการที่บวก VAT (ครุภัณฑ์) ก่อนบวกภาษี/Factor */
+  nMat: number
+  nLab: number
+  nSum: number
+  eMat: number
+  eLab: number
+  eSum: number
   /** ยอดของบรรทัด Factor F (ส่วนที่บวกเพิ่ม ไม่ใช่ตัวคูณ) · คิดจากรายการนอกหมวดครุภัณฑ์เท่านั้น */
   fMat: number
   fLab: number
@@ -136,7 +143,8 @@ export function blockTotals(b: CoBlock, factor: number): BlockTotals {
   const vLab = round2(eLab * CO_VAT)
   const vSum = round2(round2(eMat + eLab) * CO_VAT)
   return {
-    items: normalItems + equipItems, normalItems, equipItems, mat, lab, sum, fMat, fLab, fSum, vMat, vLab, vSum,
+    items: normalItems + equipItems, normalItems, equipItems,
+    nMat, nLab, nSum: round2(nMat + nLab), eMat, eLab, eSum: round2(eMat + eLab), mat, lab, sum, fMat, fLab, fSum, vMat, vLab, vSum,
     totalMat: round2(mat + fMat + vMat), totalLab: round2(lab + fLab + vLab), total: round2(sum + fSum + vSum),
   }
 }

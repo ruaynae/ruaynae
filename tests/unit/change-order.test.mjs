@@ -121,6 +121,7 @@ test('หมวดครุภัณฑ์: ไม่คูณ Factor F · บ�
   assert.equal(t.vSum, 84)
   assert.equal(t.total, 2586.7)
   assert.equal(t.totalMat, 1000 * 1.3027 + 1070)
+  assert.deepEqual([t.nMat, t.nLab, t.nSum, t.eMat, t.eLab, t.eSum], [1000, 0, 1000, 1000, 200, 1200])
 })
 
 test('บล็อกที่มีแต่ครุภัณฑ์ ไม่มี Factor F เลย · ธงครุภัณฑ์รอดตัวตรวจ', () => {

@@ -105,7 +105,18 @@ function block(ws: Worksheet, start: number, b: CoBlock, side: 'cut' | 'add', fa
   }
   const eq = (col: string) => (equipRows.length ? `SUM(${ranges(col)})` : '0')
   const showF = t.normalItems > 0 || t.equipItems === 0
+  const mixed = t.normalItems > 0 && t.equipItems > 0
   let next = sum + 1
+  // งานปนกัน: บอกก่อนว่าส่วนไหนคูณ Factor F ส่วนไหนบวก VAT (แถวบอกยอด ไม่นับเข้ายอดรวม)
+  const infoRow = (label: string, vals: [number, number, number], fm: [string, string, string]) => {
+    const row = next
+    totalRow(row, label, [
+      ['F', f(fm[0], vals[0])], ['H', f(fm[1], vals[1])], ['I', f(fm[2], vals[2])],
+    ])
+    for (const c of COLS) ws.getCell(`${c}${row}`).font = { name: FONT, size: 14, italic: true }
+    next += 1
+  }
+  if (mixed) infoRow('ส่วนที่คูณ Factor F (หมวดทั่วไป)', [t.nMat, t.nLab, t.nSum], [`ROUND(F${sum}-${eq('F')},2)`, `ROUND(H${sum}-${eq('H')},2)`, `ROUND(I${sum}-${eq('I')},2)`])
   const parts: Record<'F' | 'H' | 'I', string[]> = { F: [`F${sum}`], H: [`H${sum}`], I: [`I${sum}`] }
   if (showF) {
     const fr = next
@@ -120,6 +131,7 @@ function block(ws: Worksheet, start: number, b: CoBlock, side: 'cut' | 'add', fa
     for (const c of ['F', 'H', 'I'] as const) parts[c].push(`${c}${fr}`)
     next += 1
   }
+  if (mixed) infoRow('ส่วนที่บวก VAT 7% (หมวดครุภัณฑ์)', [t.eMat, t.eLab, t.eSum], [`ROUND(${eq('F')},2)`, `ROUND(${eq('H')},2)`, `ROUND(${eq('I')},2)`])
   if (t.equipItems > 0) {
     const vr = next
     totalRow(vr, 'ภาษีมูลค่าเพิ่ม 7% (ครุภัณฑ์)', [

@@ -26,7 +26,8 @@ function Block({ b, side, factor }: { b: CoBlock; side: 'cut' | 'add'; factor: n
           return (
             <tr key={i}>
               <td className="co-c co-b">{r.no}</td>
-              <td colSpan={9} className="co-b">{r.text}</td>
+              <td colSpan={8} className="co-b">{r.text}</td>
+              <td className={`co-c co-tag ${r.equip ? 'co-tag-vat' : 'co-tag-f'}`}>{r.equip ? 'VAT 7%' : 'Factor F'}</td>
             </tr>
           )
         }
@@ -56,13 +57,24 @@ function Block({ b, side, factor }: { b: CoBlock; side: 'cut' | 'add'; factor: n
       })}
       <tr className={`${MARK[side]} co-b`}>
         <td />
-        <td colSpan={4} className="co-c">รวม{label.split(' ')[0]}</td>
+        <td colSpan={4} className="co-c">รวม{label.split(' ')[0]}{t.normalItems > 0 && t.equipItems > 0 ? ' (ทุกหมวด)' : ''}</td>
         <td className="co-n">{coMoney(t.mat, false)}</td>
         <td />
         <td className="co-n">{coMoney(t.lab, false)}</td>
         <td className="co-n">{coMoney(t.sum, false)}</td>
         <td />
       </tr>
+      {t.normalItems > 0 && t.equipItems > 0 && (
+        <tr className="co-sub">
+          <td />
+          <td colSpan={4}>ส่วนที่คูณ Factor F (หมวดทั่วไป)</td>
+          <td className="co-n">{coMoney(t.nMat, false)}</td>
+          <td />
+          <td className="co-n">{coMoney(t.nLab, false)}</td>
+          <td className="co-n">{coMoney(t.nSum, false)}</td>
+          <td />
+        </tr>
+      )}
       {(t.normalItems > 0 || t.equipItems === 0) && (
         <tr className="co-b">
           <td />
@@ -71,6 +83,17 @@ function Block({ b, side, factor }: { b: CoBlock; side: 'cut' | 'add'; factor: n
           <td />
           <td className="co-n">{coMoney(t.fLab, false)}</td>
           <td className="co-n">{coMoney(t.fSum, false)}</td>
+          <td />
+        </tr>
+      )}
+      {t.normalItems > 0 && t.equipItems > 0 && (
+        <tr className="co-sub">
+          <td />
+          <td colSpan={4}>ส่วนที่บวก VAT 7% (หมวดครุภัณฑ์)</td>
+          <td className="co-n">{coMoney(t.eMat, false)}</td>
+          <td />
+          <td className="co-n">{coMoney(t.eLab, false)}</td>
+          <td className="co-n">{coMoney(t.eSum, false)}</td>
           <td />
         </tr>
       )}

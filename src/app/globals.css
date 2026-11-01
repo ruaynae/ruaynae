@@ -622,9 +622,13 @@
   .co-sheet .co-table tr { break-inside: avoid; }
   .co-sheet .co-band-cut td { background: #dbeafe; }
   .co-sheet .co-band-add td { background: #fde2e2; }
+  .co-sheet .co-sub td { font-style: italic; color: #374151; background: #f9fafb; }
+  .co-sheet .co-tag { font-size: 10pt; font-weight: 700; }
+  .co-sheet .co-tag-f { color: #1d4ed8; background: #eff6ff; }
+  .co-sheet .co-tag-vat { color: #b45309; background: #fffbeb; }
   .co-sheet .co-total { background: #f3ead7; }
   .co-sheet .co-diff td { font-weight: 700; font-size: 13pt; background: #f8fafc; }
-  .co-sheet .co-table th, .co-sheet .co-table td, .co-sheet .co-total, .co-sheet .co-diff td {
+  .co-sheet .co-table th, .co-sheet .co-table td, .co-sheet .co-total, .co-sheet .co-diff td, .co-sheet .co-sub td, .co-sheet .co-tag {
     print-color-adjust: exact; -webkit-print-color-adjust: exact;
   }
 
