@@ -3,6 +3,8 @@ import 'server-only'
 import { getSupabaseServer } from '@/lib/supabase/server'
 import { isUuid } from '@/lib/transactions'
 import { LETTER_LIMITS, splitLines, stripItemNo, type Letterhead } from '@/lib/letters'
+import { isBlank, parseChangeOrder, type ChangeOrder } from '@/lib/change-order'
+import type { Json } from '@/lib/database.types'
 
 /**
  * ฝั่งเซิร์ฟเวอร์ของหนังสือบริษัท (R19) — สำเนาหัวกระดาษ และตัวตรวจข้อมูลจากฟอร์ม
@@ -50,6 +52,8 @@ export type LetterInput = {
   showReceipt: boolean
   templateId: string | null
   fields: Record<string, string>
+  /** ตารางงานเพิ่ม-ลด (R25) — เก็บใน `letters.fields.changeOrder` (jsonb เดิม ไม่ต้องรัน migration) */
+  changeOrder: ChangeOrder | null
 }
 
 export type ParsedLetter = { ok: true; value: LetterInput } | { ok: false; error: string }
@@ -122,8 +126,27 @@ export function parseLetterInput(body: Record<string, unknown>): ParsedLetter {
       showReceipt: body.showReceipt !== false,
       templateId,
       fields,
+      changeOrder: changeOrderOf(body.changeOrder, templateId),
     },
   }
+}
+
+/** ตารางงานเพิ่ม-ลดเก็บเฉพาะหนังสือแบบ "งานเพิ่ม / งานลด" ที่มีแถวจริง */
+function changeOrderOf(v: unknown, templateId: string | null): ChangeOrder | null {
+  if (templateId !== 'change') return null
+  const co = parseChangeOrder(v)
+  return co && !isBlank(co) ? co : null
+}
+
+/**
+ * ค่าช่องด่วน + ตารางงานเพิ่ม-ลด ลง jsonb `letters.fields` ก้อนเดียว
+ * · คีย์ `changeOrder` ที่ client ส่งมาในช่องด่วนถูกทิ้งเสมอ — ตารางมาจาก `v.changeOrder` ที่ผ่านตัวตรวจแล้วเท่านั้น
+ */
+function letterFieldsJson(v: LetterInput): Json {
+  const out: Record<string, Json> = {}
+  for (const [k, x] of Object.entries(v.fields)) if (k !== 'changeOrder') out[k] = x
+  if (v.changeOrder) out.changeOrder = v.changeOrder as unknown as Json
+  return out
 }
 
 /** แถวที่จะเขียนลง `letters` (ใช้ทั้ง insert และ update) */
@@ -141,7 +164,7 @@ export const letterRow = (v: LetterInput, letterhead: Letterhead) => ({
   signer_title: v.signerTitle,
   show_receipt: v.showReceipt,
   template_id: v.templateId,
-  fields: v.fields,
+  fields: letterFieldsJson(v),
   letterhead,
 })
 

@@ -12,10 +12,13 @@ export function LetterQuickFields({
   template,
   values,
   onChange,
+  locked,
 }: {
   template: LetterTemplate
   values: Record<string, string>
   onChange: (k: string, v: string) => void
+  /** ช่องที่ระบบคิดให้จากที่อื่น (ตารางงานเพิ่ม-ลด) → อ่านอย่างเดียว พร้อมเหตุผล */
+  locked?: Record<string, string>
 }) {
   const fields = template.fields ?? []
   if (fields.length === 0) return null
@@ -26,6 +29,7 @@ export function LetterQuickFields({
         const id = `lq-${f.k}`
         const v = values[f.k] ?? ''
         const amount = f.type === 'money' ? Number(v.replace(/,/g, '')) : NaN
+        const lockedWhy = locked?.[f.k]
         return (
           <div key={f.k} className={f.wide ? 'sm:col-span-2' : ''}>
             <label htmlFor={id} className="label-base">
@@ -36,7 +40,12 @@ export function LetterQuickFields({
                 </span>
               )}
             </label>
-            {f.type === 'date' ? (
+            {lockedWhy ? (
+              <>
+                <input id={id} value={f.type === 'money' && Number.isFinite(amount) ? amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : v} disabled className="input-base tabular-nums" />
+                <p className="mt-1 text-xs text-brand">{lockedWhy}</p>
+              </>
+            ) : f.type === 'date' ? (
               <>
                 {/* ปฏิทิน (เจ้าของขอ 22 ต.ค. 2569) — ค่าที่เก็บยังเป็นข้อความไทย "3 พฤศจิกายน 2569" เหมือนเดิม */}
                 <input
