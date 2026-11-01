@@ -281,7 +281,7 @@ export const coQty = (n: number | null) =>
 
 /* ── รายการจาก BOQ ที่บันทึกไว้ (เมนูแผนงาน) ─────────────────────────── */
 
-export type BoqPickItem = { code: string; name: string; qty: number | null; unit: string; amount: number }
+export type BoqPickItem = { code: string; name: string; qty: number | null; unit: string; amount: number; head?: string }
 
 /**
  * รายการ BOQ → แถวตาราง · ราคาต่อหน่วย = ค่างานต้นทุนรวม ÷ จำนวน (BOQ ที่บันทึกไว้ไม่ได้แยกวัสดุ/ค่าแรง)

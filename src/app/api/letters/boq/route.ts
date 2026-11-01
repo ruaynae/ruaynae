@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
       name: c.name,
       tasks: c.tasks.map((t) => ({
         name: t.name,
-        items: t.items.map((i) => ({ code: i.code, name: i.name, qty: i.qty, unit: i.unit, amount: i.amount })),
+        items: t.items.map((i) => ({ code: i.code, name: i.name, qty: i.qty, unit: i.unit, amount: i.amount, head: i.head ?? '' })),
       })),
     })),
   })

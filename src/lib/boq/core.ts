@@ -19,7 +19,15 @@ export type Grid = {
 }
 
 /** รายการย่อยใน ปร.4 — ใช้เป็นแบบฟอร์ม "ปริมาณงานที่แล้วเสร็จ" */
-export type BoqItem = { code: string; name: string; qty: number | null; unit: string; amount: number }
+export type BoqItem = {
+  code: string; name: string; qty: number | null; unit: string; amount: number
+  /** หัวข้อย่อยเหนือรายการในแบบรายละเอียด เช่น "Built In ตู้เตี้ยเก็บเอกสาร : B-01" (ไม่มี = ไม่มีหัวข้อ) */
+  head?: string
+}
+
+/** แถวหัวข้อย่อย = มีชื่อ ไม่มีจำนวน/ยอดเงิน ไม่ใช่แถวรวม และไม่ใช่บรรทัดอธิบายที่ขึ้นต้นด้วยขีด */
+const subHead = (name: string, qty: number | null, a: number | null) =>
+  Boolean(name) && qty == null && a == null && !/^รวม/.test(name) && !/^[-–•]/.test(name)
 
 export type BoqTask = {
   name: string
@@ -230,14 +238,17 @@ function detailItems(g: Grid, amt: number, ch: Child, after: number): BoqItem[] 
   if (r >= g.rows) return []
   const depth = ch.code.split('.').length
   const items: BoqItem[] = []
+  let head = ''
   for (let k = r + 1; k < Math.min(g.rows, r + 600); k += 1) {
     const cc = g.w(k, 0)
     if (isCode(cc) && cc.split('.').length <= depth) break
-    const name = g.w(k, 1).replace(/^[-–•]\s*/, '')
+    const rawName = g.w(k, 1)
+    const name = rawName.replace(/^[-–•]\s*/, '')
     const qty = num(g.v(k, 2))
     const a = num(g.v(k, amt))
+    if (subHead(rawName, qty, a)) { head = rawName; continue }
     if (!name || qty == null || a == null || a <= 0 || /^รวม/.test(name)) continue
-    items.push({ code: isCode(cc) ? cc : '', name, qty, unit: g.w(k, 3), amount: a })
+    items.push({ code: isCode(cc) ? cc : '', name, qty, unit: g.w(k, 3), amount: a, ...(head ? { head } : {}) })
   }
   const sum = items.reduce((s, x) => s + x.amount, 0)
   return Math.abs(sum - ch.amount) <= Math.max(1, ch.amount * 0.005) ? items : []
@@ -329,6 +340,7 @@ const stripDash = (s: string) => s.replace(/^[-–•]\s*/, '')
 function sectionTasks(g: Grid, amt: number, from: number, to: number, fallback: string) {
   const out: { name: string; items: BoqItem[] }[] = []
   let cur: (typeof out)[number] | null = null
+  let head = ''
   for (let r = from; r < to; r += 1) {
     const code = g.w(r, 0)
     const name = g.w(r, 1)
@@ -336,15 +348,17 @@ function sectionTasks(g: Grid, amt: number, from: number, to: number, fallback: 
     if (/^\d+$/.test(code) && name && qty == null) {
       cur = { name: stripDash(name), items: [] }
       out.push(cur)
+      head = ''
       continue
     }
     const a = num(g.v(r, amt))
+    if (subHead(name, qty, a) && !code) { head = name; continue }
     if (!name || qty == null || a == null || a <= 0 || /^รวม/.test(name)) continue
     if (!cur) {
       cur = { name: fallback, items: [] }
       out.push(cur)
     }
-    cur.items.push({ code: isCode(code) ? code : '', name: stripDash(name), qty, unit: g.w(r, 3), amount: a })
+    cur.items.push({ code: isCode(code) ? code : '', name: stripDash(name), qty, unit: g.w(r, 3), amount: a, ...(head ? { head } : {}) })
   }
   return out.filter((t) => t.items.length)
 }

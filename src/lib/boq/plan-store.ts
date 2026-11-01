@@ -59,7 +59,8 @@ function parseItem(v: unknown): BoqItem | null {
   if (!isObj(v) || !finite(v.amount) || v.amount < 0) return null
   const qty = v.qty == null ? null : finite(v.qty) ? v.qty : NaN
   if (Number.isNaN(qty)) return null
-  return { code: str(v.code, 40), name: str(v.name), qty, unit: str(v.unit, 40), amount: v.amount }
+  const head = str(v.head, 300)
+  return { code: str(v.code, 40), name: str(v.name), qty, unit: str(v.unit, 40), amount: v.amount, ...(head ? { head } : {}) }
 }
 
 function parseTask(v: unknown, days: number): BoqTask | null {
