@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  appendRows, blockTotals, coTotals, endsEquip, isEquipName, emptyChangeOrder, hasItems, itemFromBoq, itemTotals, moveRow, num, parseChangeOrder,
+  appendRows, splitBlock, round2, blockTotals, coTotals, endsEquip, isEquipName, emptyChangeOrder, hasItems, itemFromBoq, itemTotals, moveRow, num, parseChangeOrder,
 } from '../../src/lib/change-order.ts'
 
 const item = (text, qty, mat, lab = null) => ({ t: 'item', text, qty, unit: 'ชุด', mat, lab, note: '' })
@@ -157,4 +157,30 @@ test('เลือกจาก BOQ หลายรอบ: หมวด/หัว
   assert.deepEqual(rows.map((r) => r.t), ['group', 'head', 'item', 'item', 'head', 'item'])
   rows = appendRows(rows, [{ t: 'group', no: '3', text: 'ครุภัณฑ์', equip: true }, { ...head }, item('d', 1, 10)])
   assert.deepEqual(rows.map((r) => r.t).slice(6), ['group', 'head', 'item'])
+})
+
+test('แยกเป็นสองตาราง: หมวดทั่วไป (Factor F) กับครุภัณฑ์ (VAT) · ยอดสองตารางรวมกัน = ยอดบล็อกเดิม', () => {
+  const b = {
+    title: 'งานเพิ่ม',
+    rows: [
+      item('ก่อนมีหมวด', 1, 100),
+      { t: 'group', no: '1', text: 'งานตกแต่งภายใน' },
+      { t: 'head', text: 'Built In : B-01' },
+      item('ตู้', 3, 33.33),
+      { t: 'group', no: '2', text: 'ครุภัณฑ์', equip: true },
+      item('โต๊ะ', 2, 77.77, 5.55),
+      { t: 'group', no: '3', text: 'งานระบบ' },
+      item('สวิตช์', 1, 10),
+    ],
+  }
+  const { normal, equip } = splitBlock(b)
+  assert.deepEqual(normal.map((r) => r.t), ['item', 'group', 'head', 'item', 'group', 'item'])
+  assert.deepEqual(equip.map((r) => r.t), ['group', 'item'])
+  const n = blockTotals({ title: 'x', rows: normal }, 1.3027)
+  const e = blockTotals({ title: 'x', rows: equip }, 1.3027)
+  const all = blockTotals(b, 1.3027)
+  assert.equal(n.vSum, 0)
+  assert.equal(e.fSum, 0)
+  assert.equal(round2(n.total + e.total), all.total)
+  assert.equal(round2(n.totalMat + e.totalMat), all.totalMat)
 })

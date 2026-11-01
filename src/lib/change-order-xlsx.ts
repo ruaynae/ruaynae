@@ -1,7 +1,7 @@
 import type { CellValue, Worksheet } from 'exceljs'
 import { loadExcel } from './boq/workbook'
 import {
-  CO_TITLE, CO_VAT, blockTotals, coTotals, itemTotals, type ChangeOrder, type CoBlock,
+  CO_TITLE, CO_VAT, blockTotals, coTotals, itemTotals, round2, splitBlock, type ChangeOrder, type CoBlock, type CoRow,
 } from './change-order'
 
 /**
@@ -33,19 +33,31 @@ function styleRow(ws: Worksheet, r: number, opts: { bold?: boolean; band?: strin
   }
 }
 
-function block(ws: Worksheet, start: number, b: CoBlock, side: 'cut' | 'add', factor: number): { next: number; refs: BlockRefs } {
-  const label = b.title || (side === 'cut' ? 'งานลด' : 'งานเพิ่ม')
+function totalRow(ws: Worksheet, row: number, text: string, cells: [string, CellValue][], band?: string) {
+  ws.mergeCells(`B${row}:D${row}`)
+  ws.getCell(`B${row}`).value = text
+  ws.getCell(`B${row}`).alignment = { horizontal: 'center' }
+  for (const [c, v] of cells) {
+    ws.getCell(`${c}${row}`).value = v
+    if (c !== 'E') ws.getCell(`${c}${row}`).numFmt = MONEY
+  }
+  styleRow(ws, row, { bold: true, band })
+}
+
+/** หนึ่งตาราง: หมวดทั่วไป (Factor F) หรือหมวดครุภัณฑ์ (VAT 7%) */
+function section(
+  ws: Worksheet, start: number, rows: CoRow[], title: string, side: 'cut' | 'add', factor: number, mode: 'f' | 'vat',
+): { next: number; tr: number } {
+  const vat = mode === 'vat'
+  const word = `${title.split(' ')[0]}${vat ? ' (ครุภัณฑ์)' : ''}`
   let r = start
-  ws.getCell(`B${r}`).value = label
+  ws.getCell(`B${r}`).value = word
   styleRow(ws, r, { bold: true, band: BAND[side] })
   r += 1
   const first = r
-  const equipRows: number[] = []
-  let equip = false
-  for (const row of b.rows) {
+  for (const row of rows) {
     const at = (c: string) => ws.getCell(`${c}${r}`)
     if (row.t === 'group') {
-      equip = Boolean(row.equip)
       at('A').value = row.no
       at('B').value = row.text
       at('A').alignment = { horizontal: 'center' }
@@ -69,90 +81,70 @@ function block(ws: Worksheet, start: number, b: CoBlock, side: 'cut' | 'add', fa
       at('D').alignment = { horizontal: 'center' }
       at('J').alignment = { horizontal: 'center' }
       styleRow(ws, r)
-      if (equip) equipRows.push(r)
     }
     r += 1
   }
   const last = Math.max(first, r - 1)
-  const t = blockTotals(b, factor)
+  const t = blockTotals({ title, rows }, factor)
   const sum = r
-  const word = label.split(' ')[0]
-  const totalRow = (row: number, text: string, cells: [string, CellValue][], band?: string) => {
-    ws.mergeCells(`B${row}:D${row}`)
-    ws.getCell(`B${row}`).value = text
-    ws.getCell(`B${row}`).alignment = { horizontal: 'center' }
-    for (const [c, v] of cells) {
-      ws.getCell(`${c}${row}`).value = v
-      if (c !== 'E') ws.getCell(`${c}${row}`).numFmt = MONEY
-    }
-    styleRow(ws, row, { bold: true, band })
-  }
-  totalRow(sum, `รวม${word}`, [
+  totalRow(ws, sum, `รวม${word}`, [
     ['F', f(`SUM(F${first}:F${last})`, t.mat)],
     ['H', f(`SUM(H${first}:H${last})`, t.lab)],
     ['I', f(`SUM(I${first}:I${last})`, t.sum)],
   ], BAND[side])
-  // ครุภัณฑ์: ผลรวมของแถวรายการในหมวดครุภัณฑ์ (ช่วงที่ติดกันรวมเป็นช่วงเดียว)
-  const ranges = (col: string) => {
-    const out: string[] = []
-    for (let i = 0; i < equipRows.length; i += 1) {
-      const s0 = equipRows[i]
-      let e0 = s0
-      while (equipRows[i + 1] === e0 + 1) { i += 1; e0 = equipRows[i] }
-      out.push(s0 === e0 ? `${col}${s0}` : `${col}${s0}:${col}${e0}`)
-    }
-    return out.join(',')
-  }
-  const eq = (col: string) => (equipRows.length ? `SUM(${ranges(col)})` : '0')
-  const showF = t.normalItems > 0 || t.equipItems === 0
-  const mixed = t.normalItems > 0 && t.equipItems > 0
-  let next = sum + 1
-  // งานปนกัน: บอกก่อนว่าส่วนไหนคูณ Factor F ส่วนไหนบวก VAT (แถวบอกยอด ไม่นับเข้ายอดรวม)
-  const infoRow = (label: string, vals: [number, number, number], fm: [string, string, string]) => {
-    const row = next
-    totalRow(row, label, [
-      ['F', f(fm[0], vals[0])], ['H', f(fm[1], vals[1])], ['I', f(fm[2], vals[2])],
-    ])
-    for (const c of COLS) ws.getCell(`${c}${row}`).font = { name: FONT, size: 14, italic: true }
-    next += 1
-  }
-  if (mixed) infoRow('ส่วนที่คูณ Factor F (หมวดทั่วไป)', [t.nMat, t.nLab, t.nSum], [`ROUND(F${sum}-${eq('F')},2)`, `ROUND(H${sum}-${eq('H')},2)`, `ROUND(I${sum}-${eq('I')},2)`])
-  const parts: Record<'F' | 'H' | 'I', string[]> = { F: [`F${sum}`], H: [`H${sum}`], I: [`I${sum}`] }
-  if (showF) {
-    const fr = next
-    totalRow(fr, 'Factor F', [
-      ['E', factor],
-      ['F', f(`ROUND(ROUND(F${sum}-${eq('F')},2)*($E${fr}-1),2)`, t.fMat)],
-      ['H', f(`ROUND(ROUND(H${sum}-${eq('H')},2)*($E${fr}-1),2)`, t.fLab)],
-      ['I', f(`ROUND(ROUND(I${sum}-${eq('I')},2)*($E${fr}-1),2)`, t.fSum)],
-    ])
-    ws.getCell(`E${fr}`).numFmt = '0.0000'
-    ws.getCell(`E${fr}`).alignment = { horizontal: 'center' }
-    for (const c of ['F', 'H', 'I'] as const) parts[c].push(`${c}${fr}`)
-    next += 1
-  }
-  if (mixed) infoRow('ส่วนที่บวก VAT 7% (หมวดครุภัณฑ์)', [t.eMat, t.eLab, t.eSum], [`ROUND(${eq('F')},2)`, `ROUND(${eq('H')},2)`, `ROUND(${eq('I')},2)`])
-  if (t.equipItems > 0) {
-    const vr = next
-    totalRow(vr, 'ภาษีมูลค่าเพิ่ม 7% (ครุภัณฑ์)', [
-      ['E', CO_VAT],
-      ['F', f(`ROUND(ROUND(${eq('F')},2)*$E${vr},2)`, t.vMat)],
-      ['H', f(`ROUND(ROUND(${eq('H')},2)*$E${vr},2)`, t.vLab)],
-      ['I', f(`ROUND(ROUND(${eq('I')},2)*$E${vr},2)`, t.vSum)],
-    ])
-    ws.getCell(`E${vr}`).numFmt = '0.00'
-    ws.getCell(`E${vr}`).alignment = { horizontal: 'center' }
-    for (const c of ['F', 'H', 'I'] as const) parts[c].push(`${c}${vr}`)
-    next += 1
-  }
-  const tr = next
-  totalRow(tr, `รวมยอดทั้งหมด (${label})`, [
-    ['F', f(parts.F.join('+'), t.totalMat)],
-    ['H', f(parts.H.join('+'), t.totalLab)],
-    ['I', f(parts.I.join('+'), t.total)],
+  const cr = sum + 1
+  const k = vat ? `$E${cr}` : `($E${cr}-1)`
+  const [cMat, cLab, cSum] = vat ? [t.vMat, t.vLab, t.vSum] : [t.fMat, t.fLab, t.fSum]
+  totalRow(ws, cr, vat ? 'ภาษีมูลค่าเพิ่ม 7%' : 'Factor F', [
+    ['E', vat ? CO_VAT : factor],
+    ['F', f(`ROUND(F${sum}*${k},2)`, cMat)],
+    ['H', f(`ROUND(H${sum}*${k},2)`, cLab)],
+    ['I', f(`ROUND(I${sum}*${k},2)`, cSum)],
+  ])
+  ws.getCell(`E${cr}`).numFmt = vat ? '0.00' : '0.0000'
+  ws.getCell(`E${cr}`).alignment = { horizontal: 'center' }
+  const tr = cr + 1
+  totalRow(ws, tr, `รวมยอดทั้งหมด (${word})`, [
+    ['F', f(`F${sum}+F${cr}`, t.totalMat)],
+    ['H', f(`H${sum}+H${cr}`, t.totalLab)],
+    ['I', f(`I${sum}+I${cr}`, t.total)],
   ])
   ws.getCell(`I${tr}`).fill = fill('FFF3EAD7')
-  return { next: tr + 2, refs: { total: tr } }
+  return { next: tr + 1, tr }
+}
+
+/** งานลด/งานเพิ่มหนึ่งฝั่ง: ตาราง Factor F + ตารางครุภัณฑ์ + ยอดรวมทั้งสองตาราง — คืนแถวยอดรวมของฝั่งนั้น */
+function block(ws: Worksheet, start: number, b: CoBlock, side: 'cut' | 'add', factor: number): { next: number; refs: BlockRefs } {
+  const title = b.title || (side === 'cut' ? 'งานลด' : 'งานเพิ่ม')
+  const { normal, equip } = splitBlock(b)
+  const tn = blockTotals({ title, rows: normal }, factor)
+  const te = blockTotals({ title, rows: equip }, factor)
+  const showN = tn.items > 0 || te.items === 0
+  const showE = te.items > 0
+  let r = start
+  let nTr = 0
+  let eTr = 0
+  if (showN) {
+    const s = section(ws, r, normal, title, side, factor, 'f')
+    nTr = s.tr
+    r = s.next + 1
+  }
+  if (showE) {
+    const s = section(ws, r, equip, title, side, factor, 'vat')
+    eTr = s.tr
+    r = s.next
+  }
+  if (showN && showE) {
+    const tr = eTr + 1
+    totalRow(ws, tr, `รวมทั้งสิ้น ${title.split(' ')[0]} (Factor F + ภาษีมูลค่าเพิ่ม)`, [
+      ['F', f(`F${nTr}+F${eTr}`, round2(tn.totalMat + te.totalMat))],
+      ['H', f(`H${nTr}+H${eTr}`, round2(tn.totalLab + te.totalLab))],
+      ['I', f(`I${nTr}+I${eTr}`, round2(tn.total + te.total))],
+    ], BAND[side])
+    ws.getCell(`I${tr}`).fill = fill('FFF3EAD7')
+    return { next: tr + 2, refs: { total: tr } }
+  }
+  return { next: showN ? r : r + 1, refs: { total: showE ? eTr : nTr } }
 }
 
 export async function buildChangeOrderXlsx(co: ChangeOrder): Promise<ArrayBuffer> {
