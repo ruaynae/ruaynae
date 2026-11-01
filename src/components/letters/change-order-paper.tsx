@@ -118,6 +118,9 @@ function Side({ b, side, factor }: { b: CoBlock; side: 'cut' | 'add'; factor: nu
 
 export function ChangeOrderPaper({ co }: { co: ChangeOrder }) {
   const t = coTotals(co)
+  // งานลดกับงานเพิ่มแยกเป็นคนละตาราง — งานเพิ่มขึ้นหน้าใหม่เสมอ (ไม่ให้หัวตารางค้างท้ายหน้าเดียวกับงานลด)
+  const tables = (['cut', 'add'] as const).filter((k) => co[k].rows.length > 0)
+  if (tables.length === 0) tables.push('cut')
   const head: [string, string][] = [
     ['กลุ่มงาน/งาน', co.work],
     ['ชื่อโครงการ/งานก่อสร้าง', co.project],
@@ -139,48 +142,51 @@ export function ChangeOrderPaper({ co }: { co: ChangeOrder }) {
         </tbody>
       </table>
       <p className="co-unit">หน่วย : บาท</p>
-      <table className="co-table">
-        <colgroup>
-          <col style={{ width: '5%' }} />
-          <col style={{ width: '25%' }} />
-          <col style={{ width: '7%' }} />
-          <col style={{ width: '6%' }} />
-          <col style={{ width: '9.5%' }} />
-          <col style={{ width: '10%' }} />
-          <col style={{ width: '9%' }} />
-          <col style={{ width: '9%' }} />
-          <col style={{ width: '11%' }} />
-          <col style={{ width: '8.5%' }} />
-        </colgroup>
-        <thead>
-          <tr>
-            <th rowSpan={2}>ลำดับที่</th>
-            <th rowSpan={2}>รายการ</th>
-            <th rowSpan={2}>จำนวน</th>
-            <th rowSpan={2}>หน่วย</th>
-            <th colSpan={2}>ราคาค่าวัสดุ</th>
-            <th colSpan={2}>ราคาค่าแรง</th>
-            <th rowSpan={2}>รวมค่าวัสดุ<br />และแรงงาน</th>
-            <th rowSpan={2}>หมายเหตุ</th>
-          </tr>
-          <tr>
-            <th>ราคา/หน่วย</th>
-            <th>รวม</th>
-            <th>ราคา/หน่วย</th>
-            <th>รวม</th>
-          </tr>
-        </thead>
-        <tbody>
-          {co.cut.rows.length > 0 && <Side b={co.cut} side="cut" factor={co.factor} />}
-          {co.add.rows.length > 0 && <Side b={co.add} side="add" factor={co.factor} />}
-          <tr className="co-diff">
-            <td />
-            <td colSpan={7} className="co-c">{t.kind ? `รวม${t.kind}ทั้งสิ้น` : 'รวมทั้งสิ้น'}</td>
-            <td className="co-n">{coMoney(t.amount, false)}</td>
-            <td />
-          </tr>
-        </tbody>
-      </table>
+      {tables.map((side, i) => (
+        <table key={side} className="co-table">
+          <colgroup>
+            <col style={{ width: '5%' }} />
+            <col style={{ width: '25%' }} />
+            <col style={{ width: '7%' }} />
+            <col style={{ width: '6%' }} />
+            <col style={{ width: '9.5%' }} />
+            <col style={{ width: '10%' }} />
+            <col style={{ width: '9%' }} />
+            <col style={{ width: '9%' }} />
+            <col style={{ width: '11%' }} />
+            <col style={{ width: '8.5%' }} />
+          </colgroup>
+          <thead>
+            <tr>
+              <th rowSpan={2}>ลำดับที่</th>
+              <th rowSpan={2}>รายการ</th>
+              <th rowSpan={2}>จำนวน</th>
+              <th rowSpan={2}>หน่วย</th>
+              <th colSpan={2}>ราคาค่าวัสดุ</th>
+              <th colSpan={2}>ราคาค่าแรง</th>
+              <th rowSpan={2}>รวมค่าวัสดุ<br />และแรงงาน</th>
+              <th rowSpan={2}>หมายเหตุ</th>
+            </tr>
+            <tr>
+              <th>ราคา/หน่วย</th>
+              <th>รวม</th>
+              <th>ราคา/หน่วย</th>
+              <th>รวม</th>
+            </tr>
+          </thead>
+          <tbody>
+            {co[side].rows.length > 0 && <Side b={co[side]} side={side} factor={co.factor} />}
+            {i === tables.length - 1 && (
+              <tr className="co-diff">
+                <td />
+                <td colSpan={7} className="co-c">{t.kind ? `รวม${t.kind}ทั้งสิ้น` : 'รวมทั้งสิ้น'}</td>
+                <td className="co-n">{coMoney(t.amount, false)}</td>
+                <td />
+              </tr>
+            )}
+          </tbody>
+        </table>
+      ))}
     </article>
   )
 }
