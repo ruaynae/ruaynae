@@ -8,8 +8,8 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { ChangeOrderBoqPicker } from '@/components/letters/change-order-boq-picker'
 import {
-  coMoney, coTotals, emptyItem, itemTotals, moveRow, num,
-  type ChangeOrder, type CoBlock, type CoItem, type CoRow, type CoSide,
+  appendRows, coMoney, coTotals, emptyItem, endsEquip, itemTotals, moveRow, num,
+  type ChangeOrder, type CoBlock, type CoGroup, type CoItem, type CoRow, type CoSide,
 } from '@/lib/change-order'
 
 /**
@@ -57,10 +57,14 @@ export function ChangeOrderEditor({
     const other: CoSide = side === 'cut' ? 'add' : 'cut'
     // หัวข้อที่อยู่เหนือรายการนี้ไปด้วย (ถ้าอีกฝั่งยังไม่มีหัวข้อเดียวกันเป็นแถวสุดท้าย) — งานเพิ่มมักเป็นรายการเดิมที่แก้ขนาด
     const head = [...block.rows.slice(0, i)].reverse().find((x) => x.t === 'head')
-    const rows = [...co[other].rows]
-    const lastHead = [...rows].reverse().find((x) => x.t === 'head')
-    if (head && head.t === 'head' && !(lastHead && lastHead.t === 'head' && lastHead.text === head.text)) rows.push({ ...head })
-    rows.push({ ...r })
+    const src = block.rows.slice(0, i)
+    const srcGroup = [...src].reverse().find((x): x is CoGroup => x.t === 'group')
+    const lastHead = [...co[other].rows].reverse().find((x) => x.t === 'head')
+    const add: CoRow[] = []
+    if (head && head.t === 'head' && !(lastHead && lastHead.t === 'head' && lastHead.text === head.text)) add.push({ ...head })
+    add.push({ ...r })
+    // รายการครุภัณฑ์ต้องไปเป็นครุภัณฑ์ที่อีกฝั่งด้วย (พาแถวหมวดไปเมื่อสถานะต่างกัน)
+    const rows = appendRows(co[other].rows, add, endsEquip(src), srcGroup)
     setBlock(other, { ...co[other], rows })
     toast.success(`คัดลอกไป${other === 'cut' ? 'งานลด' : 'งานเพิ่ม'}แล้ว — แก้จำนวน/ขนาดที่นั่นได้เลย`)
   }
@@ -200,7 +204,7 @@ export function ChangeOrderEditor({
             siteId={siteId}
             target={side}
             onPick={(rows, factor) => {
-              const next = { ...co, [side]: { ...block, rows: [...block.rows, ...rows] } }
+              const next = { ...co, [side]: { ...block, rows: appendRows(block.rows, rows) } }
               // ตารางใหม่ยังไม่มีรายการ → Factor F ของสัญญามาด้วย
               if (factor && t.cut.items + t.add.items === 0) next.factor = factor
               onChange(next)
@@ -215,9 +219,20 @@ export function ChangeOrderEditor({
 function RowFields({ row, onChange }: { row: CoRow; onChange: (r: CoRow) => void }) {
   if (row.t === 'group') {
     return (
-      <div className="flex gap-2">
-        <input aria-label="เลขหมวด" value={row.no} onChange={(e) => onChange({ ...row, no: e.target.value })} placeholder="1.6" className="input-base w-20 font-semibold" />
-        <input aria-label="ชื่อหมวด" value={row.text} onChange={(e) => onChange({ ...row, text: e.target.value })} placeholder="หมวด เช่น งานตกแต่งภายใน" className="input-base min-w-0 flex-1 font-semibold" />
+      <div className="space-y-2">
+        <div className="flex gap-2">
+          <input aria-label="เลขหมวด" value={row.no} onChange={(e) => onChange({ ...row, no: e.target.value })} placeholder="1.6" className="input-base w-20 font-semibold" />
+          <input aria-label="ชื่อหมวด" value={row.text} onChange={(e) => onChange({ ...row, text: e.target.value })} placeholder="หมวด เช่น งานตกแต่งภายใน" className="input-base min-w-0 flex-1 font-semibold" />
+        </div>
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input
+            type="checkbox"
+            checked={Boolean(row.equip)}
+            onChange={(e) => onChange({ t: 'group', no: row.no, text: row.text, ...(e.target.checked ? { equip: true } : {}) })}
+            className="size-4"
+          />
+          หมวดครุภัณฑ์ <span className="text-muted-token">(ไม่คูณ Factor F · บวก VAT 7% แทน)</span>
+        </label>
       </div>
     )
   }

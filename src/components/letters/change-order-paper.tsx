@@ -63,15 +63,28 @@ function Block({ b, side, factor }: { b: CoBlock; side: 'cut' | 'add'; factor: n
         <td className="co-n">{coMoney(t.sum, false)}</td>
         <td />
       </tr>
-      <tr className="co-b">
-        <td />
-        <td colSpan={4} className="co-c">Factor F ({factor})</td>
-        <td className="co-n">{coMoney(t.fMat, false)}</td>
-        <td />
-        <td className="co-n">{coMoney(t.fLab, false)}</td>
-        <td className="co-n">{coMoney(t.fSum, false)}</td>
-        <td />
-      </tr>
+      {(t.normalItems > 0 || t.equipItems === 0) && (
+        <tr className="co-b">
+          <td />
+          <td colSpan={4} className="co-c">Factor F ({factor})</td>
+          <td className="co-n">{coMoney(t.fMat, false)}</td>
+          <td />
+          <td className="co-n">{coMoney(t.fLab, false)}</td>
+          <td className="co-n">{coMoney(t.fSum, false)}</td>
+          <td />
+        </tr>
+      )}
+      {t.equipItems > 0 && (
+        <tr className="co-b">
+          <td />
+          <td colSpan={4} className="co-c">ภาษีมูลค่าเพิ่ม 7%</td>
+          <td className="co-n">{coMoney(t.vMat, false)}</td>
+          <td />
+          <td className="co-n">{coMoney(t.vLab, false)}</td>
+          <td className="co-n">{coMoney(t.vSum, false)}</td>
+          <td />
+        </tr>
+      )}
       <tr className="co-b">
         <td />
         <td colSpan={4} className="co-c">รวมยอดทั้งหมด ({label})</td>
