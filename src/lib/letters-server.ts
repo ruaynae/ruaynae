@@ -4,7 +4,6 @@ import { getSupabaseServer } from '@/lib/supabase/server'
 import { isUuid } from '@/lib/transactions'
 import { LETTER_LIMITS, splitLines, stripItemNo, type Letterhead } from '@/lib/letters'
 import { isBlank, parseChangeOrder, type ChangeOrder } from '@/lib/change-order'
-import { parseLetterPdfs, type LetterPdf } from '@/lib/letter-pdfs'
 import type { Json } from '@/lib/database.types'
 
 /**
@@ -55,8 +54,6 @@ export type LetterInput = {
   fields: Record<string, string>
   /** ตารางงานเพิ่ม-ลด (R25) — เก็บใน `letters.fields.changeOrder` (jsonb เดิม ไม่ต้องรัน migration) */
   changeOrder: ChangeOrder | null
-  /** ไฟล์ PDF ที่แนบ (อ้างถึงคลังเอกสาร) — เก็บใน `letters.fields.pdfs` */
-  pdfs: LetterPdf[]
 }
 
 export type ParsedLetter = { ok: true; value: LetterInput } | { ok: false; error: string }
@@ -130,7 +127,6 @@ export function parseLetterInput(body: Record<string, unknown>): ParsedLetter {
       templateId,
       fields,
       changeOrder: changeOrderOf(body.changeOrder, templateId),
-      pdfs: parseLetterPdfs(body.pdfs),
     },
   }
 }
@@ -148,9 +144,8 @@ function changeOrderOf(v: unknown, templateId: string | null): ChangeOrder | nul
  */
 function letterFieldsJson(v: LetterInput): Json {
   const out: Record<string, Json> = {}
-  for (const [k, x] of Object.entries(v.fields)) if (k !== 'changeOrder' && k !== 'pdfs') out[k] = x
+  for (const [k, x] of Object.entries(v.fields)) if (k !== 'changeOrder') out[k] = x
   if (v.changeOrder) out.changeOrder = v.changeOrder as unknown as Json
-  if (v.pdfs.length) out.pdfs = v.pdfs as unknown as Json
   return out
 }
 

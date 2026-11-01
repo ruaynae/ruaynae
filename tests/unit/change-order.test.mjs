@@ -184,15 +184,3 @@ test('แยกเป็นสองตาราง: หมวดทั่วไ
   assert.equal(round2(n.total + e.total), all.total)
   assert.equal(round2(n.totalMat + e.totalMat), all.totalMat)
 })
-
-test('ไฟล์ PDF แนบหนังสือ: ตรวจรูปร่าง · id ซ้ำนับครั้งเดียว · เกินเพดานตัด', async () => {
-  const { parseLetterPdfs, pdfSizeText, LETTER_PDF_MAX } = await import('../../src/lib/letter-pdfs.ts')
-  const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
-  assert.deepEqual(parseLetterPdfs(null), [])
-  assert.deepEqual(parseLetterPdfs([{ id: 'x', name: 'a.pdf' }, 7, { id: id(1), name: ' ใบเสนอ\n งาน.pdf ', size: '2048.4' }, { id: id(1), name: 'dup' }]),
-    [{ id: id(1), name: 'ใบเสนอ งาน.pdf', size: 2048 }])
-  assert.equal(parseLetterPdfs(Array.from({ length: 25 }, (_, i) => ({ id: id(i + 1), name: 'f.pdf' }))).length, LETTER_PDF_MAX)
-  assert.equal(pdfSizeText(0), '')
-  assert.equal(pdfSizeText(512), '1 KB')
-  assert.equal(pdfSizeText(5 * 1024 * 1024), '5.0 MB')
-})
