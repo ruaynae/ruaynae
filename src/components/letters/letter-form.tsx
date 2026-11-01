@@ -314,7 +314,7 @@ export function LetterForm({
       templateId: d.templateId,
       fields: d.fields,
       changeOrder: isChange ? co : null,
-      pdfs: isChange ? pdfs : [],
+      pdfs,
     }
     try {
       const r = await fetch(savedId ? `/api/letters/${savedId}` : '/api/letters', {
@@ -559,7 +559,7 @@ export function LetterForm({
             />
           )}
 
-          {isChange && <LetterPdfSection value={pdfs} onChange={setPdfs} siteId={cur?.siteId ?? null} subject={d.subject} />}
+          <LetterPdfSection value={pdfs} onChange={setPdfs} siteId={cur?.siteId ?? null} subject={d.subject} />
 
           <section className="card-surface space-y-3.5 p-4">
             <h2 className="flex items-center gap-2 text-base font-semibold text-ink">
