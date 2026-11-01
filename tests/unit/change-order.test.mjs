@@ -146,3 +146,14 @@ test('ต่อรายการเข้าบล็อก: ไม่ให้
   assert.equal(isEquipName('ค่าครุภัณฑ์จัดซื้อ'), true)
   assert.equal(isEquipName('งานสถาปัตยกรรม'), false)
 })
+
+test('เลือกจาก BOQ หลายรอบ: หมวด/หัวงานเดิมไม่ขึ้นซ้ำ · หมวดใหม่ขึ้นปกติ', () => {
+  const grp = { t: 'group', no: '1', text: 'หมวดงานสถาปัตยกรรม' }
+  const head = { t: 'head', text: 'งานตกแต่งภายใน' }
+  let rows = appendRows([], [grp, head, item('a', 1, 10)])
+  rows = appendRows(rows, [{ ...grp }, { ...head }, item('b', 1, 10)])
+  rows = appendRows(rows, [{ ...grp }, { t: 'head', text: 'งานผนัง' }, item('c', 1, 10)])
+  assert.deepEqual(rows.map((r) => r.t), ['group', 'head', 'item', 'item', 'head', 'item'])
+  rows = appendRows(rows, [{ t: 'group', no: '3', text: 'ครุภัณฑ์', equip: true }, { ...head }, item('d', 1, 10)])
+  assert.deepEqual(rows.map((r) => r.t).slice(6), ['group', 'head', 'item'])
+})

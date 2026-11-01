@@ -243,6 +243,18 @@ export const endsEquip = (rows: readonly CoRow[]) => {
  */
 export function appendRows(rows: readonly CoRow[], add: readonly CoRow[], srcEquip = false, srcGroup?: CoGroup): CoRow[] {
   const out = [...rows]
+  let rest = add
+  // เลือกจาก BOQ หลายรอบในหมวดเดียวกัน → ไม่ต้องขึ้นหัวหมวด/หัวงานซ้ำ (หมวดเดียวกับหมวดล่าสุดของบล็อก)
+  const g = rest[0]
+  const lastGroupAt = out.map((r) => r.t).lastIndexOf('group')
+  const lastGroup = lastGroupAt >= 0 ? out[lastGroupAt] : null
+  if (g && g.t === 'group' && lastGroup && lastGroup.t === 'group'
+    && g.no === lastGroup.no && g.text === lastGroup.text && Boolean(g.equip) === Boolean(lastGroup.equip)) {
+    rest = rest.slice(1)
+    const seen = new Set(out.slice(lastGroupAt + 1).filter((r) => r.t === 'head').map((r) => r.text))
+    while (rest[0] && rest[0].t === 'head' && seen.has(rest[0].text)) rest = rest.slice(1)
+    return [...out, ...rest]
+  }
   const lead = add[0]
   if (lead && lead.t !== 'group' && endsEquip(rows) !== srcEquip) {
     out.push(srcGroup ? { ...srcGroup } : { t: 'group', no: '', text: srcEquip ? 'ครุภัณฑ์' : 'งานทั่วไป', ...(srcEquip ? { equip: true } : {}) })
