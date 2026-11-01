@@ -1,5 +1,5 @@
 import {
-  CO_TITLE, blockTotals, coMoney, coQty, coTotals, itemTotals, type ChangeOrder, type CoBlock,
+  CO_TITLE, blockTotals, coMoney, coQty, coTotals, itemTotals, round2, splitBlock, type ChangeOrder, type CoBlock, type CoRow,
 } from '@/lib/change-order'
 
 /**
@@ -12,22 +12,25 @@ import {
 
 const MARK = { cut: 'co-band-cut', add: 'co-band-add' } as const
 
-function Block({ b, side, factor }: { b: CoBlock; side: 'cut' | 'add'; factor: number }) {
-  const t = blockTotals(b, factor)
-  const label = b.title || (side === 'cut' ? 'งานลด' : 'งานเพิ่ม')
+type Mode = 'f' | 'vat'
+
+/** หนึ่งตาราง: หมวดทั่วไป (บวก Factor F) หรือหมวดครุภัณฑ์ (บวก VAT 7%) ของงานลด/งานเพิ่ม */
+function Section({ rows, title, side, factor, mode }: { rows: CoRow[]; title: string; side: 'cut' | 'add'; factor: number; mode: Mode }) {
+  const t = blockTotals({ title, rows }, factor)
+  const word = `${title.split(' ')[0]}${mode === 'vat' ? ' (ครุภัณฑ์)' : ''}`
+  const [cMat, cLab, cSum] = mode === 'vat' ? [t.vMat, t.vLab, t.vSum] : [t.fMat, t.fLab, t.fSum]
   return (
     <>
       <tr className={MARK[side]}>
         <td />
-        <td colSpan={9} className="co-b">{label}</td>
+        <td colSpan={9} className="co-b">{word}</td>
       </tr>
-      {b.rows.map((r, i) => {
+      {rows.map((r, i) => {
         if (r.t === 'group') {
           return (
             <tr key={i}>
               <td className="co-c co-b">{r.no}</td>
-              <td colSpan={8} className="co-b">{r.text}</td>
-              <td className={`co-c co-tag ${r.equip ? 'co-tag-vat' : 'co-tag-f'}`}>{r.equip ? 'VAT 7%' : 'Factor F'}</td>
+              <td colSpan={9} className="co-b">{r.text}</td>
             </tr>
           )
         }
@@ -57,66 +60,58 @@ function Block({ b, side, factor }: { b: CoBlock; side: 'cut' | 'add'; factor: n
       })}
       <tr className={`${MARK[side]} co-b`}>
         <td />
-        <td colSpan={4} className="co-c">รวม{label.split(' ')[0]}{t.normalItems > 0 && t.equipItems > 0 ? ' (ทุกหมวด)' : ''}</td>
+        <td colSpan={4} className="co-c">รวม{word}</td>
         <td className="co-n">{coMoney(t.mat, false)}</td>
         <td />
         <td className="co-n">{coMoney(t.lab, false)}</td>
         <td className="co-n">{coMoney(t.sum, false)}</td>
         <td />
       </tr>
-      {t.normalItems > 0 && t.equipItems > 0 && (
-        <tr className="co-sub">
-          <td />
-          <td colSpan={4}>ส่วนที่คูณ Factor F (หมวดทั่วไป)</td>
-          <td className="co-n">{coMoney(t.nMat, false)}</td>
-          <td />
-          <td className="co-n">{coMoney(t.nLab, false)}</td>
-          <td className="co-n">{coMoney(t.nSum, false)}</td>
-          <td />
-        </tr>
-      )}
-      {(t.normalItems > 0 || t.equipItems === 0) && (
-        <tr className="co-b">
-          <td />
-          <td colSpan={4} className="co-c">Factor F ({factor})</td>
-          <td className="co-n">{coMoney(t.fMat, false)}</td>
-          <td />
-          <td className="co-n">{coMoney(t.fLab, false)}</td>
-          <td className="co-n">{coMoney(t.fSum, false)}</td>
-          <td />
-        </tr>
-      )}
-      {t.normalItems > 0 && t.equipItems > 0 && (
-        <tr className="co-sub">
-          <td />
-          <td colSpan={4}>ส่วนที่บวก VAT 7% (หมวดครุภัณฑ์)</td>
-          <td className="co-n">{coMoney(t.eMat, false)}</td>
-          <td />
-          <td className="co-n">{coMoney(t.eLab, false)}</td>
-          <td className="co-n">{coMoney(t.eSum, false)}</td>
-          <td />
-        </tr>
-      )}
-      {t.equipItems > 0 && (
-        <tr className="co-b">
-          <td />
-          <td colSpan={4} className="co-c">ภาษีมูลค่าเพิ่ม 7%</td>
-          <td className="co-n">{coMoney(t.vMat, false)}</td>
-          <td />
-          <td className="co-n">{coMoney(t.vLab, false)}</td>
-          <td className="co-n">{coMoney(t.vSum, false)}</td>
-          <td />
-        </tr>
-      )}
       <tr className="co-b">
         <td />
-        <td colSpan={4} className="co-c">รวมยอดทั้งหมด ({label})</td>
+        <td colSpan={4} className="co-c">{mode === 'vat' ? 'ภาษีมูลค่าเพิ่ม 7%' : `Factor F (${factor})`}</td>
+        <td className="co-n">{coMoney(cMat, false)}</td>
+        <td />
+        <td className="co-n">{coMoney(cLab, false)}</td>
+        <td className="co-n">{coMoney(cSum, false)}</td>
+        <td />
+      </tr>
+      <tr className="co-b">
+        <td />
+        <td colSpan={4} className="co-c">รวมยอดทั้งหมด ({word})</td>
         <td className="co-n">{coMoney(t.totalMat, false)}</td>
         <td />
         <td className="co-n">{coMoney(t.totalLab, false)}</td>
         <td className="co-n co-total">{coMoney(t.total, false)}</td>
         <td />
       </tr>
+    </>
+  )
+}
+
+/** งานลด/งานเพิ่มหนึ่งฝั่ง: ตาราง Factor F + ตารางครุภัณฑ์ (ถ้ามี) + ยอดรวมของทั้งสองตาราง */
+function Side({ b, side, factor }: { b: CoBlock; side: 'cut' | 'add'; factor: number }) {
+  const title = b.title || (side === 'cut' ? 'งานลด' : 'งานเพิ่ม')
+  const { normal, equip } = splitBlock(b)
+  const tn = blockTotals({ title, rows: normal }, factor)
+  const te = blockTotals({ title, rows: equip }, factor)
+  const showN = tn.items > 0 || te.items === 0
+  const showE = te.items > 0
+  return (
+    <>
+      {showN && <Section rows={normal} title={title} side={side} factor={factor} mode="f" />}
+      {showE && <Section rows={equip} title={title} side={side} factor={factor} mode="vat" />}
+      {showN && showE && (
+        <tr className={`${MARK[side]} co-b`}>
+          <td />
+          <td colSpan={4} className="co-c">รวมทั้งสิ้น {title.split(' ')[0]} (Factor F + ภาษีมูลค่าเพิ่ม)</td>
+          <td className="co-n">{coMoney(round2(tn.totalMat + te.totalMat), false)}</td>
+          <td />
+          <td className="co-n">{coMoney(round2(tn.totalLab + te.totalLab), false)}</td>
+          <td className="co-n co-total">{coMoney(round2(tn.total + te.total), false)}</td>
+          <td />
+        </tr>
+      )}
     </>
   )
 }
@@ -176,8 +171,8 @@ export function ChangeOrderPaper({ co }: { co: ChangeOrder }) {
           </tr>
         </thead>
         <tbody>
-          {co.cut.rows.length > 0 && <Block b={co.cut} side="cut" factor={co.factor} />}
-          {co.add.rows.length > 0 && <Block b={co.add} side="add" factor={co.factor} />}
+          {co.cut.rows.length > 0 && <Side b={co.cut} side="cut" factor={co.factor} />}
+          {co.add.rows.length > 0 && <Side b={co.add} side="add" factor={co.factor} />}
           <tr className="co-diff">
             <td />
             <td colSpan={7} className="co-c">ส่วนต่าง {t.kind ?? ''}</td>

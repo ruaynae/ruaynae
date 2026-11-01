@@ -236,6 +236,21 @@ export const isBlank = (co: ChangeOrder) => co.cut.rows.length + co.add.rows.len
 
 /* ── ช่วยแก้ตาราง ─────────────────────────────────────────────────────── */
 
+/**
+ * แยกแถวของบล็อกเป็นสองตาราง: หมวดทั่วไป (คูณ Factor F) กับหมวดครุภัณฑ์ (บวก VAT 7%) — คงลำดับเดิม
+ * · แถวก่อนหมวดแรกถือเป็นหมวดทั่วไป · แถวหมวดไปอยู่ตารางเดียวกับรายการใต้หมวดนั้น
+ */
+export function splitBlock(b: CoBlock): { normal: CoRow[]; equip: CoRow[] } {
+  const normal: CoRow[] = []
+  const equip: CoRow[] = []
+  let isEquip = false
+  for (const r of b.rows) {
+    if (r.t === 'group') isEquip = Boolean(r.equip)
+    ;(isEquip ? equip : normal).push(r)
+  }
+  return { normal, equip }
+}
+
 /** สถานะครุภัณฑ์ ณ ท้ายรายการแถว (หมวดล่าสุดเป็นครุภัณฑ์ไหม) */
 export const endsEquip = (rows: readonly CoRow[]) => {
   for (let i = rows.length - 1; i >= 0; i -= 1) {
