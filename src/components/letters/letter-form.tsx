@@ -202,6 +202,7 @@ export function LetterForm({
   const yearCe = yearCeOf(d.date)
   const letterNo = formatLetterNo(prefix, d.seq, yearCe)
   const template = findLetterTemplate(d.templateId)
+  const latest = template ? generateFromTemplate(template, d.fields, company) : null
   const seriesEntries = useMemo(() => entries.filter((e) => e.seriesId === d.seriesId), [entries, d.seriesId])
   const taken = entries.find((e) => e.seriesId === d.seriesId && e.yearCe === yearCe && e.seq === d.seq && e.id !== savedId)
 
@@ -638,6 +639,22 @@ export function LetterForm({
             <Field id="lf-body" label="เนื้อความ" hint="1 บรรทัด = 1 ย่อหน้า · ขึ้นต้นด้วย 1. 2. เพื่อทำเป็นข้อ ๆ">
               <textarea id="lf-body" rows={6} value={d.body} onChange={(e) => set('body', e.target.value)} className="input-base" />
             </Field>
+            {template && latest && latest.body !== d.body && (
+              <div className="-mt-2 flex flex-wrap items-center gap-2 text-sm">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    const before = d
+                    setD((p) => ({ ...p, body: latest.body }))
+                    toast('ใช้ข้อความต้นแบบล่าสุดแล้ว', { action: { label: 'เลิกทำ', onClick: () => setD(before) } })
+                  }}
+                >
+                  ใช้ข้อความต้นแบบล่าสุด
+                </button>
+                <span className="text-xs text-muted-token">แทนเนื้อความด้วยต้นแบบ “{template.name}” (ใช้ประเภท/จำนวนเงินที่กรอกไว้) · เลิกทำได้</span>
+              </div>
+            )}
 
             <div className="rounded-md border border-line-soft bg-surface-2 px-3 py-2.5">
               <label className="flex items-start gap-2.5 text-sm text-ink">
