@@ -16,6 +16,8 @@ import { LetterRefPicker } from '@/components/letters/letter-ref-picker'
 import { LetterContractPicker, putContractRef, type SiteContract } from '@/components/letters/letter-contract-picker'
 import { LetterPhotos, type LetterPhoto } from '@/components/letters/letter-photos'
 import { ChangeOrderSection } from '@/components/letters/change-order-section'
+import { LetterPdfSection } from '@/components/letters/letter-pdf-section'
+import type { LetterPdf } from '@/lib/letter-pdfs'
 import { coTotals, emptyChangeOrder, hasItems, type ChangeOrder } from '@/lib/change-order'
 import { LETTER_TEMPLATES, findLetterTemplate } from '@/lib/letter-templates'
 import {
@@ -56,6 +58,7 @@ export type FormLetter = {
   fields: Record<string, string>
   /** ตารางงานเพิ่ม-ลด (R25 · แบบ "งานเพิ่ม / งานลด") */
   changeOrder?: ChangeOrder | null
+  pdfs?: LetterPdf[]
 }
 
 type Draft = {
@@ -137,6 +140,7 @@ export function LetterForm({
   const hadPhotos = useRef(Boolean(initialPhotos?.photos.length))
   const warnedPhotos = useRef(false)
   const [co, setCoState] = useState<ChangeOrder | null>(initial?.changeOrder ?? null)
+  const [pdfs, setPdfs] = useState<LetterPdf[]>(initial?.pdfs ?? [])
 
   const [d, setD] = useState<Draft>(() => {
     if (initial) {
@@ -310,6 +314,7 @@ export function LetterForm({
       templateId: d.templateId,
       fields: d.fields,
       changeOrder: isChange ? co : null,
+      pdfs: isChange ? pdfs : [],
     }
     try {
       const r = await fetch(savedId ? `/api/letters/${savedId}` : '/api/letters', {
@@ -553,6 +558,8 @@ export function LetterForm({
               onFixText={() => setD((p) => ({ ...p, subject: gen.subject, body: gen.body }))}
             />
           )}
+
+          {isChange && <LetterPdfSection value={pdfs} onChange={setPdfs} siteId={cur?.siteId ?? null} subject={d.subject} />}
 
           <section className="card-surface space-y-3.5 p-4">
             <h2 className="flex items-center gap-2 text-base font-semibold text-ink">
