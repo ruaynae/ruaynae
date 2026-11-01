@@ -1,9 +1,10 @@
 'use client'
 
-import { ArrowUp, ImagePlus, Loader2, Trash2 } from 'lucide-react'
+import { ArrowUp, FileText, ImagePlus, Loader2, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { LETTER_LIMITS } from '@/lib/letters'
+import { openPdf, pdfErrorText } from '@/lib/pdf-pages'
 
 /** `file` = เพิ่งเลือก (ยังไม่อัป) · `key` = อยู่ใน R2 แล้ว (เก็บกับหนังสือ) · `url` = blob หรือลิงก์ presigned */
 export type LetterPhoto = { file?: File; key?: string; url: string; caption: string }
@@ -31,6 +32,7 @@ export function LetterPhotos({
   onLayout: (v: '1' | '2') => void
 }) {
   const [busy, setBusy] = useState(false)
+  const [progress, setProgress] = useState('')
 
   async function add(input: FileList | null) {
     // 🔴 คัดลอกรายชื่อไฟล์ก่อน await — ช่องเลือกไฟล์ถูกล้าง (`value = ''`) ทันทีหลังเรียกฟังก์ชันนี้
@@ -67,6 +69,47 @@ export function LetterPhotos({
     }
   }
 
+  /** PDF → รูปทีละหน้า แล้วต่อท้ายรูปเดิม (พิมพ์/Word/เก็บกับหนังสือเหมือนรูปปกติ) */
+  async function addPdf(input: FileList | null) {
+    const files = input ? Array.from(input) : [] // คัดลอกก่อน await (§17 ข้อ 42)
+    if (!files.length) return
+    let room = LETTER_LIMITS.photos - photos.length
+    if (room <= 0) {
+      toast.error(`แนบได้ไม่เกิน ${LETTER_LIMITS.photos} หน้า/รูปต่อฉบับ`)
+      return
+    }
+    setBusy(true)
+    const added: LetterPhoto[] = []
+    try {
+      for (const f of files) {
+        if (!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf') {
+          toast.error('ช่องนี้รับเฉพาะไฟล์ PDF')
+          continue
+        }
+        const pdf = await openPdf(f)
+        try {
+          const n = Math.min(pdf.pages, room)
+          for (let i = 1; i <= n; i++) {
+            setProgress(`กำลังแปลงหน้า ${i}/${pdf.pages}`)
+            const file = await pdf.page(i)
+            added.push({ file, url: URL.createObjectURL(file), caption: '' })
+          }
+          room -= n
+          if (pdf.pages > n) toast.error(`แนบได้ ${LETTER_LIMITS.photos} หน้า/รูปต่อฉบับ — หน้าที่เกินถูกข้าม`)
+        } finally {
+          pdf.close()
+        }
+        if (room <= 0) break
+      }
+    } catch (e) {
+      toast.error(pdfErrorText(e))
+    } finally {
+      if (added.length) onChange([...photos, ...added])
+      setProgress('')
+      setBusy(false)
+    }
+  }
+
   const remove = (i: number) => {
     if (photos[i].url.startsWith('blob:')) URL.revokeObjectURL(photos[i].url)
     onChange(photos.filter((_, j) => j !== i))
@@ -96,13 +139,24 @@ export function LetterPhotos({
 
       <label className={`btn-secondary w-full cursor-pointer sm:w-auto ${busy ? 'pointer-events-none opacity-60' : ''}`}>
         {busy ? <Loader2 className="size-4 animate-spin" /> : <ImagePlus className="size-4" />}
-        {busy ? 'กำลังย่อรูป…' : 'เลือกรูปภาพ'}
+        {busy ? progress || 'กำลังย่อรูป…' : 'เลือกรูปภาพ'}
         <input
           type="file"
           accept="image/jpeg,image/png,image/webp"
           multiple
           className="sr-only"
           onChange={(e) => { void add(e.target.files); e.target.value = '' }}
+        />
+      </label>
+      <label className={`btn-secondary ml-0 w-full cursor-pointer sm:ml-2 sm:w-auto ${busy ? 'pointer-events-none opacity-60' : ''}`}>
+        <FileText className="size-4" />
+        แนบไฟล์ PDF
+        <input
+          type="file"
+          accept="application/pdf,.pdf"
+          multiple
+          className="sr-only"
+          onChange={(e) => { void addPdf(e.target.files); e.target.value = '' }}
         />
       </label>
 
@@ -132,7 +186,7 @@ export function LetterPhotos({
         </ul>
       )}
       <p className="text-xs text-muted-token">
-        รูปจะอยู่ท้ายหนังสือในไฟล์ Word และตอนพิมพ์ · เก็บไว้กับหนังสือในทะเบียนเมื่อกดบันทึก/ดาวน์โหลด/พิมพ์
+        รูปและหน้า PDF จะอยู่ท้ายหนังสือ (PDF แปลงเป็นรูปทีละหน้า) ในไฟล์ Word และตอนพิมพ์ · เก็บไว้กับหนังสือในทะเบียนเมื่อกดบันทึก/ดาวน์โหลด/พิมพ์
       </p>
     </div>
   )

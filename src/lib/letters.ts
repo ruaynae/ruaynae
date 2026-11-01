@@ -35,7 +35,7 @@ export const LETTER_LIMITS = {
   intro: 2000,
   signerTitle: 80,
   /** รูปแนบท้ายต่อไฟล์ — คำขอทั้งก้อนต้องไม่ชนเพดาน body ของ Vercel (~4.5 MB) */
-  photos: 12,
+  photos: 30,
   photoBytes: 3.6 * 1024 * 1024,
 } as const
 

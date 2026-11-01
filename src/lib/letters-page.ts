@@ -6,7 +6,6 @@ import { todayInBangkok } from '@/lib/format'
 import { currentLetterhead } from '@/lib/letters-server'
 import type { RegisterEntry } from '@/lib/letters'
 import { parseChangeOrder } from '@/lib/change-order'
-import { parseLetterPdfs } from '@/lib/letter-pdfs'
 import type { FormLetter, SeriesOption } from '@/components/letters/letter-form'
 import type { SiteContract } from '@/components/letters/letter-contract-picker'
 
@@ -112,7 +111,7 @@ export function toFormLetter(r: LetterRowData): FormLetter {
   const fields: Record<string, string> = {}
   if (r.fields && typeof r.fields === 'object' && !Array.isArray(r.fields)) {
     for (const [k, v] of Object.entries(r.fields as Record<string, unknown>)) {
-      if (k !== 'changeOrder' && k !== 'pdfs') fields[k] = String(v ?? '')
+      if (k !== 'changeOrder') fields[k] = String(v ?? '')
     }
   }
   const co = r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).changeOrder : null
@@ -133,6 +132,5 @@ export function toFormLetter(r: LetterRowData): FormLetter {
     templateId: r.template_id,
     fields,
     changeOrder: parseChangeOrder(co),
-    pdfs: parseLetterPdfs(r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).pdfs : null),
   }
 }
