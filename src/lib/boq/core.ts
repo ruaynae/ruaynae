@@ -27,7 +27,8 @@ export type BoqItem = {
 
 /** แถวหัวข้อย่อย = มีชื่อ ไม่มีจำนวน/ยอดเงิน ไม่ใช่แถวรวม และไม่ใช่บรรทัดอธิบายที่ขึ้นต้นด้วยขีด */
 const subHead = (name: string, qty: number | null, a: number | null) =>
-  Boolean(name) && qty == null && a == null && !/^รวม/.test(name) && !/^[-–•]/.test(name)
+  // ช่องจำนวน/ยอดเงินของแถวหัวข้อมักเป็นสูตรที่ได้ 0 หรือว่าง — ถือว่าไม่มีค่าทั้งคู่
+  Boolean(name) && !qty && !(a && a > 0) && !/^รวม/.test(name) && !/^[-–•]/.test(name)
 
 export type BoqTask = {
   name: string
