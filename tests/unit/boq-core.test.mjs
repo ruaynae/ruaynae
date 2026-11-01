@@ -109,6 +109,29 @@ test('รายการย่อยจากส่วนรายละเอ�
   assert.deepEqual(floor.items.map((i) => [i.name, i.amount]), [['งานพื้น', 500000]])
 })
 
+test('หัวข้อย่อยเหนือรายการ (เช่น Built In … : B-01) ติดมากับรายการใต้หัวข้อนั้น', () => {
+  const detail = sheet('1 สถาปัตย์', [
+    ['ลำดับที่', 'รายการ', 'จำนวน', 'หน่วย', null, null, null, null, 'รวมค่าวัสดุและแรงงาน'],
+    ['1', 'หมวดงานสถาปัตยกรรม'],
+    ['1.1', 'หมวดงานรื้อถอน', 1, 'งาน', null, null, null, null, 100000],
+    ['1.2', 'งานพื้น', 1, 'งาน', null, null, null, null, 500000],
+    [],
+    ['1', 'หมวดงานสถาปัตยกรรม'],
+    ['1.1', 'หมวดงานรื้อถอน'],
+    [null, 'Built In ตู้ : B-01'],
+    [null, ' - รื้อฝ้า', 20, 'ตร.ม.', null, null, null, null, 40000],
+    [null, 'Built In ตู้ : B-02'],
+    [null, ' - รื้อพื้น', 100, 'ตร.ม.', null, null, null, null, 60000],
+    [null, 'รวมหมวดงานรื้อถอน', null, null, null, null, null, null, 100000],
+    ['1.2', 'งานพื้น'],
+    [null, ' - ปูกระเบื้อง', 200, 'ตร.ม.', null, null, null, null, 500000],
+  ])
+  const m = parseBoq([pr6, pr5, detail, elec])
+  const [demo, floor] = m.categories[0].tasks
+  assert.deepEqual(demo.items.map((i) => i.head), ['Built In ตู้ : B-01', 'Built In ตู้ : B-02'])
+  assert.equal(floor.items[0].head, undefined)
+})
+
 import { readProgress, statusOf } from '../../src/lib/boq/progress-core.ts'
 
 test('อ่านไฟล์ที่กรอกผลงานรายสัปดาห์: ช่องว่างยกค่าสัปดาห์ก่อน · แผน ณ สิ้นสัปดาห์คิดรายวัน', () => {

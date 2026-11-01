@@ -108,7 +108,13 @@ export function ChangeOrderBoqPicker({
         if (!catDone && (tree.categories.length > 1 || equip)) rows.push({ t: 'group', no: String(ci + 1), text: c.name, ...(equip ? { equip: true } : {}) })
         catDone = true
         rows.push({ t: 'head', text: t.name })
-        for (const it of items) rows.push(itemFromBoq(it))
+        let lastHead = ''
+        for (const it of items) {
+          // หัวข้อย่อยจาก BOQ (เช่น Built In … : B-01) ขึ้นเหนือรายการ ครั้งเดียวต่อกลุ่มที่ติดกัน
+          if (it.head && it.head !== lastHead) rows.push({ t: 'head', text: it.head })
+          lastHead = it.head ?? ''
+          rows.push(itemFromBoq(it))
+        }
       })
     })
     onPick(rows, tree.factor)
