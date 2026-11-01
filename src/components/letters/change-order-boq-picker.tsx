@@ -4,7 +4,7 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { Loader2, RotateCcw, Search, X } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
-import { itemFromBoq, coMoney, type BoqPickItem, type CoRow, type CoSide } from '@/lib/change-order'
+import { isEquipName, itemFromBoq, coMoney, type BoqPickItem, type CoRow, type CoSide } from '@/lib/change-order'
 
 type PlanMeta = { id: string; name: string; siteId: string | null; factor: number | null }
 type BoqTree = { factor: number | null; categories: { name: string; tasks: { name: string; items: BoqPickItem[] }[] }[] }
@@ -103,7 +103,9 @@ export function ChangeOrderBoqPicker({
       c.tasks.forEach((t, ti) => {
         const items = t.items.filter((_, ii) => picked.has(key(ci, ti, ii)))
         if (!items.length) return
-        if (!catDone && tree.categories.length > 1) rows.push({ t: 'group', no: String(ci + 1), text: c.name })
+        const equip = isEquipName(c.name)
+        // หมวดครุภัณฑ์ต้องมีแถวหมวดเสมอ (ธงอยู่ที่แถวนี้) แม้ BOQ มีหมวดเดียว
+        if (!catDone && (tree.categories.length > 1 || equip)) rows.push({ t: 'group', no: String(ci + 1), text: c.name, ...(equip ? { equip: true } : {}) })
         catDone = true
         rows.push({ t: 'head', text: t.name })
         for (const it of items) rows.push(itemFromBoq(it))

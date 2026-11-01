@@ -1,7 +1,7 @@
 import type { CellValue, Worksheet } from 'exceljs'
 import { loadExcel } from './boq/workbook'
 import {
-  CO_TITLE, blockTotals, coTotals, itemTotals, type ChangeOrder, type CoBlock,
+  CO_TITLE, CO_VAT, blockTotals, coTotals, itemTotals, type ChangeOrder, type CoBlock,
 } from './change-order'
 
 /**
@@ -40,9 +40,12 @@ function block(ws: Worksheet, start: number, b: CoBlock, side: 'cut' | 'add', fa
   styleRow(ws, r, { bold: true, band: BAND[side] })
   r += 1
   const first = r
+  const equipRows: number[] = []
+  let equip = false
   for (const row of b.rows) {
     const at = (c: string) => ws.getCell(`${c}${r}`)
     if (row.t === 'group') {
+      equip = Boolean(row.equip)
       at('A').value = row.no
       at('B').value = row.text
       at('A').alignment = { horizontal: 'center' }
@@ -66,6 +69,7 @@ function block(ws: Worksheet, start: number, b: CoBlock, side: 'cut' | 'add', fa
       at('D').alignment = { horizontal: 'center' }
       at('J').alignment = { horizontal: 'center' }
       styleRow(ws, r)
+      if (equip) equipRows.push(r)
     }
     r += 1
   }
@@ -88,20 +92,52 @@ function block(ws: Worksheet, start: number, b: CoBlock, side: 'cut' | 'add', fa
     ['H', f(`SUM(H${first}:H${last})`, t.lab)],
     ['I', f(`SUM(I${first}:I${last})`, t.sum)],
   ], BAND[side])
-  const fr = sum + 1
-  totalRow(fr, 'Factor F', [
-    ['E', factor],
-    ['F', f(`ROUND(F${sum}*($E${fr}-1),2)`, t.fMat)],
-    ['H', f(`ROUND(H${sum}*($E${fr}-1),2)`, t.fLab)],
-    ['I', f(`ROUND(I${sum}*($E${fr}-1),2)`, t.fSum)],
-  ])
-  ws.getCell(`E${fr}`).numFmt = '0.0000'
-  ws.getCell(`E${fr}`).alignment = { horizontal: 'center' }
-  const tr = fr + 1
+  // ครุภัณฑ์: ผลรวมของแถวรายการในหมวดครุภัณฑ์ (ช่วงที่ติดกันรวมเป็นช่วงเดียว)
+  const ranges = (col: string) => {
+    const out: string[] = []
+    for (let i = 0; i < equipRows.length; i += 1) {
+      const s0 = equipRows[i]
+      let e0 = s0
+      while (equipRows[i + 1] === e0 + 1) { i += 1; e0 = equipRows[i] }
+      out.push(s0 === e0 ? `${col}${s0}` : `${col}${s0}:${col}${e0}`)
+    }
+    return out.join(',')
+  }
+  const eq = (col: string) => (equipRows.length ? `SUM(${ranges(col)})` : '0')
+  const showF = t.normalItems > 0 || t.equipItems === 0
+  let next = sum + 1
+  const parts: Record<'F' | 'H' | 'I', string[]> = { F: [`F${sum}`], H: [`H${sum}`], I: [`I${sum}`] }
+  if (showF) {
+    const fr = next
+    totalRow(fr, 'Factor F', [
+      ['E', factor],
+      ['F', f(`ROUND(ROUND(F${sum}-${eq('F')},2)*($E${fr}-1),2)`, t.fMat)],
+      ['H', f(`ROUND(ROUND(H${sum}-${eq('H')},2)*($E${fr}-1),2)`, t.fLab)],
+      ['I', f(`ROUND(ROUND(I${sum}-${eq('I')},2)*($E${fr}-1),2)`, t.fSum)],
+    ])
+    ws.getCell(`E${fr}`).numFmt = '0.0000'
+    ws.getCell(`E${fr}`).alignment = { horizontal: 'center' }
+    for (const c of ['F', 'H', 'I'] as const) parts[c].push(`${c}${fr}`)
+    next += 1
+  }
+  if (t.equipItems > 0) {
+    const vr = next
+    totalRow(vr, 'ภาษีมูลค่าเพิ่ม 7% (ครุภัณฑ์)', [
+      ['E', CO_VAT],
+      ['F', f(`ROUND(ROUND(${eq('F')},2)*$E${vr},2)`, t.vMat)],
+      ['H', f(`ROUND(ROUND(${eq('H')},2)*$E${vr},2)`, t.vLab)],
+      ['I', f(`ROUND(ROUND(${eq('I')},2)*$E${vr},2)`, t.vSum)],
+    ])
+    ws.getCell(`E${vr}`).numFmt = '0.00'
+    ws.getCell(`E${vr}`).alignment = { horizontal: 'center' }
+    for (const c of ['F', 'H', 'I'] as const) parts[c].push(`${c}${vr}`)
+    next += 1
+  }
+  const tr = next
   totalRow(tr, `รวมยอดทั้งหมด (${label})`, [
-    ['F', f(`F${sum}+F${fr}`, t.totalMat)],
-    ['H', f(`H${sum}+H${fr}`, t.totalLab)],
-    ['I', f(`I${sum}+I${fr}`, t.total)],
+    ['F', f(parts.F.join('+'), t.totalMat)],
+    ['H', f(parts.H.join('+'), t.totalLab)],
+    ['I', f(parts.I.join('+'), t.total)],
   ])
   ws.getCell(`I${tr}`).fill = fill('FFF3EAD7')
   return { next: tr + 2, refs: { total: tr } }

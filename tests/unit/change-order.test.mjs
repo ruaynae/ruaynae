@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  blockTotals, coTotals, emptyChangeOrder, hasItems, itemFromBoq, itemTotals, moveRow, num, parseChangeOrder,
+  appendRows, blockTotals, coTotals, endsEquip, isEquipName, emptyChangeOrder, hasItems, itemFromBoq, itemTotals, moveRow, num, parseChangeOrder,
 } from '../../src/lib/change-order.ts'
 
 const item = (text, qty, mat, lab = null) => ({ t: 'item', text, qty, unit: 'ชุด', mat, lab, note: '' })
@@ -99,4 +99,50 @@ test('ใบปะหน้าแบบ "งานเพิ่ม / งานล
   const { LETTER_TEMPLATES } = await import('../../src/lib/letter-templates.ts')
   const { CO_ATTACHMENT } = await import('../../src/lib/change-order.ts')
   assert.deepEqual(LETTER_TEMPLATES.find((t) => t.id === 'change').atts, [CO_ATTACHMENT])
+})
+
+test('หมวดครุภัณฑ์: ไม่คูณ Factor F · บวก VAT 7% · หมวดอื่นในบล็อกเดียวกันยังคูณ F', () => {
+  const b = {
+    title: 'งานเพิ่ม',
+    rows: [
+      { t: 'group', no: '1', text: 'งานตกแต่งภายใน' },
+      item('ตู้', 1, 1000),
+      { t: 'group', no: '2', text: 'ครุภัณฑ์', equip: true },
+      item('โต๊ะ', 2, 500, 100),
+    ],
+  }
+  const t = blockTotals(b, 1.3027)
+  assert.equal(t.normalItems, 1)
+  assert.equal(t.equipItems, 1)
+  assert.equal(t.sum, 2200)
+  assert.equal(t.fSum, 302.7) // 1,000 × 0.3027 เท่านั้น
+  assert.equal(t.vMat, 70) // 1,000 × 7%
+  assert.equal(t.vLab, 14) // 200 × 7%
+  assert.equal(t.vSum, 84)
+  assert.equal(t.total, 2586.7)
+  assert.equal(t.totalMat, 1000 * 1.3027 + 1070)
+})
+
+test('บล็อกที่มีแต่ครุภัณฑ์ ไม่มี Factor F เลย · ธงครุภัณฑ์รอดตัวตรวจ', () => {
+  const co = parseChangeOrder({
+    factor: 1.3027,
+    add: { rows: [{ t: 'group', no: '', text: 'ครุภัณฑ์', equip: true }, { t: 'item', text: 'x', qty: 1, mat: 100 }] },
+    cut: { rows: [{ t: 'group', no: '', text: 'a', equip: 'yes' }] },
+  })
+  assert.equal(co.add.rows[0].equip, true)
+  assert.equal(co.cut.rows[0].equip, undefined)
+  const t = coTotals(co)
+  assert.equal(t.add.fSum, 0)
+  assert.equal(t.add.vSum, 7)
+  assert.equal(t.add.total, 107)
+})
+
+test('ต่อรายการเข้าบล็อก: ไม่ให้รายการทั่วไปไปรับสถานะครุภัณฑ์ของหมวดก่อนหน้า', () => {
+  const rows = [{ t: 'group', no: '2', text: 'ครุภัณฑ์', equip: true }, item('โต๊ะ', 1, 100)]
+  assert.equal(endsEquip(rows), true)
+  const out = appendRows(rows, [item('ตู้', 1, 100)])
+  assert.equal(endsEquip(out), false)
+  assert.equal(blockTotals({ title: 'x', rows: out }, 1.3).normalItems, 1)
+  assert.equal(isEquipName('ค่าครุภัณฑ์จัดซื้อ'), true)
+  assert.equal(isEquipName('งานสถาปัตยกรรม'), false)
 })

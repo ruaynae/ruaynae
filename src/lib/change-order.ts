@@ -15,7 +15,8 @@
  *   ส่วนต่าง = รวมทั้งหมดงานเพิ่ม − รวมทั้งหมดงานลด (บวก = งานเพิ่ม · ลบ = งานลด)
  */
 
-export type CoGroup = { t: 'group'; no: string; text: string }
+/** `equip` = หมวดครุภัณฑ์: รายการใต้หมวดนี้ (จนถึงหมวดถัดไป) ไม่คูณ Factor F แต่บวก VAT 7% แทน */
+export type CoGroup = { t: 'group'; no: string; text: string; equip?: boolean }
 export type CoHead = { t: 'head'; text: string }
 export type CoItem = {
   t: 'item'
@@ -51,6 +52,9 @@ export type CoSide = 'cut' | 'add'
 export const CO_TITLE = 'แบบแสดงรายการ ปริมาณงาน และราคา งานเพิ่ม-ลด'
 export const CO_ATTACHMENT = `${CO_TITLE} 1 ชุด`
 export const CO_DEFAULT_FACTOR = 1.3027
+export const CO_VAT = 0.07
+/** ชื่อหมวดที่ถือเป็นครุภัณฑ์ (ใช้เติมธงให้ตอนเลือกจาก BOQ) */
+export const isEquipName = (name: string) => /ครุภัณฑ์/.test(name)
 export const CO_LIMITS = { rows: 300, text: 300, short: 40, header: 300 } as const
 
 export const round2 = (n: number) => Math.round((n + Math.sign(n) * Number.EPSILON) * 100) / 100
@@ -87,36 +91,53 @@ export type BlockTotals = {
   mat: number
   lab: number
   sum: number
-  /** ยอดของบรรทัด Factor F (ส่วนที่บวกเพิ่ม ไม่ใช่ตัวคูณ) */
+  /** จำนวนรายการปกติ (คูณ Factor F) / ครุภัณฑ์ (บวก VAT) */
+  normalItems: number
+  equipItems: number
+  /** ยอดของบรรทัด Factor F (ส่วนที่บวกเพิ่ม ไม่ใช่ตัวคูณ) · คิดจากรายการนอกหมวดครุภัณฑ์เท่านั้น */
   fMat: number
   fLab: number
   fSum: number
+  /** ยอดของบรรทัด VAT 7% · คิดจากรายการในหมวดครุภัณฑ์เท่านั้น */
+  vMat: number
+  vLab: number
+  vSum: number
   totalMat: number
   totalLab: number
   total: number
 }
 
 export function blockTotals(b: CoBlock, factor: number): BlockTotals {
-  let mat = 0
-  let lab = 0
-  let items = 0
+  let nMat = 0
+  let nLab = 0
+  let eMat = 0
+  let eLab = 0
+  let normalItems = 0
+  let equipItems = 0
+  let equip = false
   for (const r of b.rows) {
+    if (r.t === 'group') { equip = Boolean(r.equip); continue }
     if (r.t !== 'item') continue
     const t = itemTotals(r)
-    mat += t.mat
-    lab += t.lab
-    items += 1
+    if (equip) { eMat += t.mat; eLab += t.lab; equipItems += 1 } else { nMat += t.mat; nLab += t.lab; normalItems += 1 }
   }
-  mat = round2(mat)
-  lab = round2(lab)
+  nMat = round2(nMat)
+  nLab = round2(nLab)
+  eMat = round2(eMat)
+  eLab = round2(eLab)
+  const mat = round2(nMat + eMat)
+  const lab = round2(nLab + eLab)
   const sum = round2(mat + lab)
   const k = factor - 1
-  const fMat = round2(mat * k)
-  const fLab = round2(lab * k)
-  const fSum = round2(sum * k)
+  const fMat = round2(nMat * k)
+  const fLab = round2(nLab * k)
+  const fSum = round2(round2(nMat + nLab) * k)
+  const vMat = round2(eMat * CO_VAT)
+  const vLab = round2(eLab * CO_VAT)
+  const vSum = round2(round2(eMat + eLab) * CO_VAT)
   return {
-    items, mat, lab, sum, fMat, fLab, fSum,
-    totalMat: round2(mat + fMat), totalLab: round2(lab + fLab), total: round2(sum + fSum),
+    items: normalItems + equipItems, normalItems, equipItems, mat, lab, sum, fMat, fLab, fSum, vMat, vLab, vSum,
+    totalMat: round2(mat + fMat + vMat), totalLab: round2(lab + fLab + vLab), total: round2(sum + fSum + vSum),
   }
 }
 
@@ -159,7 +180,10 @@ export function num(v: unknown, max = 999_999_999): number | null {
 function parseRow(v: unknown): CoRow | null {
   if (!v || typeof v !== 'object') return null
   const r = v as Record<string, unknown>
-  if (r.t === 'group') return { t: 'group', no: str(r.no, CO_LIMITS.short), text: str(r.text, CO_LIMITS.text) }
+  if (r.t === 'group') {
+    const g: CoGroup = { t: 'group', no: str(r.no, CO_LIMITS.short), text: str(r.text, CO_LIMITS.text) }
+    return r.equip === true ? { ...g, equip: true } : g
+  }
   if (r.t === 'head') return { t: 'head', text: str(r.text, CO_LIMITS.text) }
   if (r.t === 'item') {
     return {
@@ -203,6 +227,28 @@ export function parseChangeOrder(v: unknown): ChangeOrder | null {
 export const isBlank = (co: ChangeOrder) => co.cut.rows.length + co.add.rows.length === 0
 
 /* ── ช่วยแก้ตาราง ─────────────────────────────────────────────────────── */
+
+/** สถานะครุภัณฑ์ ณ ท้ายรายการแถว (หมวดล่าสุดเป็นครุภัณฑ์ไหม) */
+export const endsEquip = (rows: readonly CoRow[]) => {
+  for (let i = rows.length - 1; i >= 0; i -= 1) {
+    const r = rows[i]
+    if (r.t === 'group') return Boolean(r.equip)
+  }
+  return false
+}
+
+/**
+ * ต่อแถวใหม่ท้ายบล็อก โดยกันไม่ให้รายการที่ไม่มีหมวดของตัวเองไปรับสถานะครุภัณฑ์จากหมวดก่อนหน้า
+ * (`from` = สถานะครุภัณฑ์ของแถวใหม่ถ้าไม่มีแถวหมวดนำหน้า) — คืนแถวทั้งหมดของบล็อกใหม่
+ */
+export function appendRows(rows: readonly CoRow[], add: readonly CoRow[], srcEquip = false, srcGroup?: CoGroup): CoRow[] {
+  const out = [...rows]
+  const lead = add[0]
+  if (lead && lead.t !== 'group' && endsEquip(rows) !== srcEquip) {
+    out.push(srcGroup ? { ...srcGroup } : { t: 'group', no: '', text: srcEquip ? 'ครุภัณฑ์' : 'งานทั่วไป', ...(srcEquip ? { equip: true } : {}) })
+  }
+  return [...out, ...add]
+}
 
 /** ย้ายแถว i ขึ้น (-1) / ลง (+1) — คืนรายการใหม่ (immutable) */
 export function moveRow<T>(rows: readonly T[], i: number, dir: -1 | 1): T[] {
