@@ -102,12 +102,11 @@ export const LETTER_TEMPLATES: readonly LetterTemplate[] = [
     fields: [
       { k: 'kind', label: 'ประเภท', type: 'select', options: ['งานลด', 'งานเพิ่ม'], def: 'งานลด' },
       { k: 'amount', label: 'จำนวนเงิน (บาท)', type: 'money', ph: '87477.38' },
-      { k: 'reason', label: 'เนื่องจาก', wide: true, ph: 'ทางคณะกรรมการให้ยกเลิกระบบควบคุมการเข้า-ออก (Access Control System) จำนวน 3 ชุด' },
     ],
     subject: 'ขออนุมัติ{kind}',
     // ตารางงานเพิ่ม-ลด (R25) — สร้างได้ในหน้าหนังสือ แล้วพิมพ์ต่อท้าย · ข้อความต้องตรงกับ `CO_ATTACHMENT`
     atts: ['แบบแสดงรายการ ปริมาณงาน และราคา งานเพิ่ม-ลด 1 ชุด'],
-    body: 'ทาง{บริษัท} มีความประสงค์ขออนุมัติ{kind} เนื่องจาก{reason} ทั้งนี้สรุปเป็น{kind} {amount} บาท ({amountText})',
+    body: 'ทาง{บริษัท} มีความประสงค์ขออนุมัติงานเพิ่มลด รายละเอียดดังเอกสารแนบ ทั้งนี้สรุปเป็น{kind} {amount} บาท ({amountText})',
   },
   {
     id: 'return', name: 'ส่งคืนวัสดุจากการรื้อถอน', match: /ส่งคืนวัสดุ/,
