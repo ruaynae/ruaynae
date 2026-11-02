@@ -60,7 +60,8 @@ async function call(model: string, key: string, image: Buffer, mime: string): Pr
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
     body: JSON.stringify({
       contents: [{ parts: [{ inline_data: { mime_type: mime, data: image.toString('base64') } }, { text: SLIP_PROMPT }] }],
-      generationConfig: { responseMimeType: 'application/json', temperature: 0, maxOutputTokens: 1024 },
+      // ไม่ส่ง temperature: Gemini 3.5+ เลิกใช้พารามิเตอร์สุ่ม (temperature/top_p/top_k) อาจตอบ 400 → บอทขึ้น "ติดต่อ AI ไม่ได้"
+      generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 1024 },
     }),
     cache: 'no-store',
     signal: AbortSignal.timeout(TIMEOUT_MS),
