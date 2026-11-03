@@ -3,7 +3,7 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { Loader2, Package, Search, X } from 'lucide-react'
 import Link from 'next/link'
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { catalogMessage, type CatalogItem } from '@/lib/material-library'
 
@@ -73,12 +73,14 @@ function PickerBody({ onOpenChange, hasStamp, onPick }: Omit<Props, 'open'>) {
     }
   }
 
-  // โหลดครั้งแรกตอน mount — setState อยู่หลัง await เท่านั้น (ไม่ใช่ใน effect โดยตรง · §17 ข้อ 16)
-  useEffect(() => {
+  // โหลดครั้งแรกตอน mount ด้วย callback ref ไม่ใช่ useEffect — `react-hooks/set-state-in-effect` ถือเป็น error (§17 ข้อ 16)
+  // `started` กันโหลดซ้ำตอน StrictMode mount สองรอบ
+  const started = useRef(false)
+  const boot = (el: HTMLElement | null) => {
+    if (!el || started.current) return
+    started.current = true
     void load('', '')
-    return () => { if (timer.current) clearTimeout(timer.current) }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- โหลดครั้งเดียวตอนกล่องเปิด
-  }, [])
+  }
 
   function search(v: string) {
     setQ(v)
@@ -148,7 +150,7 @@ function PickerBody({ onOpenChange, hasStamp, onPick }: Omit<Props, 'open'>) {
             </select>
           </div>
 
-          <div className="min-h-[12rem] flex-1 overflow-y-auto p-3">
+          <div ref={boot} className="min-h-[12rem] flex-1 overflow-y-auto p-3">
             {rows === null ? (
               <p className="flex items-center justify-center gap-2 py-10 text-sm text-muted-token"><Loader2 className="size-4 animate-spin" /> กำลังโหลดคลังวัสดุ…</p>
             ) : error ? (
