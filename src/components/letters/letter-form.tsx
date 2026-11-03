@@ -17,6 +17,8 @@ import { LetterContractPicker, putContractRef, type SiteContract } from '@/compo
 import { LetterPhotos, type LetterPhoto } from '@/components/letters/letter-photos'
 import { ChangeOrderSection } from '@/components/letters/change-order-section'
 import { coTotals, emptyChangeOrder, hasItems, type ChangeOrder } from '@/lib/change-order'
+import { MaterialApprovalSection } from '@/components/letters/material-approval-section'
+import { contractFromRefs, emptyMaterialApproval, maStyleOf, type MaterialApproval } from '@/lib/material-approval'
 import { LETTER_TEMPLATES, findLetterTemplate } from '@/lib/letter-templates'
 import {
   CLOSING_OPTIONS, DEFAULT_CLOSING, autoFieldValue, bumpCounters, fillCompany, fillProject, formatLetterNo,
@@ -56,6 +58,8 @@ export type FormLetter = {
   fields: Record<string, string>
   /** ตารางงานเพิ่ม-ลด (R25 · แบบ "งานเพิ่ม / งานลด") */
   changeOrder?: ChangeOrder | null
+  /** รายการขออนุมัติใช้วัสดุ (R26 · แบบ "ขออนุมัติใช้วัสดุ") */
+  materialApproval?: MaterialApproval | null
 }
 
 type Draft = {
@@ -137,6 +141,7 @@ export function LetterForm({
   const hadPhotos = useRef(Boolean(initialPhotos?.photos.length))
   const warnedPhotos = useRef(false)
   const [co, setCoState] = useState<ChangeOrder | null>(initial?.changeOrder ?? null)
+  const [ma, setMaState] = useState<MaterialApproval | null>(initial?.materialApproval ?? null)
 
   const [d, setD] = useState<Draft>(() => {
     if (initial) {
@@ -194,7 +199,7 @@ export function LetterForm({
   // ข้อความอัตโนมัติของหนังสือที่เปิดมา — แก้ช่องด่วน/ตารางแล้วข้อความที่ยังไม่ถูกแก้เองตามได้ (เดิมเริ่มว่าง = ไม่ตามเลย)
   const [gen, setGen] = useState<GeneratedText>(() => {
     const t = findLetterTemplate(d.templateId)
-    return t && initial ? generateFromTemplate(t, d.fields, company) : EMPTY_GEN
+    return t && initial ? generateFromTemplate(t, d.fields, company, ma) : EMPTY_GEN
   })
 
   const cur = series.find((x) => x.id === d.seriesId)
@@ -202,7 +207,7 @@ export function LetterForm({
   const yearCe = yearCeOf(d.date)
   const letterNo = formatLetterNo(prefix, d.seq, yearCe)
   const template = findLetterTemplate(d.templateId)
-  const latest = template ? generateFromTemplate(template, d.fields, company) : null
+  const latest = template ? generateFromTemplate(template, d.fields, company, ma) : null
   const seriesEntries = useMemo(() => entries.filter((e) => e.seriesId === d.seriesId), [entries, d.seriesId])
   const taken = entries.find((e) => e.seriesId === d.seriesId && e.yearCe === yearCe && e.seq === d.seq && e.id !== savedId)
 
@@ -221,7 +226,7 @@ export function LetterForm({
     const before = d
     const fields: Record<string, string> = {}
     for (const f of t.fields ?? []) fields[f.k] = f.auto ? autoFieldValue(f.auto, entries, d.seriesId, d.date) : f.def ?? ''
-    const g = generateFromTemplate(t, fields, company)
+    const g = generateFromTemplate(t, fields, company, ma)
     setD((p) => ({ ...p, templateId: id, fields, subject: g.subject, attachments: g.attachments, body: g.body, closing: g.closing }))
     setGen(g)
     if (g.photoTitle) setPhotoTitle(g.photoTitle)
@@ -240,7 +245,7 @@ export function LetterForm({
   function setFields(patch: Record<string, string>) {
     if (!template) return
     const fields = { ...d.fields, ...patch }
-    const g = generateFromTemplate(template, fields, company)
+    const g = generateFromTemplate(template, fields, company, ma)
     setD((p) => {
       const next = { ...p, fields }
       for (const key of GEN_KEYS) if (p[key] === gen[key]) next[key] = g[key]
@@ -263,6 +268,18 @@ export function LetterForm({
     const t = coTotals(next)
     const amount = t.amount.toFixed(2)
     if (t.kind && (d.fields.kind !== t.kind || d.fields.amount !== amount)) setFields({ kind: t.kind, amount })
+  }
+
+  /* ── รายการขออนุมัติใช้วัสดุ (R26) — แบบ "ระบุในเนื้อหา" เติมข้อ 1. 2. … ลงเนื้อหาที่ยังไม่ถูกแก้เอง ── */
+  const isMaterial = template?.id === 'material'
+  const maStyle = maStyleOf(d.fields.style)
+  const maValue = ma ?? emptyMaterialApproval(coProject().project)
+  function setMa(next: MaterialApproval) {
+    setMaState(next)
+    if (!template || !isMaterial || maStyle !== 'inline') return
+    const g = generateFromTemplate(template, d.fields, company, next)
+    setD((p) => (p.body === gen.body ? { ...p, body: g.body } : p))
+    setGen(g)
   }
 
   async function save() {
@@ -311,6 +328,7 @@ export function LetterForm({
       templateId: d.templateId,
       fields: d.fields,
       changeOrder: isChange ? co : null,
+      materialApproval: isMaterial ? ma : null,
     }
     try {
       const r = await fetch(savedId ? `/api/letters/${savedId}` : '/api/letters', {
@@ -555,6 +573,17 @@ export function LetterForm({
             />
           )}
 
+          {isMaterial && (
+            <MaterialApprovalSection
+              value={maValue}
+              onChange={setMa}
+              style={maStyle}
+              contractHint={contractFromRefs(splitLines(d.refs))}
+              letterSubject={d.subject}
+              contractor={company}
+            />
+          )}
+
           <section className="card-surface space-y-3.5 p-4">
             <h2 className="flex items-center gap-2 text-base font-semibold text-ink">
               <Step n={template && (template.fields?.length ?? 0) > 0 ? 3 : 2} /> รายละเอียดหนังสือ
@@ -738,6 +767,7 @@ export function LetterForm({
             photoTitle={photoTitle}
             photoLayout={photoLayout}
             changeOrder={isChange ? co : null}
+            materialApproval={isMaterial && maStyle === 'table' ? maValue : null}
           />
         </div>
       </div>

@@ -45,7 +45,11 @@ export type LetterTemplate = {
 export const LETTER_TEMPLATES: readonly LetterTemplate[] = [
   {
     id: 'material', name: 'ขออนุมัติใช้วัสดุ', match: /^ขออนุมัติใช้วัสดุ/,
-    fields: [{ k: 'n', label: 'ครั้งที่', type: 'number', auto: 'materialNext' }],
+    // R26: "รูปแบบหนังสือ" สลับแบบที่ 2 (ตารางแนบ · ข้อความด้านล่าง) กับแบบที่ 1 (รายการในเนื้อหา · `generateFromTemplate`)
+    fields: [
+      { k: 'n', label: 'ครั้งที่', type: 'number', auto: 'materialNext' },
+      { k: 'style', label: 'รูปแบบหนังสือ', type: 'select', options: ['แนบตาราง', 'ระบุในเนื้อหา'], def: 'แนบตาราง' },
+    ],
     subject: 'ขออนุมัติใช้วัสดุ ครั้งที่ {n}',
     atts: ['รายการขออนุมัติวัสดุ 1 ชุด', 'รายละเอียดวัสดุ 1 ชุด'],
     body: 'ทาง{บริษัท} มีความประสงค์ขออนุมัติใช้วัสดุตามเอกสารดังแนบ เพื่อใช้ในการดำเนินก่อสร้างปรับปรุงงานดังกล่าว',
