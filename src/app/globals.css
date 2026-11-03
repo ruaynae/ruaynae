@@ -598,6 +598,16 @@
   .letter-sheet .lt-photo { margin: 0 0 6pt; text-align: center; }
   .letter-sheet .lt-photo img { display: inline-block; max-width: 100%; object-fit: contain; }
   .letter-sheet .lt-caption { margin: 0 0 12pt; text-align: center; }
+  /* ตราประทับบริษัทซ้อนมุมขวาล่างของรูปแนบ (R27) — 24% ของความกว้างรูป · ห่างขอบ 3% (ต้องตรง STAMP_WIDTH/STAMP_MARGIN ใน letter-images.ts) */
+  .letter-sheet .lt-stampwrap { position: relative; display: inline-block; max-width: 100%; line-height: 0; }
+  .letter-sheet .lt-stampwrap > img:first-child { display: block; max-width: 100%; }
+  .letter-sheet .lt-stamp { position: absolute; right: 3%; bottom: 3%; width: 24%; height: auto; mix-blend-mode: multiply; pointer-events: none; }
+  .letter-sheet .lt-grid .lt-stampwrap img:first-child { max-height: 170pt; }
+  /* หน้าแค็ตตาล็อกเต็มหน้า: ขอบแคบ รูปสูงสุดเกือบเต็มกระดาษ */
+  .letter-sheet.lt-fullpage { padding: 40px 48px; }
+  .letter-sheet.lt-fullpage .lt-photo { margin: 0; }
+  .letter-sheet.lt-fullpage .lt-stampwrap > img:first-child { max-height: 1030px; }
+  .letter-sheet.lt-fullpage .lt-photo-title + .lt-photo .lt-stampwrap > img:first-child { max-height: 990px; }
   .letter-sheet .lt-grid { width: 100%; border-collapse: collapse; table-layout: fixed; }
   .letter-sheet .lt-grid td { padding: 4pt; border: 0.5pt solid #000; text-align: center; vertical-align: top; }
   .letter-sheet .lt-grid img { max-width: 100%; max-height: 170pt; object-fit: contain; }
@@ -674,6 +684,9 @@
   .paper.letter-sheet + .paper.letter-sheet { break-before: page; }
   .letter-copy { break-before: page; }
   .paper.letter-sheet.co-sheet { padding: 12mm 10mm !important; }
+  .paper.letter-sheet.lt-fullpage { padding: 10mm 12mm !important; }
+  .letter-sheet.lt-fullpage .lt-stampwrap > img:first-child { max-height: 272mm; }
+  .letter-sheet.lt-fullpage .lt-photo-title + .lt-photo .lt-stampwrap > img:first-child { max-height: 258mm; }
   /* R26: แผ่นตารางแนวนอน **หมุนลงกระดาษแนวตั้ง** (หัวตารางชิดซ้ายของกระดาษ เหมือนต้นฉบับที่สแกนมา)
      🔴 ไม่ใช้ `@page` แนวนอน — Chrome วางเนื้อหาหน้าแนวนอนด้วยความกว้างของหน้าแรก (แนวตั้ง) แล้วตัดตารางขวาทิ้ง
      · แผ่นที่หมุนไหลข้ามหน้าไม่ได้ → `maPages()` แบ่งแผ่นให้ก่อน */

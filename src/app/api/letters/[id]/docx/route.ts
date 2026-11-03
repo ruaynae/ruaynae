@@ -7,18 +7,21 @@ import { buildLetterDocx, type DocxPhoto } from '@/lib/letter-docx'
 import { loadLogo, normalizePhoto } from '@/lib/letter-images'
 import { currentLetterhead } from '@/lib/letters-server'
 import { loadLetterPhotos } from '@/lib/letter-photos-server'
+import { loadStamp } from '@/lib/material-library-server'
 import { getObjectBytes } from '@/lib/r2'
 import {
-  LETTER_LIMITS, asLetterhead, formatLetterNo, letterFileName, type LetterPaperData,
+  LETTER_LIMITS, asLetterhead, formatLetterNo, letterFileName, photoLayoutOf, type LetterPaperData, type PhotoLayout,
 } from '@/lib/letters'
 
 export const runtime = 'nodejs'
+/** แค็ตตาล็อกเยอะ (R27 · สูงสุด 60 หน้า) แปลงรูปนานกว่าเดิม */
+export const maxDuration = 60
 
 /**
  * POST /api/letters/[id]/docx — ไฟล์ Word ของหนังสือที่ลงทะเบียนแล้ว
  *
  * multipart: `photo` (หลายไฟล์ · ไม่บังคับ) · `captions` (JSON array) ·
- * `photoTitle` · `photoLayout` ('1' | '2')
+ * `photoTitle` · `photoLayout` ('1' | '2' | 'p')
  *
  * 🔴 สร้างจากแถวในฐานข้อมูล ไม่ใช่จากที่ฟอร์มส่งมา — ไฟล์ที่ได้จึงตรงกับทะเบียนเสมอ
  * · รูปแนบที่เก็บไว้กับหนังสือ (`letter_photos`) ใช้ก่อน · ไม่มี = ใช้รูปที่ส่งมากับคำขอ · โลโก้อ่านจาก R2 ไม่ได้ = ไฟล์ไม่มีโลโก้ ไม่ใช่ 500
@@ -48,7 +51,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   // ── รูปแนบท้าย (ถ้ามี) ──────────────────────────────────────────────
   const photos: DocxPhoto[] = []
   let photoTitle = ''
-  let photoLayout: '1' | '2' = '1'
+  let photoLayout: PhotoLayout = '1'
   let copies: 1 | 2 = 1
   if ((req.headers.get('content-type') ?? '').includes('multipart/form-data')) {
     let form: FormData
@@ -68,7 +71,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       captions = []
     }
     photoTitle = String(form.get('photoTitle') ?? '').trim().slice(0, 200)
-    photoLayout = form.get('photoLayout') === '2' ? '2' : '1'
+    photoLayout = photoLayoutOf(form.get('photoLayout'))
     copies = form.get('copies') === '2' ? 2 : 1
 
     for (const [i, f] of files.entries()) {
@@ -92,17 +95,30 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     photos.length = 0
     photoTitle = saved.title
     photoLayout = saved.layout
-    for (const p of saved.photos) {
+    // ตราประทับ (R27) — อ่านจาก R2 ครั้งเดียว · อ่านไม่ได้ = ออกไฟล์โดยไม่มีตราประทับ ไม่ใช่ 500
+    let stamp: Uint8Array | null = null
+    if (saved.photos.some((p) => p.stamped)) {
+      const { key } = await loadStamp(sb)
+      stamp = key ? await getObjectBytes(key).catch(() => null) : null
+    }
+    // แค็ตตาล็อกหลายสิบหน้า (R27) — อ่าน+แปลงทีละ 4 หน้าพร้อมกัน เรียงลำดับตามเดิม (ทีละหน้าช้าเกินเพดานเวลาของฟังก์ชัน)
+    const one = async (p: (typeof saved.photos)[number]): Promise<DocxPhoto | null> => {
       const bytes = await getObjectBytes(p.key)
       if (!bytes) {
         console.error('[letters] อ่านรูปแนบจาก R2 ไม่ได้', p.key)
-        continue
+        return null
       }
       try {
-        photos.push({ ...(await normalizePhoto(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer)), caption: p.caption })
+        const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+        return { ...(await normalizePhoto(buf, p.stamped ? stamp : null)), caption: p.caption }
       } catch {
         console.error('[letters] รูปแนบเสีย', p.key)
+        return null
       }
+    }
+    for (let i = 0; i < saved.photos.length; i += 4) {
+      const got = await Promise.all(saved.photos.slice(i, i + 4).map(one))
+      for (const g of got) if (g) photos.push(g)
     }
   }
 

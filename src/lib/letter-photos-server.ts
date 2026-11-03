@@ -1,11 +1,12 @@
 import 'server-only'
 import type { getSupabaseServer } from '@/lib/supabase/server'
 import { presignGet } from '@/lib/r2'
+import { LETTER_LIMITS, photoLayoutOf, type PhotoLayout } from '@/lib/letters'
 
 type Sb = Awaited<ReturnType<typeof getSupabaseServer>>
 
-export type StoredLetterPhoto = { key: string; caption: string }
-export type StoredLetterPhotos = { photos: StoredLetterPhoto[]; title: string; layout: '1' | '2'; missing: boolean }
+export type StoredLetterPhoto = { key: string; caption: string; stamped: boolean }
+export type StoredLetterPhotos = { photos: StoredLetterPhoto[]; title: string; layout: PhotoLayout; missing: boolean }
 
 /** ตาราง/คอลัมน์ยังไม่ถูกสร้าง (ยังไม่รัน migration `20261023120000_letter_photos.sql`) */
 export const isLetterPhotosMissing = (e: { code?: string; message?: string } | null) =>
@@ -16,19 +17,22 @@ export const isLetterPhotosMissing = (e: { code?: string; message?: string } | n
  * · ยังไม่รัน migration = ไม่มีรูป (`missing: true`) ไม่ใช่หน้าพัง
  */
 export async function loadLetterPhotos(sb: Sb, letterId: string): Promise<StoredLetterPhotos> {
-  const [rows, meta] = await Promise.all([
-    sb.from('letter_photos').select('object_key, caption, seq').eq('letter_id', letterId).order('seq').range(0, 11),
-    sb.from('letters').select('photo_title, photo_layout').eq('id', letterId).maybeSingle(),
-  ])
+  // 🔴 คอลัมน์ `stamped` มาจาก migration R27 — ยังไม่รันต้องไม่ทำให้รูปเดิมหาย: อ่านแบบมีคอลัมน์ก่อน ไม่มีค่อยอ่านแบบเดิม
+  const read = (cols: string) =>
+    sb.from('letter_photos').select(cols).eq('letter_id', letterId).order('seq').range(0, LETTER_LIMITS.photos - 1)
+  let rows = await read('object_key, caption, seq, stamped')
+  if (rows.error?.code === '42703' || rows.error?.code === 'PGRST204') rows = await read('object_key, caption, seq')
+  const meta = await sb.from('letters').select('photo_title, photo_layout').eq('id', letterId).maybeSingle()
   if (rows.error || meta.error) {
     const e = rows.error ?? meta.error
     if (!isLetterPhotosMissing(e)) console.error('[letters] อ่านรูปแนบไม่ได้', e?.message)
     return { photos: [], title: '', layout: '1', missing: isLetterPhotosMissing(e) }
   }
+  const list = (rows.data ?? []) as unknown as { object_key: string; caption: string; stamped?: boolean }[]
   return {
-    photos: (rows.data ?? []).map((r) => ({ key: r.object_key, caption: r.caption })),
+    photos: list.map((r) => ({ key: r.object_key, caption: r.caption, stamped: r.stamped === true })),
     title: meta.data?.photo_title ?? '',
-    layout: meta.data?.photo_layout === '2' ? '2' : '1',
+    layout: photoLayoutOf(meta.data?.photo_layout),
     missing: false,
   }
 }

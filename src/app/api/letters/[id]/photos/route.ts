@@ -3,18 +3,18 @@ import { denyUnlessOwner } from '@/lib/auth/current-user'
 import { getSupabaseServer } from '@/lib/supabase/server'
 import { deleteObject, headObject } from '@/lib/r2'
 import { isUuid } from '@/lib/transactions'
-import { LETTER_LIMITS } from '@/lib/letters'
+import { LETTER_LIMITS, photoLayoutOf } from '@/lib/letters'
+import { LETTER_PHOTO_KEY, isSharedKey } from '@/lib/material-library'
 import { isLetterPhotosMissing } from '@/lib/letter-photos-server'
 
 export const runtime = 'nodejs'
 
-const KEY = /^letters\/[0-9a-f-]{36}\.(jpg|jpeg|png|webp)$/
-
 /**
  * PUT /api/letters/[id]/photos — เก็บรูปแนบท้ายหนังสือ (เจ้าของ · เรียกหลังบันทึกหนังสือทุกครั้งที่มีรูป)
- * body `{ title, layout, photos: [{ key, caption }] }` — รายการทั้งชุดตามลำดับ (แทนของเดิม)
- * · คีย์ใหม่ต้องมี `upload_intents` ของคนนี้ที่ยังไม่ถูกใช้ และไฟล์ต้องอยู่ใน R2 จริง
- * · รูปที่ถูกเอาออกจากรายการ = ลบไฟล์ใน R2 ด้วย
+ * body `{ title, layout, photos: [{ key, caption, stamped? }] }` — รายการทั้งชุดตามลำดับ (แทนของเดิม)
+ * · คีย์ `letters/…` ใหม่ต้องมี `upload_intents` ของคนนี้ที่ยังไม่ถูกใช้ และไฟล์ต้องอยู่ใน R2 จริง
+ * · คีย์ `catalog/…` (R27) = อ้างไฟล์ในคลังวัสดุ ต้องมีอยู่ในคลังจริง · ไม่ผ่าน intents และ **ไม่ลบไฟล์** ตอนเอาออก (หนังสืออื่นอาจใช้อยู่)
+ * · รูป `letters/…` ที่ถูกเอาออกจากรายการ = ลบไฟล์ใน R2 ด้วย
  * · ยังไม่รัน migration → 503 `LETTER_PHOTOS_TABLE_MISSING` (หนังสือบันทึกแล้ว แค่รูปยังไม่ถูกเก็บ)
  */
 export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -34,17 +34,18 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
   const photos = list.map((p) => ({
     key: typeof p?.key === 'string' ? p.key : '',
     caption: typeof p?.caption === 'string' ? p.caption.trim().slice(0, 200) : '',
+    stamped: p?.stamped === true,
   }))
-  if (photos.some((p) => !KEY.test(p.key)) || new Set(photos.map((p) => p.key)).size !== photos.length) {
+  if (photos.some((p) => !LETTER_PHOTO_KEY.test(p.key)) || new Set(photos.map((p) => p.key)).size !== photos.length) {
     return NextResponse.json({ error: 'BAD_REQUEST' }, { status: 400 })
   }
   const title = typeof body.title === 'string' ? body.title.trim().slice(0, 200) : ''
-  const layout = body.layout === '2' ? '2' : '1'
+  const layout = photoLayoutOf(body.layout)
 
   const sb = await getSupabaseServer()
   const [{ data: letter, error: lErr }, { data: existing, error: eErr }] = await Promise.all([
     sb.from('letters').select('id').eq('id', id).maybeSingle(),
-    sb.from('letter_photos').select('id, object_key').eq('letter_id', id).order('seq').range(0, 11),
+    sb.from('letter_photos').select('id, object_key').eq('letter_id', id).order('seq').range(0, LETTER_LIMITS.photos - 1),
   ])
   const missing = isLetterPhotosMissing(lErr) || isLetterPhotosMissing(eErr)
   if (missing) return NextResponse.json({ error: 'LETTER_PHOTOS_TABLE_MISSING' }, { status: 503 })
@@ -55,7 +56,8 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (!letter) return NextResponse.json({ error: 'LETTER_NOT_FOUND' }, { status: 404 })
 
   const had = new Set((existing ?? []).map((r) => r.object_key))
-  const fresh = photos.filter((p) => !had.has(p.key))
+  const fresh = photos.filter((p) => !had.has(p.key) && !isSharedKey(p.key))
+  const sharedNew = photos.filter((p) => !had.has(p.key) && isSharedKey(p.key))
 
   // 🔴 คีย์ใหม่ต้องเป็นของคนนี้ (upload_intents · RLS เห็นแค่ของตัวเอง) และไฟล์ต้องมีจริง
   const sizes = new Map<string, number>()
@@ -74,6 +76,18 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
     intentIds.push(intent.id)
   }
 
+  // 🔴 คีย์ที่อ้างไฟล์ในคลัง ต้องเป็นหน้าแค็ตตาล็อกที่มีอยู่จริง (RLS: เจ้าของเท่านั้น) — ไม่งั้นอ้างไฟล์อะไรก็ได้ใน R2
+  if (sharedNew.length) {
+    const { data: found, error } = await sb
+      .from('material_catalog_pages').select('object_key, byte_size').in('object_key', sharedNew.map((p) => p.key))
+    if (error) {
+      console.error('[letters] อ่านหน้าแค็ตตาล็อกไม่ได้', error.message)
+      return NextResponse.json({ error: 'PHOTOS_SAVE_FAILED' }, { status: 500 })
+    }
+    if ((found ?? []).length !== sharedNew.length) return NextResponse.json({ error: 'CATALOG_NOT_FOUND' }, { status: 404 })
+    for (const f of found ?? []) sizes.set(f.object_key, f.byte_size)
+  }
+
   // แทนทั้งชุด: ลบแถวเดิม → ใส่ตามลำดับใหม่ (seq ต้องไม่ชนกันระหว่างสลับลำดับ)
   if (existing?.length) {
     const { error } = await sb.from('letter_photos').delete().eq('letter_id', id)
@@ -83,8 +97,13 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
     }
   }
   if (photos.length) {
+    // 🔴 ส่ง `stamped` เฉพาะเมื่อมีหน้าที่ประทับตรา — ยังไม่รัน migration R27 หนังสือที่ไม่ใช้ตราประทับยังบันทึกได้เหมือนเดิม
+    const anyStamp = photos.some((p) => p.stamped)
     const { error } = await sb.from('letter_photos').insert(
-      photos.map((p, i) => ({ letter_id: id, seq: i + 1, object_key: p.key, caption: p.caption, byte_size: sizes.get(p.key) ?? 0 })),
+      photos.map((p, i) => ({
+        letter_id: id, seq: i + 1, object_key: p.key, caption: p.caption, byte_size: sizes.get(p.key) ?? 0,
+        ...(anyStamp ? { stamped: p.stamped } : {}),
+      })),
     )
     if (error) {
       console.error('[letters] บันทึกรูปแนบไม่ได้', error.message)
@@ -101,7 +120,8 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
   // ไฟล์ของรูปที่ถูกเอาออก — แถวหายแล้ว ไฟล์ค้างแค่กินที่ จึง log อย่างเดียว
   const keep = new Set(photos.map((p) => p.key))
   for (const k of had) {
-    if (!keep.has(k)) await deleteObject(k).catch((e) => console.error('[letters] ลบไฟล์รูปแนบไม่ได้', k, e instanceof Error ? e.message : e))
+    // `catalog/…` เป็นของคลัง — ห้ามลบ (หนังสืออื่นอาจใช้อยู่)
+    if (!keep.has(k) && !isSharedKey(k)) await deleteObject(k).catch((e) => console.error('[letters] ลบไฟล์รูปแนบไม่ได้', k, e instanceof Error ? e.message : e))
   }
   return NextResponse.json({ ok: true })
 }

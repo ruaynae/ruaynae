@@ -55,9 +55,10 @@ export async function POST(req: NextRequest) {
   }
 
   // ── รูปแนบท้ายหนังสือบริษัท (เจ้าของ) — ผูกกับหนังสือที่ PUT /api/letters/[id]/photos ──────
-  if (purpose === 'letter') {
+  // `catalog` = หน้าแค็ตตาล็อก/ตราประทับของคลังวัสดุ (R27) — ผูกที่ /api/material-library
+  if (purpose === 'letter' || purpose === 'catalog') {
     if (user.role !== 'owner') return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
-    const key = objectKey('letters', ext)
+    const key = objectKey(purpose === 'catalog' ? 'catalog' : 'letters', ext)
     const sbL = await getSupabaseServer()
     // thumb_key = object_key — ตัวกวาดลบคีย์เดียวกันสองครั้งได้ (S3 ลบซ้ำไม่ error)
     const { error: lErr } = await sbL.from('upload_intents').insert({

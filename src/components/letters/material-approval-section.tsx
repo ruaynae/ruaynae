@@ -1,6 +1,7 @@
 'use client'
 
-import { ArrowDown, ArrowUp, FileSpreadsheet, ListChecks, Loader2, Plus, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, FileSpreadsheet, Library, ListChecks, Loader2, Plus, Trash2 } from 'lucide-react'
+import Link from 'next/link'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import {
@@ -20,6 +21,7 @@ export function MaterialApprovalSection({
   contractHint,
   letterSubject,
   contractor,
+  onOpenLibrary,
 }: {
   value: MaterialApproval
   onChange: (ma: MaterialApproval) => void
@@ -29,6 +31,8 @@ export function MaterialApprovalSection({
   letterSubject: string
   /** ชื่อผู้รับจ้าง (หัวกระดาษ) */
   contractor: string
+  /** เปิดกล่อง "เลือกจากคลังวัสดุ" (R27) */
+  onOpenLibrary: () => void
 }) {
   const [exporting, setExporting] = useState(false)
   const table = style === 'table'
@@ -100,6 +104,14 @@ export function MaterialApprovalSection({
           </div>
         </div>
       )}
+
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <button type="button" onClick={onOpenLibrary} className="btn-primary">
+          <Library className="size-4" /> เลือกจากคลังวัสดุ
+        </button>
+        <Link href="/letters/library" target="_blank" className="btn-ghost">จัดการคลังวัสดุ</Link>
+        <span className="text-xs text-muted-token">เติมรายการ + แนบแค็ตตาล็อกท้ายหนังสือให้</span>
+      </div>
 
       <ol className="space-y-3">
         {value.items.map((it, i) => (

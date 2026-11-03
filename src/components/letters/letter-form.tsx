@@ -18,12 +18,14 @@ import { LetterPhotos, type LetterPhoto } from '@/components/letters/letter-phot
 import { ChangeOrderSection } from '@/components/letters/change-order-section'
 import { coTotals, emptyChangeOrder, hasItems, type ChangeOrder } from '@/lib/change-order'
 import { MaterialApprovalSection } from '@/components/letters/material-approval-section'
-import { contractFromRefs, emptyMaterialApproval, maStyleOf, type MaterialApproval } from '@/lib/material-approval'
+import { MA_LIMITS, contractFromRefs, emptyMaterialApproval, maStyleOf, type MaterialApproval } from '@/lib/material-approval'
+import { MaterialLibraryPicker, type PickedMaterial } from '@/components/letters/material-library-picker'
+import { LETTER_PHOTO_MAX, appendCatalogPhotos, catalogToRow, mergeCatalogRows } from '@/lib/material-library'
 import { LETTER_TEMPLATES, findLetterTemplate } from '@/lib/letter-templates'
 import {
   CLOSING_OPTIONS, DEFAULT_CLOSING, autoFieldValue, bumpCounters, fillCompany, fillProject, formatLetterNo,
   generateFromTemplate, letterFileName, letterMessage, letterMoney, nextSeq, splitLines, stripItemNo, yearCeOf,
-  type GeneratedText, type Letterhead, type LetterPaperData, type RegisterEntry,
+  type GeneratedText, type PhotoLayout, type Letterhead, type LetterPaperData, type RegisterEntry,
 } from '@/lib/letters'
 
 export type SeriesOption = {
@@ -110,6 +112,7 @@ export function LetterForm({
   initial,
   initialSeriesId,
   initialPhotos,
+  stampUrl = null,
 }: {
   mode: 'new' | 'edit'
   series: SeriesOption[]
@@ -122,7 +125,9 @@ export function LetterForm({
   initial: FormLetter | null
   initialSeriesId: string | null
   /** รูปแนบที่เก็บไว้กับหนังสือ (หน้า `/letters/[id]`) */
-  initialPhotos?: { photos: { key: string; url: string; caption: string }[]; title: string; layout: '1' | '2' }
+  initialPhotos?: { photos: { key: string; url: string; caption: string; stamped?: boolean }[]; title: string; layout: PhotoLayout }
+  /** รูปตราประทับบริษัท (คลังวัสดุ · R27) — ไม่มี = ไม่โชว์ช่องติ๊กประทับตรา */
+  stampUrl?: string | null
 }) {
   const router = useRouter()
   const company = letterhead.companyName
@@ -136,7 +141,7 @@ export function LetterForm({
   const [askDelete, setAskDelete] = useState(false)
   const [photos, setPhotos] = useState<LetterPhoto[]>(initialPhotos?.photos ?? [])
   const [photoTitle, setPhotoTitle] = useState(initialPhotos?.title ?? '')
-  const [photoLayout, setPhotoLayout] = useState<'1' | '2'>(initialPhotos?.layout ?? '1')
+  const [photoLayout, setPhotoLayout] = useState<PhotoLayout>(initialPhotos?.layout ?? '1')
   /** หนังสือนี้มีรูปเก็บอยู่ในระบบ — ลบรูปหมดแล้วบันทึก ต้องส่งรายการว่างไปลบด้วย */
   const hadPhotos = useRef(Boolean(initialPhotos?.photos.length))
   const warnedPhotos = useRef(false)
@@ -282,6 +287,29 @@ export function LetterForm({
     setGen(g)
   }
 
+  /** เลือกจากคลังวัสดุ (R27): เติมแถวรายการ + ต่อหน้าแค็ตตาล็อกท้ายหนังสือ (อ้างไฟล์ในคลัง ไม่คัดลอก) */
+  const [libOpen, setLibOpen] = useState(false)
+  function pickFromLibrary(picked: PickedMaterial[], stamp: boolean) {
+    const base = maValue
+    const merged = mergeCatalogRows(base.items, picked, (p) => catalogToRow(p), MA_LIMITS.rows)
+    if (merged.added) setMa({ ...base, items: merged.rows })
+    const pages = picked.flatMap((m) =>
+      m.pages.map((pg) => ({ key: pg.key, url: pg.url, caption: m.name, stamped: stamp && Boolean(stampUrl) })),
+    )
+    const addedPhotos = appendCatalogPhotos(photos, pages, LETTER_PHOTO_MAX)
+    if (addedPhotos.added) {
+      if (!photos.length) setPhotoLayout('p') // แค็ตตาล็อกเต็มหน้า — ถ้ามีรูปอื่นอยู่แล้วไม่แตะการจัดวางของเดิม
+      setPhotos(addedPhotos.photos)
+    }
+    const parts = [`เพิ่ม ${merged.added} รายการ`]
+    if (addedPhotos.added) parts.push(`แนบแค็ตตาล็อก ${addedPhotos.added} หน้า`)
+    toast.success(parts.join(' · '))
+    if (merged.skipped) toast(`ข้าม ${merged.skipped} รายการที่มีอยู่แล้วหรือรายการเต็ม`)
+    if (addedPhotos.skipped && photos.length + addedPhotos.added >= LETTER_PHOTO_MAX) {
+      toast.error(`แนบได้ไม่เกิน ${LETTER_PHOTO_MAX} หน้า — หน้าที่เกินถูกข้าม`)
+    }
+  }
+
   async function save() {
     if (busy) return
     setBusy('save')
@@ -388,7 +416,7 @@ export function LetterForm({
       const r = await fetch(`/api/letters/${id}/photos`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: photoTitle, layout: photoLayout, photos: next.map((p) => ({ key: p.key, caption: p.caption })) }),
+        body: JSON.stringify({ title: photoTitle, layout: photoLayout, photos: next.map((p) => ({ key: p.key, caption: p.caption, stamped: p.stamped === true })) }),
       })
       if (r.status === 503) {
         if (!warnedPhotos.current) toast.warning('ยังไม่ได้ติดตั้งที่เก็บรูปแนบในฐานข้อมูล — รูปยังไม่ถูกเก็บกับหนังสือ (รัน migration 20261023120000_letter_photos.sql)')
@@ -581,6 +609,7 @@ export function LetterForm({
               contractHint={contractFromRefs(splitLines(d.refs))}
               letterSubject={d.subject}
               contractor={company}
+              onOpenLibrary={() => setLibOpen(true)}
             />
           )}
 
@@ -750,6 +779,7 @@ export function LetterForm({
                 onTitle={setPhotoTitle}
                 layout={photoLayout}
                 onLayout={setPhotoLayout}
+                stampUrl={stampUrl}
               />
             </div>
           </details>
@@ -763,14 +793,19 @@ export function LetterForm({
             copies={copies}
             letter={paper}
             logoUrl={logoUrl}
-            photos={photos.map((p) => ({ url: p.url, caption: p.caption }))}
+            photos={photos.map((p) => ({ url: p.url, caption: p.caption, stamped: p.stamped }))}
             photoTitle={photoTitle}
             photoLayout={photoLayout}
+            stampUrl={stampUrl}
             changeOrder={isChange ? co : null}
             materialApproval={isMaterial && maStyle === 'table' ? maValue : null}
           />
         </div>
       </div>
+
+      {isMaterial && (
+        <MaterialLibraryPicker open={libOpen} onOpenChange={setLibOpen} hasStamp={Boolean(stampUrl)} onPick={pickFromLibrary} />
+      )}
 
       <LetterContractPicker
         open={contractOpen}

@@ -9,6 +9,10 @@ import { maBodyLines, maStyleOf, type MaterialApproval } from '@/lib/material-ap
  * (§17 ข้อ 25) · กระดาษบนจอกับไฟล์ Word ต้องตัดย่อหน้า/ใส่เลขข้อด้วยกติกาเดียวกัน
  */
 
+/** การจัดวางหน้ารูปแนบ: 1 รูปต่อแถว · 2 รูปต่อแถว (ตาราง) · p = 1 รูปต่อ 1 หน้ากระดาษ (แค็ตตาล็อกเต็มหน้า) */
+export type PhotoLayout = '1' | '2' | 'p'
+export const photoLayoutOf = (v: unknown): PhotoLayout => (v === '2' ? '2' : v === 'p' ? 'p' : '1')
+
 export const MONTHS_TH = [
   'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
   'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม',
@@ -36,7 +40,8 @@ export const LETTER_LIMITS = {
   intro: 2000,
   signerTitle: 80,
   /** รูปแนบท้ายต่อไฟล์ — คำขอทั้งก้อนต้องไม่ชนเพดาน body ของ Vercel (~4.5 MB) */
-  photos: 30,
+  /** ต้องตรงกับ check `seq` ของ `letter_photos` และ `LETTER_PHOTO_MAX` (R27 ขยาย 12 → 60 · แค็ตตาล็อกหนังสือเดียวเกิน 12 หน้าแล้ว) */
+  photos: 60,
   photoBytes: 3.6 * 1024 * 1024,
 } as const
 

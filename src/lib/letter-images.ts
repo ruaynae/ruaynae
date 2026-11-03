@@ -31,13 +31,34 @@ export async function loadLogo(objectKey: string | null | undefined): Promise<Do
   }
 }
 
-/** รูปแนบท้ายที่ส่งมากับคำขอ — ไม่เก็บที่ไหน ใช้สร้างไฟล์ครั้งนี้ครั้งเดียว (D9) */
-export async function normalizePhoto(bytes: ArrayBuffer): Promise<DocxImage> {
-  const { data, info } = await sharp(Buffer.from(bytes))
+/** ตราประทับ: กว้างกี่ส่วนของรูป · ห่างขอบกี่ส่วน — ต้องตรงกับ `.lt-stamp` ใน globals.css (24% · 3%) */
+export const STAMP_WIDTH = 0.24
+export const STAMP_MARGIN = 0.03
+
+/**
+ * รูปแนบท้ายหนังสือ → JPEG 1600px พร้อมใส่ลง Word
+ * · `stamp` = ไบต์รูปตราประทับบริษัท (R27) — ประทับมุมขวาล่างด้วย multiply: พื้นขาวของตราที่สแกนมาไม่บังหน้าแค็ตตาล็อก
+ */
+export async function normalizePhoto(bytes: ArrayBuffer, stamp?: Uint8Array | null): Promise<DocxImage> {
+  const base = await sharp(Buffer.from(bytes))
     .rotate()
     .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
     .flatten({ background: '#ffffff' })
-    .jpeg({ quality: 82 })
+    .png()
     .toBuffer({ resolveWithObject: true })
+  let img = sharp(base.data)
+  if (stamp?.length) {
+    const st = await sharp(Buffer.from(stamp))
+      .resize({ width: Math.max(16, Math.round(base.info.width * STAMP_WIDTH)) })
+      .png()
+      .toBuffer({ resolveWithObject: true })
+    img = img.composite([{
+      input: st.data,
+      blend: 'multiply',
+      left: Math.max(0, base.info.width - st.info.width - Math.round(base.info.width * STAMP_MARGIN)),
+      top: Math.max(0, base.info.height - st.info.height - Math.round(base.info.height * STAMP_MARGIN)),
+    }])
+  }
+  const { data, info } = await img.jpeg({ quality: 82 }).toBuffer({ resolveWithObject: true })
   return { data, width: info.width, height: info.height }
 }

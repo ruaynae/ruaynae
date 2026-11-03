@@ -1,4 +1,5 @@
-import { BLANK, bodyBlocks, letterDateLine, type LetterPaperData } from '@/lib/letters'
+import type { CSSProperties } from 'react'
+import { BLANK, bodyBlocks, letterDateLine, type LetterPaperData, type PhotoLayout } from '@/lib/letters'
 import { hasItems, type ChangeOrder } from '@/lib/change-order'
 import { ChangeOrderPaper } from '@/components/letters/change-order-paper'
 import { MaterialApprovalPaper } from '@/components/letters/material-approval-paper'
@@ -11,7 +12,22 @@ import { hasMaItems, type MaterialApproval } from '@/lib/material-approval'
  * · คลาส `paper` ทำให้ตอนพิมพ์เหลือแค่กระดาษ (globals.css) · `letter-sheet` ทับขอบเป็น 1″
  */
 
-export type PaperPhoto = { url: string; caption: string }
+/** `stamped` = ประทับตราบริษัทมุมขวาล่างของรูปนี้ (R27) */
+export type PaperPhoto = { url: string; caption: string; stamped?: boolean }
+
+/** รูปแนบ + ตราประทับซ้อนมุมขวาล่าง — multiply: พื้นขาวของตราที่สแกนมาไม่บังหน้าแค็ตตาล็อก (ตำแหน่ง/ขนาดตรงกับไฟล์ Word) */
+function StampedImg({ p, stampUrl, style }: { p: PaperPhoto; stampUrl: string | null; style?: CSSProperties }) {
+  return (
+    <span className="lt-stampwrap">
+      {/* eslint-disable-next-line @next/next/no-img-element -- blob/presigned URL ของรูปแนบ (§9) */}
+      <img src={p.url} alt="" style={style} />
+      {p.stamped && stampUrl && (
+        // eslint-disable-next-line @next/next/no-img-element -- presigned URL ของตราประทับ (§9)
+        <img className="lt-stamp" src={stampUrl} alt="" />
+      )}
+    </span>
+  )
+}
 
 /** ไฮไลต์ช่องที่ยังไม่ได้กรอก (จุดไข่ปลา · ข้อความในวงเล็บที่ต้องแทน) — บนจอเท่านั้น */
 const MARK = new RegExp(`(${BLANK}|\\((?:อธิบาย|ระบุ)[^)]*\\))`)
@@ -35,6 +51,7 @@ export function LetterPaper({
   photos = [],
   photoTitle = '',
   photoLayout = '1',
+  stampUrl = null,
   breakAt = null,
   copyLabel = null,
   changeOrder = null,
@@ -44,7 +61,9 @@ export function LetterPaper({
   logoUrl: string | null
   photos?: PaperPhoto[]
   photoTitle?: string
-  photoLayout?: '1' | '2'
+  photoLayout?: PhotoLayout
+  /** รูปตราประทับบริษัท — ใช้กับรูปที่ติ๊ก `stamped` (R27) */
+  stampUrl?: string | null
   /** ตำแหน่ง (px จากขอบบนกระดาษ) ที่เนื้อหาจะเลยไปหน้า 2 · null = ไม่เลย */
   breakAt?: number | null
   /** "สำเนาคู่ฉบับ" กลางหน้าบนสุด — ตรงกับไฟล์ Word · null = ไม่มีป้าย */
@@ -127,7 +146,19 @@ export function LetterPaper({
       {changeOrder && hasItems(changeOrder) && <ChangeOrderPaper co={changeOrder} />}
       {materialApproval && hasMaItems(materialApproval) && <MaterialApprovalPaper ma={materialApproval} letter={letter} />}
 
-      {photos.length > 0 && (
+      {photos.length > 0 && photoLayout === 'p' && (
+        // 1 รูปต่อ 1 หน้ากระดาษ (แค็ตตาล็อก · R27) — ชื่อหัวข้อขึ้นเฉพาะหน้าแรก · ไม่พิมพ์คำอธิบายใต้รูป (ตรงกับไฟล์ Word)
+        photos.map((p, i) => (
+          <article key={i} className="paper letter-sheet lt-fullpage">
+            {i === 0 && photoTitle.trim() && <p className="lt-photo-title">{photoTitle.trim()}</p>}
+            <p className="lt-photo">
+              <StampedImg p={p} stampUrl={stampUrl} />
+            </p>
+          </article>
+        ))
+      )}
+
+      {photos.length > 0 && photoLayout !== 'p' && (
         <article className="paper letter-sheet">
           {photoTitle.trim() && <p className="lt-photo-title">{photoTitle.trim()}</p>}
           {photoLayout === '2' ? (
@@ -139,8 +170,7 @@ export function LetterPaper({
                       <td key={c}>
                         {p && (
                           <>
-                            {/* eslint-disable-next-line @next/next/no-img-element -- blob URL ของรูปที่เพิ่งเลือก */}
-                            <img src={p.url} alt="" />
+                            <StampedImg p={p} stampUrl={stampUrl} />
                             {p.caption && <p>{p.caption}</p>}
                           </>
                         )}
@@ -154,8 +184,7 @@ export function LetterPaper({
             photos.map((p, i) => (
               <div key={i}>
                 <p className="lt-photo">
-                  {/* eslint-disable-next-line @next/next/no-img-element -- blob URL ของรูปที่เพิ่งเลือก */}
-                  <img src={p.url} alt="" style={{ maxHeight: photos.length === 1 ? 560 * 1.333 : 270 * 1.333 }} />
+                  <StampedImg p={p} stampUrl={stampUrl} style={{ maxHeight: photos.length === 1 ? 560 * 1.333 : 270 * 1.333 }} />
                 </p>
                 {p.caption && <p className="lt-caption">{p.caption}</p>}
               </div>

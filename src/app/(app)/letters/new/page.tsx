@@ -35,6 +35,7 @@ export default async function NewLetterPage({
       contracts={ctx.contracts}
       letterhead={ctx.letterhead}
       logoUrl={ctx.logoUrl}
+      stampUrl={ctx.stampUrl}
       today={ctx.today}
       initial={source}
       initialSeriesId={isUuid(sp.series) ? sp.series : null}

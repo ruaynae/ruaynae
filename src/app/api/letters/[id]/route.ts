@@ -6,6 +6,7 @@ import { currentLetterhead, isDuplicateNo, letterRow, parseLetterInput } from '@
 import { asLetterhead } from '@/lib/letters'
 import { loadLetterPhotos } from '@/lib/letter-photos-server'
 import { deleteObject } from '@/lib/r2'
+import { isSharedKey } from '@/lib/material-library'
 
 export const runtime = 'nodejs'
 
@@ -82,6 +83,8 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
   }
   if (!data?.length) return NextResponse.json({ error: 'LETTER_NOT_FOUND' }, { status: 404 })
   for (const p of saved.photos) {
+    // `catalog/…` เป็นไฟล์ของคลังวัสดุ (R27) — หนังสืออื่นอาจใช้อยู่ ห้ามลบ
+    if (isSharedKey(p.key)) continue
     await deleteObject(p.key).catch((e) => console.error('[letters] ลบไฟล์รูปแนบไม่ได้', p.key, e instanceof Error ? e.message : e))
   }
   return NextResponse.json({ ok: true })

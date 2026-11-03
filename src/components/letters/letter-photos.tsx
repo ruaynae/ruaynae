@@ -1,13 +1,13 @@
 'use client'
 
-import { ArrowUp, FileText, ImagePlus, Loader2, Trash2 } from 'lucide-react'
+import { ArrowUp, FileText, ImagePlus, Loader2, Stamp, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { LETTER_LIMITS } from '@/lib/letters'
+import { LETTER_LIMITS, photoLayoutOf, type PhotoLayout } from '@/lib/letters'
 import { openPdf, pdfErrorText } from '@/lib/pdf-pages'
 
 /** `file` = เพิ่งเลือก (ยังไม่อัป) · `key` = อยู่ใน R2 แล้ว (เก็บกับหนังสือ) · `url` = blob หรือลิงก์ presigned */
-export type LetterPhoto = { file?: File; key?: string; url: string; caption: string }
+export type LetterPhoto = { file?: File; key?: string; url: string; caption: string; /** ประทับตราบริษัทมุมขวาล่าง (R27) */ stamped?: boolean }
 
 /**
  * รูปแนบท้ายหนังสือ (ไม่บังคับ · D9) — เช่นเส้นทางเข้า-ออก แบบป้าย ภาพผลงานงวด
@@ -23,13 +23,16 @@ export function LetterPhotos({
   onTitle,
   layout,
   onLayout,
+  stampUrl = null,
 }: {
   photos: LetterPhoto[]
   onChange: (next: LetterPhoto[]) => void
   title: string
   onTitle: (v: string) => void
-  layout: '1' | '2'
-  onLayout: (v: '1' | '2') => void
+  layout: PhotoLayout
+  onLayout: (v: PhotoLayout) => void
+  /** มีรูปตราประทับในคลังวัสดุ — ถึงจะโชว์ช่องติ๊ก "ประทับตรา" (R27) */
+  stampUrl?: string | null
 }) {
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState('')
@@ -130,9 +133,10 @@ export function LetterPhotos({
         </div>
         <div>
           <label htmlFor="lp-layout" className="label-base">การจัดวาง</label>
-          <select id="lp-layout" value={layout} onChange={(e) => onLayout(e.target.value === '2' ? '2' : '1')} className="input-base">
+          <select id="lp-layout" value={layout} onChange={(e) => onLayout(photoLayoutOf(e.target.value))} className="input-base">
             <option value="1">1 รูปต่อแถว (รูปใหญ่)</option>
             <option value="2">2 รูปต่อแถว (ตาราง)</option>
+            <option value="p">1 รูปต่อ 1 หน้า (แค็ตตาล็อกเต็มหน้า)</option>
           </select>
         </div>
       </div>
@@ -160,12 +164,35 @@ export function LetterPhotos({
         />
       </label>
 
+      {stampUrl && photos.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className="btn-secondary" onClick={() => onChange(photos.map((p) => ({ ...p, stamped: true })))}>
+            <Stamp className="size-4" /> ประทับตราทุกหน้า
+          </button>
+          {photos.some((p) => p.stamped) && (
+            <button type="button" className="btn-ghost" onClick={() => onChange(photos.map((p) => ({ ...p, stamped: false })))}>
+              เอาตราออกทั้งหมด
+            </button>
+          )}
+        </div>
+      )}
+
       {photos.length > 0 && (
         <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
           {photos.map((p, i) => (
             <li key={p.key ?? p.url} className="overflow-hidden rounded-md border border-line bg-surface">
               {/* eslint-disable-next-line @next/next/no-img-element -- blob URL ของรูปที่เพิ่งเลือก */}
               <img src={p.url} alt="" className="h-24 w-full object-cover" />
+              {stampUrl && (
+                <label className="flex items-center gap-1.5 border-t border-line-soft px-2 py-1 text-xs text-ink-2">
+                  <input
+                    type="checkbox"
+                    checked={p.stamped === true}
+                    onChange={(e) => onChange(photos.map((x, j) => (j === i ? { ...x, stamped: e.target.checked } : x)))}
+                  />
+                  ประทับตราหน้านี้
+                </label>
+              )}
               <input
                 value={p.caption}
                 onChange={(e) => onChange(photos.map((x, j) => (j === i ? { ...x, caption: e.target.value } : x)))}
