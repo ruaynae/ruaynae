@@ -74,7 +74,7 @@ export function MaterialLibraryClient({ items, missing, stampUrl }: { items: Lib
     setLoadingId(it.id)
     try {
       const r = await api(`/api/material-library/${it.id}`)
-      const item = r.j.item as (CatalogItem & { pages: { key: string; url: string }[] }) | undefined
+      const item = r.j.item as (Omit<CatalogItem, 'pages'> & { pages: { key: string; url: string }[] }) | undefined
       if (!r.ok || !item) {
         toast.error(catalogMessage(r.j.error))
         return

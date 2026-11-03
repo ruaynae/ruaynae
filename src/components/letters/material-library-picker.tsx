@@ -9,7 +9,7 @@ import { catalogMessage, type CatalogItem } from '@/lib/material-library'
 
 type Row = CatalogItem & { thumbUrl: string }
 /** วัสดุที่เลือก + หน้าแค็ตตาล็อกพร้อมลิงก์ดู — ส่งให้ฟอร์มหนังสือเติมรายการและต่อรูปแนบ */
-export type PickedMaterial = CatalogItem & { pages: { id: string; key: string; seq: number; url: string }[] }
+export type PickedMaterial = Omit<CatalogItem, 'pages'> & { pages: { id: string; key: string; seq: number; url: string }[] }
 
 const DIALOG =
   'fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100svh-2rem)] w-[min(40rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg border border-line bg-surface shadow-e3 animate-pop-in'

@@ -4,6 +4,7 @@ import { getSupabaseServer } from '@/lib/supabase/server'
 import { deleteObject, presignGet } from '@/lib/r2'
 import { readJson } from '@/lib/plans-server'
 import { isUuid } from '@/lib/transactions'
+import type { Database } from '@/lib/database.types'
 import { CATALOG_LIMITS, isCatalogKey, parseCatalogMeta } from '@/lib/material-library'
 import { catalogDbFail, claimUploads, consumeUploads, loadCatalogItem } from '@/lib/material-library-server'
 
@@ -40,7 +41,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   const body = await readJson(req)
   if (!body) return NextResponse.json({ error: 'BAD_REQUEST' }, { status: 400 })
 
-  const patch: Record<string, unknown> = {}
+  const patch: Database['public']['Tables']['material_catalog']['Update'] = {}
   if ('name' in body) {
     const meta = parseCatalogMeta(body)
     if (!meta.ok) return NextResponse.json({ error: meta.error }, { status: 422 })
