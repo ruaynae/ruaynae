@@ -2,7 +2,7 @@ import 'server-only'
 
 import JSZip from 'jszip'
 import { DOC_OPEN, RECEIPT_BOX } from '@/lib/letter-docx-xml'
-import { bodyBlocks, letterDateLine, type LetterPaperData } from '@/lib/letters'
+import { bodyBlocks, letterDateLine, type LetterPaperData, type PhotoLayout } from '@/lib/letters'
 
 /**
  * ไฟล์ Word ของหนังสือบริษัท (R19) — ผังตามหนังสือจริงของห้าง (`reg002`)
@@ -106,7 +106,7 @@ export type LetterDocxInput = {
   logo: DocxImage | null
   photos: DocxPhoto[]
   photoTitle: string
-  photoLayout: '1' | '2'
+  photoLayout: PhotoLayout
   /** 2 ฉบับ = "ต้นฉบับ" + "สำเนา" ต่อกันในไฟล์เดียว (ให้เจ้าหน้าที่เซ็นรับในสำเนาแล้วเก็บกลับมา) */
   copies?: 1 | 2
 }
@@ -247,6 +247,13 @@ function letterBodyXml({ letter, logo, photos, photoTitle, photoLayout }: Letter
       x.push(tbl + '</w:tbl>')
       // เอกสารต้องจบด้วยย่อหน้า ไม่ใช่ตาราง
       x.push(para(spacing(0, 240)))
+    } else if (photoLayout === 'p') {
+      // 1 รูปต่อ 1 หน้ากระดาษ (แค็ตตาล็อกเต็มหน้า · R27) — คำอธิบายใต้รูปไม่พิมพ์ (รูปมีชื่อสินค้าในหน้าอยู่แล้ว)
+      photos.forEach((p, i) => {
+        if (i > 0) x.push('<w:p><w:r><w:br w:type="page"/></w:r></w:p>')
+        const [cx, cy] = fit(p, 6.3, i === 0 && photoTitle.trim() ? 8.4 : 9.1)
+        x.push(para(spacing(0, 240) + CENTER, inlineImage(`rIdPhoto${i + 1}`, cx, cy, 100 + i)))
+      })
     } else {
       const maxH = photos.length === 1 ? 7.8 : 3.75
       photos.forEach((p, i) => {

@@ -4,6 +4,7 @@ import { getBranding } from '@/lib/branding'
 import { getSupabaseServer } from '@/lib/supabase/server'
 import { todayInBangkok } from '@/lib/format'
 import { currentLetterhead } from '@/lib/letters-server'
+import { loadStamp } from '@/lib/material-library-server'
 import type { RegisterEntry } from '@/lib/letters'
 import { parseChangeOrder } from '@/lib/change-order'
 import { parseMaterialApproval } from '@/lib/material-approval'
@@ -18,7 +19,7 @@ import type { SiteContract } from '@/components/letters/letter-contract-picker'
  */
 export async function loadLetterFormContext() {
   const sb = await getSupabaseServer()
-  const [seriesRes, entriesRes, letterhead, branding, sitesRes, fullRes, financeRes] = await Promise.all([
+  const [seriesRes, entriesRes, letterhead, branding, sitesRes, fullRes, financeRes, stamp] = await Promise.all([
     sb
       .from('letter_series')
       .select('id, label, prefix, site_id, recipient, contract_ref, intro, signer_title, is_active')
@@ -37,6 +38,8 @@ export async function loadLetterFormContext() {
     // ชื่อเต็มอ่านแยก — ยังไม่รัน migration `20261022120000` ฟอร์มหนังสือต้องไม่พัง (ใช้ชื่อย่อแทน)
     sb.from('sites').select('id, full_name').order('id').range(0, 499),
     sb.from('site_finance').select('site_id, contract_no, contract_date').order('site_id').range(0, 499),
+    // ตราประทับบริษัท (คลังวัสดุ · R27) — ยังไม่รัน migration = ไม่มี ไม่ใช่หน้าพัง
+    loadStamp(sb),
   ])
   if (sitesRes.error) console.error('[letters] อ่านรายชื่อโครงการไม่ได้', sitesRes.error.message)
   if (financeRes.error) console.error('[letters] อ่านสัญญาโครงการไม่ได้', financeRes.error.message)
@@ -82,6 +85,7 @@ export async function loadLetterFormContext() {
     contracts,
     letterhead,
     logoUrl: branding.logoUrl,
+    stampUrl: stamp.url,
     today: todayInBangkok(),
     failed: Boolean(seriesRes.error || entriesRes.error),
   }

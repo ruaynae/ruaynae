@@ -972,6 +972,7 @@ export type Database = {
           letter_id: string
           object_key: string
           seq: number
+          stamped: boolean
         }
         Insert: {
           byte_size?: number
@@ -981,6 +982,7 @@ export type Database = {
           letter_id: string
           object_key: string
           seq: number
+          stamped?: boolean
         }
         Update: {
           byte_size?: number
@@ -990,6 +992,7 @@ export type Database = {
           letter_id?: string
           object_key?: string
           seq?: number
+          stamped?: boolean
         }
         Relationships: [
           {
@@ -1000,6 +1003,103 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      material_catalog: {
+        Row: {
+          category: string
+          created_at: string
+          created_by: string | null
+          detail: string
+          id: string
+          is_active: boolean
+          name: string
+          note: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          detail?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          note?: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          detail?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          note?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_catalog_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      material_catalog_pages: {
+        Row: {
+          byte_size: number
+          created_at: string
+          id: string
+          item_id: string
+          object_key: string
+          seq: number
+        }
+        Insert: {
+          byte_size?: number
+          created_at?: string
+          id?: string
+          item_id: string
+          object_key: string
+          seq: number
+        }
+        Update: {
+          byte_size?: number
+          created_at?: string
+          id?: string
+          item_id?: string
+          object_key?: string
+          seq?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_catalog_pages_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "material_catalog"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      material_library_settings: {
+        Row: {
+          id: boolean
+          stamp_object_key: string | null
+          updated_at: string
+        }
+        Insert: {
+          id?: boolean
+          stamp_object_key?: string | null
+          updated_at?: string
+        }
+        Update: {
+          id?: boolean
+          stamp_object_key?: string | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       letter_series: {
         Row: {

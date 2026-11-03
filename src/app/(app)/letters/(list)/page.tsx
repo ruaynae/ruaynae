@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ChevronRight, Mail, Plus, Settings } from 'lucide-react'
+import { ChevronRight, Library, Mail, Plus, Settings } from 'lucide-react'
 import { getSupabaseServer } from '@/lib/supabase/server'
 import { PAGE_SIZE } from '@/lib/constants'
 import { fmtDate } from '@/lib/format'
@@ -80,6 +80,9 @@ export default async function LettersPage({ searchParams }: { searchParams: Prom
               <Plus className="size-4" /> ออกหนังสือใหม่
             </Link>
             <LetterImportButton />
+            <Link href="/letters/library" className="btn-secondary">
+              <Library className="size-4" /> คลังวัสดุ
+            </Link>
             <Link href="/settings/letters" className="btn-secondary">
               <Settings className="size-4" /> ชุดเลขหนังสือ
             </Link>

@@ -109,6 +109,7 @@ create type advance_status as enum ('pending','approved','rejected');
 | `documents` | ใบเสนอราคา/**ใบแจ้งหนี้**/ใบเสร็จ (R12): `kind` (3 ค่า เรียงตามลำดับงาน), `doc_no` (null จนกว่าจะออกเลข), `status`, `site_id` (null = ไม่ผูกโครงการ), **สำเนาผู้ซื้อ+`seller` jsonb แช่แข็งตอนออกเอกสาร**, `vat_mode`, `vat_rate`, `subtotal`/`vat_amount`/`total` (trigger คิดจากบรรทัด ไม่รับจากหน้าจอ), `amount_words`, `txn_id`, `source_document_id` · ออกเลขผ่าน `issue_document()` ที่ `for update` ก่อนอ่านสถานะ | **owner เท่านั้น** |
 | `document_lines` | บรรทัดรายการ: `seq`, `description`, `qty`, `unit`, `unit_price` (**ตัวเลขที่เจ้าของพิมพ์** — โหมด inclusive คือรวม VAT แล้ว), `line_total` (ยอดก่อน VAT ที่ปัดแล้ว · Σ = `subtotal` เป๊ะ) | **owner เท่านั้น** |
 | `letter_photos` | รูปแนบท้ายหนังสือ (R19 · 23 ต.ค. 2569): `letter_id` (cascade), `seq`, `object_key` (`letters/…` ใน R2), `caption`, `byte_size` · หัวข้อ/การจัดวางอยู่บน `letters.photo_title/photo_layout` · เขียนผ่าน `PUT /api/letters/[id]/photos` (แทนทั้งชุด) | **owner เท่านั้น** |
+| `material_catalog` · `material_catalog_pages` · `material_library_settings` | คลังวัสดุขออนุมัติ (R27 · 3 พ.ย. 2569): วัสดุ (`name`, `category`, `detail` = รายละเอียดที่ขออนุมัติ, `note`, `is_active` ซ่อนแทนลบ) · หน้าแค็ตตาล็อก (`seq`, `object_key` `catalog/…` ใน R2) · ตราประทับบริษัท (แถวเดียว `stamp_object_key`) · **หนังสืออ้างอิงไฟล์ในคลังโดยตรง ไม่คัดลอก** (`letter_photos.object_key` ชี้ `catalog/…` ได้ · ถอด unique ของคีย์ คงเฉพาะ `letters/…` · เพดาน 60 หน้า · `stamped` ต่อหน้า · `letters.photo_layout` เพิ่มค่า `p` = 1 รูปต่อหน้า) · ลบหน้าที่หนังสือใช้อยู่ไม่ได้ (trigger `guard_catalog_page_delete` → `CATALOG_IN_USE`) | **owner เท่านั้น** |
 | `domestic_plans` | แผนการใช้พัสดุ/เหล็กในประเทศที่บันทึกไว้ (R22b · 27 ต.ค. 2569): `name`, `site_id` (on delete set null), `source_file`, `model` jsonb = `DomModel` ทั้งก้อน **ธงเหล็ก/นำเข้าอยู่บนแถวรายการ** · ไม่เก็บไฟล์ BOQ · PATCH ต้องส่ง `expectedUpdatedAt` (409 `DOMESTIC_CHANGED`) | **owner เท่านั้น** |
 | `project_files` | คลังเอกสาร (R21): `category` (`contract`/`drawing`/`boq`/`certificate`/`other`), `title`, `site_id` (on delete set null), `doc_no`, `doc_date`, `note`, `file_name`, `object_key` (`files/…` ใน R2), `content_type`, `byte_size` · ไฟล์ห้ามเปลี่ยน (`guard_project_file`) | **owner เท่านั้น** |
 | `audit_log` | `table_name`, `row_id`, `action`, `actor`, `before` jsonb, `after` jsonb, `at`, **`mcp_key_id`** (มีค่า = AI ทำแทนเจ้าของ · **ไม่มี FK** โดยตั้งใจ ดู §17 ข้อ 19) · **`via_line`** (R16 · มาจาก GUC `app.via_line`) | **อ่านได้เฉพาะ owner · ไม่มี policy ให้ UPDATE/DELETE กับใครทั้งนั้น** |
@@ -728,6 +729,11 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
       · **แนบตาราง** (`reg033`): "ตารางรายการขออนุมัติใช้วัสดุ" 7 คอลัมน์ต่อท้ายหนังสือ + Excel · **ระบุในเนื้อหา** (`agro009`): รายการเป็นข้อ 1. 2. … ในเนื้อหา
       · รายการชุดเดียวใช้ได้ทั้งสองแบบ · เก็บใน `letters.fields.materialApproval` (jsonb เดิม · **ไม่มี migration**) · สูตร/ตัวตรวจ `lib/material-approval.ts` (ไฟล์ล้วน · unit test)
       · พิมพ์ = ตารางแนวนอน**หมุนลงกระดาษแนวตั้ง** แบ่งแผ่นด้วย `maPages()` (§17 ข้อ 44) · ตารางตรวจรับ `docs/test-plan/R26-material-approval.md`
+- [ ] **R27 · คลังวัสดุขออนุมัติ** (3 พ.ย. 2569) — เมนู `/letters/library` (เจ้าของเท่านั้น) เก็บวัสดุที่ใช้ประจำ + แค็ตตาล็อก (รูป/PDF → รูปทีละหน้า) ใน R2 `catalog/…`
+      · ในหนังสือ "ขออนุมัติใช้วัสดุ" ปุ่ม **เลือกจากคลังวัสดุ** → เติมแถวรายการ (R26) + ต่อแค็ตตาล็อกท้ายหนังสือเรียงตามที่ติ๊ก · เลย์เอาต์ใหม่ `p` (1 รูปต่อ 1 หน้ากระดาษ)
+      · **ตราประทับบริษัท** เก็บครั้งเดียว ระบบประทับมุมขวาล่างต่อหน้า (บนจอ/พิมพ์ = CSS `.lt-stamp` · Word = `sharp` multiply · ขนาด/ตำแหน่งสองที่ต้องตรงกัน)
+      · 🔴 อ้างอิงไฟล์ ไม่คัดลอก → ห้ามลบไฟล์ `catalog/` ตามหนังสือ (§17 ข้อ 45) · เพดานรูปแนบ 12 → 60
+      · ⚠️ migration `20261103090000_r27_material_library.sql` ต้องรัน (เจ้าของรันเอง) · ยังไม่รัน = ฟอร์มหนังสือเหมือนเดิม + หน้าคลังบอกให้รัน · ตารางตรวจรับ `docs/test-plan/R27-material-library.md`
 - [x] **R9 · รอบคำสั่งเจ้าของ 4 ก.ย. 2569** — เรียกหน่วยงานว่า "โครงการ" ทั้งระบบ · ปิดการ์ด
       "งานวันนี้" · ต้นทุนสะสมแยกสามก้อน (ค่าแรง/ค่าวัสดุ/อื่น ๆ) + ธง `categories.is_material`
       · ยอดรวมแยกหมวดในหน้าโครงการ · **จ่ายค่าแรงรายคนปุ่มเดียว** (เลิกใช้คำว่า "รอบจ่าย"
@@ -1130,6 +1136,14 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
    · หน้า PDF เป็นแนวนอนถูกต้อง แต่เนื้อหาถูกวางด้วยความกว้างของหน้าแรก (210mm) แล้วส่วนเกินหายไป — ใส่ `width: 297mm` ก็ไม่ช่วย
    · **แก้:** หมุนแผ่น (`translateY(295mm) rotate(-90deg)`) ลงกระดาษแนวตั้ง แบบเดียวกับต้นฉบับที่สแกนมา · แผ่นที่หมุนไหลข้ามหน้าไม่ได้ → แบ่งแผ่นเองล่วงหน้า (`maPages()` · ประมาณความสูงแถวเกินไว้ วัดเทียบเบราว์เซอร์แล้ว)
    · และกล่องห่อกระดาษต้องชนะกฎ `body:has(.paper) :has(.paper) { height: auto !important }` ไม่งั้นสูง 0 แล้วทุกแผ่นซ้อนกันอยู่หน้าเดียว
+
+45. **ไฟล์ที่หลายแถวอ้างร่วมกัน ห้ามถูกลบตามแถวใดแถวหนึ่ง — และตัวลบไฟล์กระจายอยู่หลายที่** (R27 · 3 พ.ย. 2569)
+   · เดิม `letter_photos` คือเจ้าของไฟล์ `letters/…` 1:1 จึงมีโค้ดลบไฟล์ใน R2 ตอนลบหนังสือ (`DELETE /api/letters/[id]`) และตอนเอารูปออก (`PUT …/photos`)
+   · พอรูปแนบชี้ไฟล์ในคลัง (`catalog/…`) ได้ สองที่นั้นจะลบไฟล์ที่หนังสืออื่นยังใช้อยู่ — อาการ: หนังสือเก่ารูปพังโดยไม่มี error ตอนลบหนังสือฉบับหนึ่ง
+   · **แก้:** `isSharedKey()` ข้ามไฟล์ `catalog/` ทุกที่ที่ลบ · ฝั่งคลังลบหน้า/วัสดุไม่ได้ถ้ายังมีหนังสือใช้ (trigger `guard_catalog_page_delete` → 409) แล้วให้ "ซ่อน" แทน
+   · ถอด `unique(object_key)` เดิมของ `letter_photos` ด้วย (หนังสือหลายฉบับใช้หน้าเดียวกัน) คง unique เฉพาะ `letters/…` ด้วย partial index
+   · **วิธีหา:** ก่อนเปลี่ยนความสัมพันธ์ของไฟล์จาก 1:1 เป็น N:1 `grep -rn "deleteObject"` ทุกที่ แล้วถามทีละที่ว่า "ไฟล์นี้ยังมีคนอื่นอ้างอยู่ไหม"
+   · และตราประทับซ้อนรูปต้องตรงกันสองที่ (CSS บนจอ/พิมพ์ กับ `sharp` ในไฟล์ Word) — ค่าคงที่อยู่ `STAMP_WIDTH`/`STAMP_MARGIN` และ `.lt-stamp` ต้องแก้คู่กัน
 
 ## 18. ตัวแปรสภาพแวดล้อม
 

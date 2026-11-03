@@ -40,6 +40,7 @@ export default async function LetterPage({ params }: { params: Promise<{ id: str
       contracts={ctx.contracts}
       letterhead={stored.companyName ? stored : ctx.letterhead}
       logoUrl={ctx.logoUrl}
+      stampUrl={ctx.stampUrl}
       today={ctx.today}
       initial={toFormLetter(row)}
       initialSeriesId={null}
