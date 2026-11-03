@@ -1,6 +1,8 @@
 import { BLANK, bodyBlocks, letterDateLine, type LetterPaperData } from '@/lib/letters'
 import { hasItems, type ChangeOrder } from '@/lib/change-order'
 import { ChangeOrderPaper } from '@/components/letters/change-order-paper'
+import { MaterialApprovalPaper } from '@/components/letters/material-approval-paper'
+import { hasMaItems, type MaterialApproval } from '@/lib/material-approval'
 
 /**
  * กระดาษหนังสือบริษัท A4 (R19) — ผังเดียวกับไฟล์ Word ที่ `letter-docx.ts` สร้าง
@@ -36,6 +38,7 @@ export function LetterPaper({
   breakAt = null,
   copyLabel = null,
   changeOrder = null,
+  materialApproval = null,
 }: {
   letter: LetterPaperData
   logoUrl: string | null
@@ -48,6 +51,8 @@ export function LetterPaper({
   copyLabel?: string | null
   /** ตารางงานเพิ่ม-ลด (R25) — แผ่นแนบต่อจากหนังสือ ก่อนรูปภาพ · ไปกับต้นฉบับเท่านั้น */
   changeOrder?: ChangeOrder | null
+  /** ตารางรายการขออนุมัติใช้วัสดุ (R26 · แบบแนบตาราง) — แผ่นแนวนอนต่อจากหนังสือ ก่อนรูปภาพ · ต้นฉบับเท่านั้น */
+  materialApproval?: MaterialApproval | null
 }) {
   const lh = letter.letterhead
   const rows = [
@@ -120,6 +125,7 @@ export function LetterPaper({
       </article>
 
       {changeOrder && hasItems(changeOrder) && <ChangeOrderPaper co={changeOrder} />}
+      {materialApproval && hasMaItems(materialApproval) && <MaterialApprovalPaper ma={materialApproval} letter={letter} />}
 
       {photos.length > 0 && (
         <article className="paper letter-sheet">

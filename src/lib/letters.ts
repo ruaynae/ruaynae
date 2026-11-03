@@ -1,5 +1,6 @@
 import { bahtText } from '@/lib/baht-text'
 import type { LetterAuto, LetterTemplate } from '@/lib/letter-templates'
+import { maBodyLines, maStyleOf, type MaterialApproval } from '@/lib/material-approval'
 
 /**
  * หนังสือบริษัท (R19) — สูตรที่ใช้ร่วมกันทั้งฟอร์ม กระดาษ ไฟล์ Word และ API
@@ -179,12 +180,24 @@ export type GeneratedText = {
   photoTitle: string
 }
 
-/** ข้อความของแบบหนังสือ + ค่าช่องด่วน → ข้อความจริง */
+/** แบบที่ 1 ของ "ขออนุมัติใช้วัสดุ" (R26 · ตาม `agro009/2569`) — รายการเป็นข้อในเนื้อหา แทนตารางแนบ */
+const MA_INLINE_BODY = 'ทาง{บริษัท} มีความประสงค์ขออนุมัติใช้วัสดุดังต่อไปนี้ เพื่อดำเนินงานปรับปรุงโครงการดังกล่าว ซึ่งมีจำนวนรายการดังต่อไปนี้ รายละเอียดตามเอกสารแนบ'
+const MA_INLINE_ATTS = ['รายละเอียดวัสดุ 1 ชุด']
+
+/**
+ * ข้อความของแบบหนังสือ + ค่าช่องด่วน → ข้อความจริง
+ * · `material` = รายการขออนุมัติวัสดุ (R26) — ใช้เมื่อ "รูปแบบหนังสือ" = ระบุในเนื้อหา
+ */
 export function generateFromTemplate(
   t: LetterTemplate,
   fields: Record<string, string>,
   companyName: string,
+  material: MaterialApproval | null = null,
 ): GeneratedText {
+  if (t.id === 'material' && maStyleOf(fields.style) === 'inline') {
+    const g = generateFromTemplate({ ...t, id: 'material-inline', body: MA_INLINE_BODY, atts: MA_INLINE_ATTS }, fields, companyName)
+    return { ...g, body: [g.body, ...maBodyLines(material, BLANK)].join('\n') }
+  }
   const vals: Record<string, string> = { ...fields }
   if (t.id === 'change') {
     const n = Number(String(fields.amount ?? '').replace(/,/g, ''))

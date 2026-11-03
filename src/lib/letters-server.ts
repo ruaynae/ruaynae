@@ -4,6 +4,7 @@ import { getSupabaseServer } from '@/lib/supabase/server'
 import { isUuid } from '@/lib/transactions'
 import { LETTER_LIMITS, splitLines, stripItemNo, type Letterhead } from '@/lib/letters'
 import { isBlank, parseChangeOrder, type ChangeOrder } from '@/lib/change-order'
+import { compactMaterialApproval, parseMaterialApproval, type MaterialApproval } from '@/lib/material-approval'
 import type { Json } from '@/lib/database.types'
 
 /**
@@ -54,6 +55,8 @@ export type LetterInput = {
   fields: Record<string, string>
   /** ตารางงานเพิ่ม-ลด (R25) — เก็บใน `letters.fields.changeOrder` (jsonb เดิม ไม่ต้องรัน migration) */
   changeOrder: ChangeOrder | null
+  /** รายการขออนุมัติใช้วัสดุ (R26) — `letters.fields.materialApproval` (jsonb เดิม) */
+  materialApproval: MaterialApproval | null
 }
 
 export type ParsedLetter = { ok: true; value: LetterInput } | { ok: false; error: string }
@@ -127,6 +130,7 @@ export function parseLetterInput(body: Record<string, unknown>): ParsedLetter {
       templateId,
       fields,
       changeOrder: changeOrderOf(body.changeOrder, templateId),
+      materialApproval: templateId === 'material' ? compactMaterialApproval(parseMaterialApproval(body.materialApproval)) : null,
     },
   }
 }
@@ -142,10 +146,13 @@ function changeOrderOf(v: unknown, templateId: string | null): ChangeOrder | nul
  * ค่าช่องด่วน + ตารางงานเพิ่ม-ลด ลง jsonb `letters.fields` ก้อนเดียว
  * · คีย์ `changeOrder` ที่ client ส่งมาในช่องด่วนถูกทิ้งเสมอ — ตารางมาจาก `v.changeOrder` ที่ผ่านตัวตรวจแล้วเท่านั้น
  */
+const JSON_KEYS = new Set(['changeOrder', 'materialApproval'])
+
 function letterFieldsJson(v: LetterInput): Json {
   const out: Record<string, Json> = {}
-  for (const [k, x] of Object.entries(v.fields)) if (k !== 'changeOrder') out[k] = x
+  for (const [k, x] of Object.entries(v.fields)) if (!JSON_KEYS.has(k)) out[k] = x
   if (v.changeOrder) out.changeOrder = v.changeOrder as unknown as Json
+  if (v.materialApproval) out.materialApproval = v.materialApproval as unknown as Json
   return out
 }
 

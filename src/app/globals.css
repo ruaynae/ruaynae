@@ -634,6 +634,24 @@
     print-color-adjust: exact; -webkit-print-color-adjust: exact;
   }
 
+  /* ── ตารางรายการขออนุมัติใช้วัสดุ (R26) — A4 แนวนอน (1123×794 ที่ 96dpi) · บนจอย่อให้กว้างเท่าหนังสือแนวตั้ง ── */
+  .ma-fit { zoom: 0.7071; margin: 0 0 16px; width: 1123px; }
+  .letter-sheet.ma-sheet { width: 1123px; min-height: 794px; padding: 56px 48px; margin: 0; font-size: 13pt; line-height: 1.35; }
+  .ma-sheet p { margin: 0; }
+  .ma-sheet .ma-title { text-align: center; font-size: 16pt; font-weight: 700; margin-bottom: 10pt; }
+  .ma-sheet .ma-b { font-weight: 700; }
+  .ma-sheet .ma-c { text-align: center; }
+  .ma-sheet .ma-head { width: 100%; border-collapse: collapse; margin-bottom: 10pt; }
+  .ma-sheet .ma-head td { padding: 0 6pt 3pt 0; vertical-align: top; }
+  .ma-sheet .ma-head .ma-k { width: 9%; white-space: nowrap; }
+  .ma-sheet .ma-head .ma-k2 { width: 9%; white-space: nowrap; padding-left: 12pt; }
+  .ma-sheet .ma-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .ma-sheet .ma-table th, .ma-sheet .ma-table td {
+    border: 0.75pt solid #000; padding: 2pt 4pt; vertical-align: top; overflow-wrap: anywhere; white-space: pre-line;
+  }
+  .ma-sheet .ma-table th { font-weight: 700; text-align: center; vertical-align: middle; }
+  .ma-sheet .ma-table tr { break-inside: avoid; }
+
   /* เส้นบอกว่าเนื้อหาจะเลยไปหน้า 2 */
   .letter-sheet .lt-break {
     position: absolute; left: 0; right: 0; height: 0; border-top: 2px dashed #d97706;
@@ -656,6 +674,21 @@
   .paper.letter-sheet + .paper.letter-sheet { break-before: page; }
   .letter-copy { break-before: page; }
   .paper.letter-sheet.co-sheet { padding: 12mm 10mm !important; }
+  /* R26: แผ่นตารางแนวนอน **หมุนลงกระดาษแนวตั้ง** (หัวตารางชิดซ้ายของกระดาษ เหมือนต้นฉบับที่สแกนมา)
+     🔴 ไม่ใช้ `@page` แนวนอน — Chrome วางเนื้อหาหน้าแนวนอนด้วยความกว้างของหน้าแรก (แนวตั้ง) แล้วตัดตารางขวาทิ้ง
+     · แผ่นที่หมุนไหลข้ามหน้าไม่ได้ → `maPages()` แบ่งแผ่นให้ก่อน */
+  /* ตัวเลือก `body:has(.paper)` = ชนะกฎล้างระยะ `body:has(.paper) :has(.paper)` (height: auto) ข้างบน
+     ไม่งั้นกล่องสูง 0 แล้วทุกแผ่นซ้อนกันอยู่หน้าเดียว */
+  body:has(.paper) .ma-fit {
+    zoom: 1 !important; width: 210mm !important; height: 295mm !important; margin: 0 !important;
+    position: relative !important; overflow: hidden !important; break-before: page; break-inside: avoid;
+  }
+  .ma-fit + .paper.letter-sheet { break-before: page; }
+  .paper.letter-sheet.ma-sheet {
+    position: absolute; top: 0; left: 0;
+    width: 295mm !important; height: 210mm !important; min-height: 0 !important; padding: 14mm 12mm !important;
+    transform-origin: top left; transform: translateY(295mm) rotate(-90deg);
+  }
   .letter-sheet .lt-blank-mark { background: none; }
   .letter-sheet .lt-break { display: none; }
 }

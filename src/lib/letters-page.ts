@@ -6,6 +6,7 @@ import { todayInBangkok } from '@/lib/format'
 import { currentLetterhead } from '@/lib/letters-server'
 import type { RegisterEntry } from '@/lib/letters'
 import { parseChangeOrder } from '@/lib/change-order'
+import { parseMaterialApproval } from '@/lib/material-approval'
 import type { FormLetter, SeriesOption } from '@/components/letters/letter-form'
 import type { SiteContract } from '@/components/letters/letter-contract-picker'
 
@@ -111,10 +112,11 @@ export function toFormLetter(r: LetterRowData): FormLetter {
   const fields: Record<string, string> = {}
   if (r.fields && typeof r.fields === 'object' && !Array.isArray(r.fields)) {
     for (const [k, v] of Object.entries(r.fields as Record<string, unknown>)) {
-      if (k !== 'changeOrder') fields[k] = String(v ?? '')
+      if (k !== 'changeOrder' && k !== 'materialApproval') fields[k] = String(v ?? '')
     }
   }
   const co = r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).changeOrder : null
+  const ma = r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).materialApproval : null
   return {
     id: r.id,
     seriesId: r.series_id,
@@ -132,5 +134,6 @@ export function toFormLetter(r: LetterRowData): FormLetter {
     templateId: r.template_id,
     fields,
     changeOrder: parseChangeOrder(co),
+    materialApproval: parseMaterialApproval(ma),
   }
 }
