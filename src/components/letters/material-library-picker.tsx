@@ -14,22 +14,31 @@ export type PickedMaterial = Omit<CatalogItem, 'pages'> & { pages: { id: string;
 const DIALOG =
   'fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100svh-2rem)] w-[min(40rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg border border-line bg-surface shadow-e3 animate-pop-in'
 
-/**
- * เลือกวัสดุจากคลัง (R27) — ติ๊กได้หลายรายการ → เติมแถวรายการ + ต่อแค็ตตาล็อกท้ายหนังสือ
- * 🔴 โหลดรายการใน event handler (เปิดกล่อง · พิมพ์ค้นหา) ไม่ใช่ใน effect — React 19 นับ setState ใน effect เป็น cascading render (§17 ข้อ 16)
- */
-export function MaterialLibraryPicker({
-  open,
-  onOpenChange,
-  hasStamp,
-  onPick,
-}: {
+type Props = {
   open: boolean
   onOpenChange: (v: boolean) => void
   /** มีรูปตราประทับในคลัง — ถึงจะโชว์ติ๊ก "ประทับตรา" */
   hasStamp: boolean
   onPick: (items: PickedMaterial[], stamp: boolean) => void
-}) {
+}
+
+/**
+ * เลือกวัสดุจากคลัง (R27) — ติ๊กได้หลายรายการ → เติมแถวรายการ + ต่อแค็ตตาล็อกท้ายหนังสือ
+ *
+ * 🔴 เนื้อกล่องถูกวาดเฉพาะตอน `open` = กล่องใหม่ทุกครั้ง (ติ๊ก/ค้นหาถูกล้าง) และโหลดรายการตอน mount
+ *    เดิมสั่งโหลดใน `onOpenChange` ของ Radix — แต่ `onOpenChange` ถูกเรียกเมื่อ **Radix** ขอเปิด/ปิด ไม่ใช่เมื่อพ่อสั่ง
+ *    `open` ผ่าน prop (ปุ่ม "เลือกจากคลังวัสดุ" ในฟอร์มทำแบบนั้น) → รายการไม่เคยถูกดึง หมุน "กำลังโหลด" ค้างตลอดไป
+ *    (เจ้าของแจ้ง 3 พ.ย. 2569) · **กล่องที่พ่อสั่งเปิดต้องไม่พึ่ง `onOpenChange` เพื่อเริ่มโหลด**
+ */
+export function MaterialLibraryPicker(props: Props) {
+  return (
+    <Dialog.Root open={props.open} onOpenChange={props.onOpenChange}>
+      {props.open && <PickerBody onOpenChange={props.onOpenChange} hasStamp={props.hasStamp} onPick={props.onPick} />}
+    </Dialog.Root>
+  )
+}
+
+function PickerBody({ onOpenChange, hasStamp, onPick }: Omit<Props, 'open'>) {
   const [rows, setRows] = useState<Row[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [q, setQ] = useState('')
@@ -42,7 +51,6 @@ export function MaterialLibraryPicker({
 
   async function load(nextQ: string, nextCat: string) {
     const mine = ++seq.current
-    setError(null)
     try {
       const p = new URLSearchParams()
       if (nextQ.trim()) p.set('q', nextQ.trim())
@@ -55,6 +63,7 @@ export function MaterialLibraryPicker({
         setError(catalogMessage(j.error ?? 'LOAD_FAILED'))
         return
       }
+      setError(null)
       setRows(j.items)
     } catch {
       if (mine === seq.current) {
@@ -64,15 +73,13 @@ export function MaterialLibraryPicker({
     }
   }
 
-  function changeOpen(v: boolean) {
-    if (busy) return
-    if (v) {
-      setSel([])
-      setStamp(true)
-      setRows(null)
-      void load(q, cat)
-    }
-    onOpenChange(v)
+  // โหลดครั้งแรกตอน mount ด้วย callback ref ไม่ใช่ useEffect — `react-hooks/set-state-in-effect` ถือเป็น error (§17 ข้อ 16)
+  // `started` กันโหลดซ้ำตอน StrictMode mount สองรอบ
+  const started = useRef(false)
+  const boot = (el: HTMLElement | null) => {
+    if (!el || started.current) return
+    started.current = true
+    void load('', '')
   }
 
   function search(v: string) {
@@ -112,10 +119,15 @@ export function MaterialLibraryPicker({
   }
 
   return (
-    <Dialog.Root open={open} onOpenChange={changeOpen}>
+    <>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40 animate-fade-in" />
-        <Dialog.Content className={DIALOG}>
+        <Dialog.Content
+          className={DIALOG}
+          // กำลังดึงแค็ตตาล็อกตอนกดเพิ่ม — ห้ามปิดกลางคัน (ไม่งั้นรายการเข้าหนังสือหลังคนกดปิดไปแล้ว)
+          onInteractOutside={(e) => { if (busy) e.preventDefault() }}
+          onEscapeKeyDown={(e) => { if (busy) e.preventDefault() }}
+        >
           <div className="flex items-start justify-between gap-3 border-b border-line-soft p-4">
             <div className="min-w-0">
               <Dialog.Title className="text-lg font-bold text-ink">เลือกจากคลังวัสดุ</Dialog.Title>
@@ -138,7 +150,7 @@ export function MaterialLibraryPicker({
             </select>
           </div>
 
-          <div className="min-h-[12rem] flex-1 overflow-y-auto p-3">
+          <div ref={boot} className="min-h-[12rem] flex-1 overflow-y-auto p-3">
             {rows === null ? (
               <p className="flex items-center justify-center gap-2 py-10 text-sm text-muted-token"><Loader2 className="size-4 animate-spin" /> กำลังโหลดคลังวัสดุ…</p>
             ) : error ? (
@@ -199,6 +211,6 @@ export function MaterialLibraryPicker({
           </div>
         </Dialog.Content>
       </Dialog.Portal>
-    </Dialog.Root>
+    </>
   )
 }
