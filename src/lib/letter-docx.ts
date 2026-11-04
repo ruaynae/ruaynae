@@ -107,6 +107,8 @@ export type LetterDocxInput = {
   photos: DocxPhoto[]
   photoTitle: string
   photoLayout: PhotoLayout
+  /** รายการขออนุมัติใช้วัสดุแบบ "แนบรายการ" — ตาราง 3 คอลัมน์ต่อท้ายหนังสือ ก่อนรูปแนบ (ต้นฉบับเท่านั้น) */
+  materialList?: { name: string; detail: string }[]
   /** 2 ฉบับ = "ต้นฉบับ" + "สำเนา" ต่อกันในไฟล์เดียว (ให้เจ้าหน้าที่เซ็นรับในสำเนาแล้วเก็บกลับมา) */
   copies?: 1 | 2
 }
@@ -150,7 +152,7 @@ export function letterDocumentXml(input: LetterDocxInput) {
   // ต้นฉบับยื่นหน่วยงาน: ไม่มีป้าย ไม่มีกล่องรับเอกสาร · สำเนาคู่ฉบับ: ป้ายกลางบนสุด + กล่องให้เจ้าหน้าที่เซ็นรับ (เจ้าของสั่ง 22 ต.ค. 2569)
   const a = letterBodyXml({ ...input, letter: { ...input.letter, showReceipt: false } }, null)
   // รูปแนบไปกับต้นฉบับเท่านั้น — สำเนาคู่ฉบับเก็บกลับมาแค่หน้าที่เจ้าหน้าที่เซ็นรับ (เจ้าของสั่ง 23 ต.ค. 2569)
-  const b = letterBodyXml({ ...input, photos: [] }, COPY_LABEL)
+  const b = letterBodyXml({ ...input, photos: [], materialList: [] }, COPY_LABEL)
   return { xml: wrapDocument(a.body + asSecondCopy(b.body)), rels: a.rels }
 }
 
@@ -167,7 +169,7 @@ const copyBanner = (label: string) =>
 const wrapDocument = (body: string) =>
   `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n${DOC_OPEN}${body}${SECTION}</w:body></w:document>`
 
-function letterBodyXml({ letter, logo, photos, photoTitle, photoLayout }: LetterDocxInput, copyLabel: string | null) {
+function letterBodyXml({ letter, logo, photos, photoTitle, photoLayout, materialList }: LetterDocxInput, copyLabel: string | null) {
   const lh = letter.letterhead
   const x: string[] = []
 
@@ -221,6 +223,27 @@ function letterBodyXml({ letter, logo, photos, photoTitle, photoLayout }: Letter
   // กล่อง "รับเอกสารแล้ว" ลอยชิดมุมล่างขวาของหน้าที่ลงชื่อ — ผูกกับย่อหน้าตำแหน่งผู้ลงนาม
   // (ไม่ใช่ย่อหน้าของตัวเอง) หนังสือที่เต็มหน้าจึงไม่ถูกดันไปขึ้นหน้าใหม่เพราะกล่อง (เจ้าของแจ้ง 23 ต.ค. 2569)
   x.push(para(spacing(0, 276) + sig, runs(letter.signerTitle) + (letter.showReceipt ? RECEIPT_RUN : '')))
+
+  // ── รายการขออนุมัติใช้วัสดุ แบบ "แนบรายการ" (หน้าใหม่ · ก่อนรูปแนบ) ─────────────
+  if (materialList?.length) {
+    x.push('<w:p><w:r><w:br w:type="page"/></w:r></w:p>')
+    x.push(para(spacing() + CENTER, runs('รายการขออนุมัติใช้วัสดุ', { b: true }), { b: true }))
+    const W = [800, 3400, TEXT_WIDTH - 800 - 3400]
+    const border = ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']
+      .map((s) => `<w:${s} w:val="single" w:sz="4" w:space="0" w:color="000000"/>`).join('')
+    const cell = (w: number, text: string, o: { b?: boolean; center?: boolean } = {}) =>
+      `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/></w:tcPr>` +
+      para(spacing(0, 240) + (o.center ? CENTER : ''), runs(text, { sz: 30, b: o.b }), { sz: 30, b: o.b }) + '</w:tc>'
+    let tbl = `<w:tbl><w:tblPr><w:tblW w:w="${TEXT_WIDTH}" w:type="dxa"/><w:tblBorders>${border}</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="40" w:type="dxa"/><w:left w:w="100" w:type="dxa"/><w:bottom w:w="40" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>${W.map((w) => `<w:gridCol w:w="${w}"/>`).join('')}</w:tblGrid>`
+    // หัวตารางซ้ำเมื่อข้ามหน้า · ไม่ตัดแถวกลางคัน
+    tbl += `<w:tr><w:trPr><w:cantSplit/><w:tblHeader/></w:trPr>${cell(W[0], 'ลำดับ', { b: true, center: true })}${cell(W[1], 'รายการวัสดุ', { b: true, center: true })}${cell(W[2], 'ยี่ห้อ / รุ่น / รายละเอียด', { b: true, center: true })}</w:tr>`
+    materialList.forEach((r, i) => {
+      tbl += `<w:tr><w:trPr><w:cantSplit/></w:trPr>${cell(W[0], String(i + 1), { center: true })}${cell(W[1], r.name)}${cell(W[2], r.detail)}</w:tr>`
+    })
+    x.push(tbl + '</w:tbl>')
+    // เอกสารต้องจบด้วยย่อหน้า ไม่ใช่ตาราง
+    x.push(para(spacing(0, 240)))
+  }
 
   // ── รูปแนบท้าย (หน้าใหม่) ────────────────────────────────────────────
   const rels: { rid: string; file: string; data: Buffer }[] = []

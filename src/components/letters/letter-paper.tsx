@@ -3,6 +3,7 @@ import { BLANK, bodyBlocks, letterDateLine, type LetterPaperData, type PhotoLayo
 import { hasItems, type ChangeOrder } from '@/lib/change-order'
 import { ChangeOrderPaper } from '@/components/letters/change-order-paper'
 import { MaterialApprovalPaper } from '@/components/letters/material-approval-paper'
+import { MaterialListPaper } from '@/components/letters/material-list-paper'
 import { hasMaItems, type MaterialApproval } from '@/lib/material-approval'
 
 /**
@@ -60,6 +61,7 @@ export function LetterPaper({
   copyLabel = null,
   changeOrder = null,
   materialApproval = null,
+  materialList = null,
 }: {
   letter: LetterPaperData
   logoUrl: string | null
@@ -76,6 +78,8 @@ export function LetterPaper({
   changeOrder?: ChangeOrder | null
   /** ตารางรายการขออนุมัติใช้วัสดุ (R26 · แบบแนบตาราง) — แผ่นแนวนอนต่อจากหนังสือ ก่อนรูปภาพ · ต้นฉบับเท่านั้น */
   materialApproval?: MaterialApproval | null
+  /** รายการขออนุมัติใช้วัสดุแบบ "แนบรายการ" — แผ่นแนวตั้งต่อจากหนังสือ ก่อนรูปภาพ · ต้นฉบับเท่านั้น */
+  materialList?: MaterialApproval | null
 }) {
   const lh = letter.letterhead
   const rows = [
@@ -149,6 +153,7 @@ export function LetterPaper({
 
       {changeOrder && hasItems(changeOrder) && <ChangeOrderPaper co={changeOrder} />}
       {materialApproval && hasMaItems(materialApproval) && <MaterialApprovalPaper ma={materialApproval} letter={letter} />}
+      {materialList && hasMaItems(materialList) && <MaterialListPaper ma={materialList} />}
 
       {photos.length > 0 && photoLayout === 'p' && (
         // 1 รูปต่อ 1 หน้ากระดาษ (แค็ตตาล็อก · R27) — หัวข้อขึ้นต่อหน้า (heading ของรูป · หน้าแรกถอยไปใช้หัวข้อรวม) · ไม่พิมพ์คำอธิบายใต้รูป (ตรงกับไฟล์ Word)

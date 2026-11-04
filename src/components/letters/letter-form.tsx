@@ -810,6 +810,7 @@ export function LetterForm({
             stampUrl={stampUrl}
             changeOrder={isChange ? co : null}
             materialApproval={isMaterial && maStyle === 'table' ? maValue : null}
+            materialList={isMaterial && maStyle === 'list' ? maValue : null}
           />
         </div>
       </div>

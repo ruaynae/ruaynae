@@ -8,6 +8,7 @@ import { loadLogo, normalizePhoto } from '@/lib/letter-images'
 import { currentLetterhead } from '@/lib/letters-server'
 import { loadLetterPhotos } from '@/lib/letter-photos-server'
 import { loadStamp } from '@/lib/material-library-server'
+import { maItems, maListRows, maStyleOf, parseMaterialApproval } from '@/lib/material-approval'
 import { getObjectBytes } from '@/lib/r2'
 import {
   LETTER_LIMITS, asLetterhead, formatLetterNo, letterFileName, photoLayoutOf, type LetterPaperData, type PhotoLayout,
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     .from('letters')
     .select(`
       seq, letter_date, year_ce, subject, recipient, refs, attachments, body, closing, intro,
-      signer_title, show_receipt, letterhead, letter_series(prefix)
+      signer_title, show_receipt, letterhead, fields, letter_series(prefix)
     `)
     .eq('id', id)
     .maybeSingle()
@@ -153,7 +154,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   try {
     const branding = await getBranding()
     const logo = await loadLogo(branding.logoObjectKey)
-    const file = await buildLetterDocx({ letter, logo, photos, photoTitle, photoLayout, copies })
+    // "แนบรายการ" (หนังสือขออนุมัติใช้วัสดุ) — ตารางสั้นอยู่ใน jsonb `fields` ไม่ใช่เนื้อหา จึงต้องอ่านมาใส่ไฟล์ Word เอง
+    const f = row.fields && typeof row.fields === 'object' && !Array.isArray(row.fields) ? (row.fields as Record<string, unknown>) : {}
+    const ma = parseMaterialApproval(f.materialApproval)
+    const materialList = maStyleOf(typeof f.style === 'string' ? f.style : undefined, maItems(ma).length) === 'list' ? maListRows(ma) : []
+    const file = await buildLetterDocx({ letter, logo, photos, photoTitle, photoLayout, materialList, copies })
     const name = letterFileName(prefix, row.seq, row.subject)
     return new NextResponse(new Uint8Array(file), {
       headers: {

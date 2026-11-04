@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   compactMaterialApproval, contractFromRefs, emptyMaterialApproval, hasMaItems, maBodyLines, maCell, maLine, maStyleOf,
-  moveMaItem, parseMaterialApproval, stripProjectWord, MA_UNSPECIFIED, MA_AUTO, MA_AUTO_MAX_INLINE,
+  moveMaItem, parseMaterialApproval, stripProjectWord, MA_UNSPECIFIED, MA_AUTO, MA_AUTO_MAX_INLINE, maListRows,
 } from '../../src/lib/material-approval.ts'
 
 const it = (name, detail = '', extra = {}) => ({ name, drawing: '', boq: '', spec: '', detail, note: 'ตรงตามแบบรูปรายการ', ...extra })
@@ -32,11 +32,30 @@ test('รูปแบบหนังสือ: ค่าเก่าที่ไ
 test('รูปแบบอัตโนมัติ: ไม่เกินเพดาน = ระบุในเนื้อหา · เกิน = แนบตาราง · เลือกเองชนะอัตโนมัติ', () => {
   assert.equal(maStyleOf(MA_AUTO, 0), 'inline')
   assert.equal(maStyleOf(MA_AUTO, MA_AUTO_MAX_INLINE), 'inline')
-  assert.equal(maStyleOf(MA_AUTO, MA_AUTO_MAX_INLINE + 1), 'table')
+  // เกินเพดาน = แนบรายการ (ตาราง 3 คอลัมน์) — ไม่เคยเลือกตาราง 7 คอลัมน์ให้เอง (เจ้าของสั่ง 4 พ.ย. 2569)
+  assert.equal(maStyleOf(MA_AUTO, MA_AUTO_MAX_INLINE + 1), 'list')
+  assert.equal(maStyleOf(MA_AUTO, 100), 'list')
+  assert.equal(maStyleOf('แนบรายการ', 1), 'list')
   assert.equal(maStyleOf('แนบตาราง', 1), 'table')
+  assert.equal(maStyleOf('แนบตาราง', 100), 'table')
   assert.equal(maStyleOf('ระบุในเนื้อหา', 50), 'inline')
   // หนังสือเก่าก่อน R26 (ไม่มีช่อง) ยังเป็นแนบตาราง ไม่ว่ากี่รายการ
   assert.equal(maStyleOf(undefined, 1), 'table')
+})
+
+test('แนบรายการ: แถว = ชื่อ + รายละเอียด · ตัดขีดนำหน้า/หลายบรรทัด · ว่าง = "-" · แถวว่างไม่นับ', () => {
+  const rows = maListRows({ v: 1, project: '', contract: '', items: [
+    it('ลามิเนตปิดผิว', 'Formica 0869NT'),
+    it('- ตู้โหลดเซ็นเตอร์ 50A', 'ยี่ห้อ CHANG\nรุ่น MV-18'),
+    it('ไม้โครงจ๊อยสัก', ''),
+    it('', ''),
+  ] })
+  assert.deepEqual(rows, [
+    { name: 'ลามิเนตปิดผิว', detail: 'Formica 0869NT' },
+    { name: 'ตู้โหลดเซ็นเตอร์ 50A', detail: 'ยี่ห้อ CHANG รุ่น MV-18' },
+    { name: 'ไม้โครงจ๊อยสัก', detail: '-' },
+  ])
+  assert.deepEqual(maListRows(null), [])
 })
 
 test('สัญญาจ้างจากบรรทัดอ้างถึง', () => {
