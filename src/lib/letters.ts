@@ -1,6 +1,6 @@
 import { bahtText } from '@/lib/baht-text'
 import type { LetterAuto, LetterTemplate } from '@/lib/letter-templates'
-import { maBodyLines, maStyleOf, type MaterialApproval } from '@/lib/material-approval'
+import { maBodyLines, maItems, maStyleOf, type MaterialApproval } from '@/lib/material-approval'
 
 /**
  * หนังสือบริษัท (R19) — สูตรที่ใช้ร่วมกันทั้งฟอร์ม กระดาษ ไฟล์ Word และ API
@@ -199,7 +199,7 @@ export function generateFromTemplate(
   companyName: string,
   material: MaterialApproval | null = null,
 ): GeneratedText {
-  if (t.id === 'material' && maStyleOf(fields.style) === 'inline') {
+  if (t.id === 'material' && maStyleOf(fields.style, maItems(material).length) === 'inline') {
     const g = generateFromTemplate({ ...t, id: 'material-inline', body: MA_INLINE_BODY, atts: MA_INLINE_ATTS }, fields, companyName)
     return { ...g, body: [g.body, ...maBodyLines(material, BLANK)].join('\n') }
   }

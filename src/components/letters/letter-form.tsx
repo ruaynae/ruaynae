@@ -18,7 +18,7 @@ import { LetterPhotos, type LetterPhoto } from '@/components/letters/letter-phot
 import { ChangeOrderSection } from '@/components/letters/change-order-section'
 import { coTotals, emptyChangeOrder, hasItems, type ChangeOrder } from '@/lib/change-order'
 import { MaterialApprovalSection } from '@/components/letters/material-approval-section'
-import { MA_LIMITS, contractFromRefs, emptyMaterialApproval, maStyleOf, type MaterialApproval } from '@/lib/material-approval'
+import { MA_LIMITS, contractFromRefs, emptyMaterialApproval, maItems, maStyleOf, MA_AUTO, type MaterialApproval } from '@/lib/material-approval'
 import { MaterialLibraryPicker, type PickedMaterial } from '@/components/letters/material-library-picker'
 import { LETTER_PHOTO_MAX, appendCatalogPhotos, catalogToRow, mergeCatalogRows } from '@/lib/material-library'
 import { LETTER_TEMPLATES, findLetterTemplate } from '@/lib/letter-templates'
@@ -277,13 +277,20 @@ export function LetterForm({
 
   /* ── รายการขออนุมัติใช้วัสดุ (R26) — แบบ "ระบุในเนื้อหา" เติมข้อ 1. 2. … ลงเนื้อหาที่ยังไม่ถูกแก้เอง ── */
   const isMaterial = template?.id === 'material'
-  const maStyle = maStyleOf(d.fields.style)
+  const maStyle = maStyleOf(d.fields.style, maItems(ma).length)
   const maValue = ma ?? emptyMaterialApproval(coProject().project)
   function setMa(next: MaterialApproval) {
     setMaState(next)
-    if (!template || !isMaterial || maStyle !== 'inline') return
+    if (!template || !isMaterial) return
+    // "อัตโนมัติ": เพิ่ม/ลบรายการแล้วรูปแบบอาจสลับ (ระบุในเนื้อหา ⇄ แนบตาราง) → ข้อความทั้งชุด (สิ่งที่ส่งมาด้วย · เนื้อหา) ต้องตาม
+    const nextStyle = maStyleOf(d.fields.style, maItems(next).length)
+    if (maStyle !== 'inline' && nextStyle !== 'inline') return
     const g = generateFromTemplate(template, d.fields, company, next)
-    setD((p) => (p.body === gen.body ? { ...p, body: g.body } : p))
+    setD((p) => {
+      const n = { ...p }
+      for (const key of GEN_KEYS) if (p[key] === gen[key]) n[key] = g[key]
+      return n
+    })
     setGen(g)
   }
 
@@ -609,6 +616,7 @@ export function LetterForm({
               value={maValue}
               onChange={setMa}
               style={maStyle}
+              auto={d.fields.style === MA_AUTO}
               contractHint={contractFromRefs(splitLines(d.refs))}
               letterSubject={d.subject}
               contractor={company}

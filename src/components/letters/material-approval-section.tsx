@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import {
-  MA_LIMITS, MA_NOTE_OPTIONS, MA_UNSPECIFIED, emptyMaItem, maItems, moveMaItem,
+  MA_AUTO_MAX_INLINE, MA_LIMITS, MA_NOTE_OPTIONS, MA_UNSPECIFIED, emptyMaItem, maItems, moveMaItem,
   type MaItem, type MaStyle, type MaterialApproval,
 } from '@/lib/material-approval'
 
@@ -18,6 +18,7 @@ export function MaterialApprovalSection({
   value,
   onChange,
   style,
+  auto = false,
   contractHint,
   letterSubject,
   contractor,
@@ -26,6 +27,8 @@ export function MaterialApprovalSection({
   value: MaterialApproval
   onChange: (ma: MaterialApproval) => void
   style: MaStyle
+  /** รูปแบบ = "อัตโนมัติ" — บอกว่าระบบเลือกแบบไหนให้ และเพราะอะไร */
+  auto?: boolean
   /** สัญญาจ้างที่ดึงจากบรรทัด "อ้างถึง" — ใช้เมื่อช่องสัญญาว่าง */
   contractHint: string
   letterSubject: string
@@ -87,6 +90,13 @@ export function MaterialApprovalSection({
           ? 'ระบบทำ “ตารางรายการขออนุมัติใช้วัสดุ” แนวนอนต่อท้ายหนังสือให้ · ช่องที่เว้นว่างพิมพ์เป็น “- ไม่ระบุ”'
           : 'รายการเป็นข้อ 1. 2. … ในเนื้อหาหนังสือ (รายการ + รายละเอียด) · แนบแค็ตตาล็อกเป็นรูปท้ายหนังสือ'}
       </p>
+
+      {auto && (
+        <p className="mb-3 rounded-md border border-line bg-surface-2 px-3 py-2 text-sm text-ink-2">
+          รูปแบบอัตโนมัติ: ตอนนี้ {count} รายการ → <b>{table ? 'แนบตาราง' : 'ระบุในเนื้อหา'}</b>
+          {' '}(เกิน {MA_AUTO_MAX_INLINE} รายการสลับเป็นแนบตาราง เพื่อให้ลายเซ็นอยู่หน้า 1) · อยากบังคับแบบใดแบบหนึ่ง เลือกที่ช่อง “รูปแบบหนังสือ” ด้านบน
+        </p>
+      )}
 
       {table && (
         <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
