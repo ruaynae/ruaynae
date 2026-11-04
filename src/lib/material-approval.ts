@@ -36,9 +36,26 @@ export type MaterialApproval = {
 
 export type MaStyle = 'table' | 'inline'
 
-export const MA_STYLE_OPTIONS = ['แนบตาราง', 'ระบุในเนื้อหา'] as const
-/** ค่าในช่องด่วน `style` → รูปแบบ · หนังสือเก่าที่ไม่มีช่องนี้ = แนบตาราง (แบบเดิมของแม่แบบ) */
-export const maStyleOf = (v: string | undefined): MaStyle => (v === 'ระบุในเนื้อหา' ? 'inline' : 'table')
+/** ค่าช่องด่วน `style` ที่ให้ระบบเลือกเองตามจำนวนรายการ (4 พ.ย. 2569) */
+export const MA_AUTO = 'อัตโนมัติ'
+export const MA_STYLE_OPTIONS = [MA_AUTO, 'แนบตาราง', 'ระบุในเนื้อหา'] as const
+/**
+ * จำนวนรายการสูงสุดที่ยังระบุในเนื้อหาแล้วลายเซ็นอยู่หน้า 1 · เกินนี้ = แนบตาราง (อัตโนมัติ)
+ * 🔴 ประมาณจากหนังสือจริง `agro009` (9 รายการ → ลายเซ็นตกไปหน้า 2 คนเดียว) ยังไม่ได้วัดบนกระดาษทุกกรณี
+ *    หัวเรื่อง/ย่อหน้าเปิดที่ยาวกว่าปกติกินที่มากขึ้น — ปรับค่านี้ที่เดียว (unit test อ้างค่านี้)
+ */
+export const MA_AUTO_MAX_INLINE = 6
+/**
+ * ค่าในช่องด่วน `style` → รูปแบบ
+ * · `ระบุในเนื้อหา` / `แนบตาราง` = ตามที่เลือก
+ * · `อัตโนมัติ` = ไม่เกิน MA_AUTO_MAX_INLINE รายการ ระบุในเนื้อหา · เกินนั้น แนบตาราง (`count` = แถวที่กรอกจริง)
+ * · ไม่มีค่า (หนังสือเก่าก่อน R26) = แนบตาราง (แบบเดิมของแม่แบบ)
+ */
+export const maStyleOf = (v: string | undefined, count = 0): MaStyle => {
+  if (v === 'ระบุในเนื้อหา') return 'inline'
+  if (v === MA_AUTO) return count > MA_AUTO_MAX_INLINE ? 'table' : 'inline'
+  return 'table'
+}
 
 export const MA_TITLE = 'ตารางรายการขออนุมัติใช้วัสดุ'
 export const MA_UNSPECIFIED = '- ไม่ระบุ'

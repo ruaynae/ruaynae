@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   compactMaterialApproval, contractFromRefs, emptyMaterialApproval, hasMaItems, maBodyLines, maCell, maLine, maStyleOf,
-  moveMaItem, parseMaterialApproval, stripProjectWord, MA_UNSPECIFIED,
+  moveMaItem, parseMaterialApproval, stripProjectWord, MA_UNSPECIFIED, MA_AUTO, MA_AUTO_MAX_INLINE,
 } from '../../src/lib/material-approval.ts'
 
 const it = (name, detail = '', extra = {}) => ({ name, drawing: '', boq: '', spec: '', detail, note: 'ตรงตามแบบรูปรายการ', ...extra })
@@ -27,6 +27,16 @@ test('รูปแบบหนังสือ: ค่าเก่าที่ไ
   assert.equal(maStyleOf(undefined), 'table')
   assert.equal(maStyleOf('แนบตาราง'), 'table')
   assert.equal(maStyleOf('ระบุในเนื้อหา'), 'inline')
+})
+
+test('รูปแบบอัตโนมัติ: ไม่เกินเพดาน = ระบุในเนื้อหา · เกิน = แนบตาราง · เลือกเองชนะอัตโนมัติ', () => {
+  assert.equal(maStyleOf(MA_AUTO, 0), 'inline')
+  assert.equal(maStyleOf(MA_AUTO, MA_AUTO_MAX_INLINE), 'inline')
+  assert.equal(maStyleOf(MA_AUTO, MA_AUTO_MAX_INLINE + 1), 'table')
+  assert.equal(maStyleOf('แนบตาราง', 1), 'table')
+  assert.equal(maStyleOf('ระบุในเนื้อหา', 50), 'inline')
+  // หนังสือเก่าก่อน R26 (ไม่มีช่อง) ยังเป็นแนบตาราง ไม่ว่ากี่รายการ
+  assert.equal(maStyleOf(undefined, 1), 'table')
 })
 
 test('สัญญาจ้างจากบรรทัดอ้างถึง', () => {
