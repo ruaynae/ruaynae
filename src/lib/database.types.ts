@@ -968,6 +968,7 @@ export type Database = {
           byte_size: number
           caption: string
           created_at: string
+          heading: string
           id: string
           letter_id: string
           object_key: string
@@ -978,6 +979,7 @@ export type Database = {
           byte_size?: number
           caption?: string
           created_at?: string
+          heading?: string
           id?: string
           letter_id: string
           object_key: string
@@ -988,6 +990,7 @@ export type Database = {
           byte_size?: number
           caption?: string
           created_at?: string
+          heading?: string
           id?: string
           letter_id?: string
           object_key?: string
