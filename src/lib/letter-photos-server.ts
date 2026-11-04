@@ -5,7 +5,7 @@ import { LETTER_LIMITS, photoLayoutOf, type PhotoLayout } from '@/lib/letters'
 
 type Sb = Awaited<ReturnType<typeof getSupabaseServer>>
 
-export type StoredLetterPhoto = { key: string; caption: string; stamped: boolean }
+export type StoredLetterPhoto = { key: string; caption: string; heading: string; stamped: boolean }
 export type StoredLetterPhotos = { photos: StoredLetterPhoto[]; title: string; layout: PhotoLayout; missing: boolean }
 
 /** ตาราง/คอลัมน์ยังไม่ถูกสร้าง (ยังไม่รัน migration `20261023120000_letter_photos.sql`) */
@@ -20,17 +20,20 @@ export async function loadLetterPhotos(sb: Sb, letterId: string): Promise<Stored
   // 🔴 คอลัมน์ `stamped` มาจาก migration R27 — ยังไม่รันต้องไม่ทำให้รูปเดิมหาย: อ่านแบบมีคอลัมน์ก่อน ไม่มีค่อยอ่านแบบเดิม
   const read = (cols: string) =>
     sb.from('letter_photos').select(cols).eq('letter_id', letterId).order('seq').range(0, LETTER_LIMITS.photos - 1)
-  let rows = await read('object_key, caption, seq, stamped')
-  if (rows.error?.code === '42703' || rows.error?.code === 'PGRST204') rows = await read('object_key, caption, seq')
+  // ลองคอลัมน์ใหม่สุดก่อน (heading · 4 พ.ย. 2569) แล้วถอยทีละขั้นถ้ายังไม่รัน migration
+  const noCol = (e: { code?: string } | null) => e?.code === '42703' || e?.code === 'PGRST204'
+  let rows = await read('object_key, caption, seq, stamped, heading')
+  if (noCol(rows.error)) rows = await read('object_key, caption, seq, stamped')
+  if (noCol(rows.error)) rows = await read('object_key, caption, seq')
   const meta = await sb.from('letters').select('photo_title, photo_layout').eq('id', letterId).maybeSingle()
   if (rows.error || meta.error) {
     const e = rows.error ?? meta.error
     if (!isLetterPhotosMissing(e)) console.error('[letters] อ่านรูปแนบไม่ได้', e?.message)
     return { photos: [], title: '', layout: '1', missing: isLetterPhotosMissing(e) }
   }
-  const list = (rows.data ?? []) as unknown as { object_key: string; caption: string; stamped?: boolean }[]
+  const list = (rows.data ?? []) as unknown as { object_key: string; caption: string; heading?: string; stamped?: boolean }[]
   return {
-    photos: list.map((r) => ({ key: r.object_key, caption: r.caption, stamped: r.stamped === true })),
+    photos: list.map((r) => ({ key: r.object_key, caption: r.caption, heading: r.heading ?? '', stamped: r.stamped === true })),
     title: meta.data?.photo_title ?? '',
     layout: photoLayoutOf(meta.data?.photo_layout),
     missing: false,

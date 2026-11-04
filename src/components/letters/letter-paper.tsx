@@ -13,7 +13,11 @@ import { hasMaItems, type MaterialApproval } from '@/lib/material-approval'
  */
 
 /** `stamped` = ประทับตราบริษัทมุมขวาล่างของรูปนี้ (R27) */
-export type PaperPhoto = { url: string; caption: string; stamped?: boolean }
+/** หัวข้อของหน้าแค็ตตาล็อก: ของหน้านั้นก่อน · ไม่มี = หน้าแรกใช้หัวข้อรวม · หน้าอื่นไม่มี */
+const pageHeading = (p: { heading?: string }, i: number, groupTitle: string) =>
+  p.heading?.trim() || (i === 0 ? groupTitle.trim() : '')
+
+export type PaperPhoto = { url: string; caption: string; heading?: string; stamped?: boolean }
 
 /** รูปแนบ + ตราประทับซ้อนมุมขวาล่าง — multiply: พื้นขาวของตราที่สแกนมาไม่บังหน้าแค็ตตาล็อก (ตำแหน่ง/ขนาดตรงกับไฟล์ Word) */
 function StampedImg({ p, stampUrl, style }: { p: PaperPhoto; stampUrl: string | null; style?: CSSProperties }) {
@@ -147,10 +151,10 @@ export function LetterPaper({
       {materialApproval && hasMaItems(materialApproval) && <MaterialApprovalPaper ma={materialApproval} letter={letter} />}
 
       {photos.length > 0 && photoLayout === 'p' && (
-        // 1 รูปต่อ 1 หน้ากระดาษ (แค็ตตาล็อก · R27) — ชื่อหัวข้อขึ้นเฉพาะหน้าแรก · ไม่พิมพ์คำอธิบายใต้รูป (ตรงกับไฟล์ Word)
+        // 1 รูปต่อ 1 หน้ากระดาษ (แค็ตตาล็อก · R27) — หัวข้อขึ้นต่อหน้า (heading ของรูป · หน้าแรกถอยไปใช้หัวข้อรวม) · ไม่พิมพ์คำอธิบายใต้รูป (ตรงกับไฟล์ Word)
         photos.map((p, i) => (
           <article key={i} className="paper letter-sheet lt-fullpage">
-            {i === 0 && photoTitle.trim() && <p className="lt-photo-title">{photoTitle.trim()}</p>}
+            {pageHeading(p, i, photoTitle) && <p className="lt-photo-title">{pageHeading(p, i, photoTitle)}</p>}
             <p className="lt-photo">
               <StampedImg p={p} stampUrl={stampUrl} />
             </p>

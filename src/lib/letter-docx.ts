@@ -17,7 +17,7 @@ import { bodyBlocks, letterDateLine, type LetterPaperData, type PhotoLayout } fr
  */
 
 export type DocxImage = { data: Buffer; width: number; height: number }
-export type DocxPhoto = DocxImage & { caption: string }
+export type DocxPhoto = DocxImage & { caption: string; heading?: string }
 
 const FONT = 'TH Sarabun New'
 const EMU = 914400
@@ -226,7 +226,7 @@ function letterBodyXml({ letter, logo, photos, photoTitle, photoLayout }: Letter
   const rels: { rid: string; file: string; data: Buffer }[] = []
   if (photos.length) {
     x.push('<w:p><w:r><w:br w:type="page"/></w:r></w:p>')
-    if (photoTitle.trim()) x.push(para(spacing() + CENTER, runs(photoTitle.trim(), { b: true }), { b: true }))
+    if (photoTitle.trim() && !(photoLayout === 'p' && photos[0]?.heading?.trim())) x.push(para(spacing() + CENTER, runs(photoTitle.trim(), { b: true }), { b: true }))
     photos.forEach((p, i) => rels.push({ rid: `rIdPhoto${i + 1}`, file: `photo${i + 1}.jpeg`, data: p.data }))
 
     if (photoLayout === '2') {
@@ -251,7 +251,11 @@ function letterBodyXml({ letter, logo, photos, photoTitle, photoLayout }: Letter
       // 1 รูปต่อ 1 หน้ากระดาษ (แค็ตตาล็อกเต็มหน้า · R27) — คำอธิบายใต้รูปไม่พิมพ์ (รูปมีชื่อสินค้าในหน้าอยู่แล้ว)
       photos.forEach((p, i) => {
         if (i > 0) x.push('<w:p><w:r><w:br w:type="page"/></w:r></w:p>')
-        const [cx, cy] = fit(p, 6.3, i === 0 && photoTitle.trim() ? 8.4 : 9.1)
+        // หัวข้อของหน้า: ของรูปนั้นก่อน · หน้าแรกถอยไปใช้หัวข้อรวม (ที่ถูกใส่ไปแล้วด้านบน)
+        const own = p.heading?.trim() ?? ''
+        if (own && !(i === 0 && own === photoTitle.trim())) x.push(para(spacing() + CENTER, runs(own, { b: true }), { b: true }))
+        const hasHead = own || (i === 0 && photoTitle.trim())
+        const [cx, cy] = fit(p, 6.3, hasHead ? 8.4 : 9.1)
         x.push(para(spacing(0, 240) + CENTER, inlineImage(`rIdPhoto${i + 1}`, cx, cy, 100 + i)))
       })
     } else {

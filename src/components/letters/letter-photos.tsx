@@ -7,7 +7,7 @@ import { LETTER_LIMITS, photoLayoutOf, type PhotoLayout } from '@/lib/letters'
 import { openPdf, pdfErrorText } from '@/lib/pdf-pages'
 
 /** `file` = เพิ่งเลือก (ยังไม่อัป) · `key` = อยู่ใน R2 แล้ว (เก็บกับหนังสือ) · `url` = blob หรือลิงก์ presigned */
-export type LetterPhoto = { file?: File; key?: string; url: string; caption: string; /** ประทับตราบริษัทมุมขวาล่าง (R27) */ stamped?: boolean }
+export type LetterPhoto = { file?: File; key?: string; url: string; caption: string; /** หัวข้อบนหน้านี้ (เฉพาะแบบ 1 รูปต่อ 1 หน้า) */ heading?: string; /** ประทับตราบริษัทมุมขวาล่าง (R27) */ stamped?: boolean }
 
 /**
  * รูปแนบท้ายหนังสือ (ไม่บังคับ · D9) — เช่นเส้นทางเข้า-ออก แบบป้าย ภาพผลงานงวด
@@ -128,7 +128,7 @@ export function LetterPhotos({
     <div className="space-y-3">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
         <div>
-          <label htmlFor="lp-title" className="label-base">หัวข้อหน้ารูปแนบ</label>
+          <label htmlFor="lp-title" className="label-base">หัวข้อหน้ารูปแนบ (หัวข้อรวม · ขึ้นหน้าแรก)</label>
           <input id="lp-title" value={title} onChange={(e) => onTitle(e.target.value)} placeholder="เช่น เส้นทางสัญจรเข้า-ออกโครงการ" className="input-base" />
         </div>
         <div>
@@ -193,6 +193,15 @@ export function LetterPhotos({
                   ประทับตราหน้านี้
                 </label>
               )}
+              {layout === 'p' && (
+                <input
+                  value={p.heading ?? ''}
+                  onChange={(e) => onChange(photos.map((x, j) => (j === i ? { ...x, heading: e.target.value } : x)))}
+                  placeholder={i === 0 && title.trim() ? 'หัวข้อหน้านี้ (ว่าง = ใช้หัวข้อรวม)' : 'หัวข้อหน้านี้ เช่น ลามิเนต Formica D8202'}
+                  aria-label={`หัวข้อบนหน้าที่ ${i + 1}`}
+                  className="w-full border-t border-line bg-surface px-2 py-1.5 text-sm font-semibold text-ink focus:outline-none"
+                />
+              )}
               <input
                 value={p.caption}
                 onChange={(e) => onChange(photos.map((x, j) => (j === i ? { ...x, caption: e.target.value } : x)))}
@@ -211,6 +220,9 @@ export function LetterPhotos({
             </li>
           ))}
         </ul>
+      )}
+      {layout === 'p' && photos.length > 0 && (
+        <p className="text-xs text-muted-token">แบบ 1 รูปต่อ 1 หน้า: ช่อง "หัวข้อหน้านี้" ใต้แต่ละรูปคือหัวข้อของหน้านั้น · เว้นว่างไว้ = หน้าแรกใช้หัวข้อรวม หน้าอื่นไม่มีหัวข้อ</p>
       )}
       <p className="text-xs text-muted-token">
         รูปและหน้า PDF จะอยู่ท้ายหนังสือ (PDF แปลงเป็นรูปทีละหน้า) ในไฟล์ Word และตอนพิมพ์ · เก็บไว้กับหนังสือในทะเบียนเมื่อกดบันทึก/ดาวน์โหลด/พิมพ์
