@@ -34,26 +34,29 @@ export type MaterialApproval = {
   items: MaItem[]
 }
 
-export type MaStyle = 'table' | 'inline'
+/** inline = ข้อในเนื้อหา · list = แนบ "รายการ" ตารางสั้น 3 คอลัมน์ (กรอกแค่ชื่อ+รายละเอียด) · table = แนบตารางเต็ม 7 คอลัมน์ (เลือกเองเท่านั้น) */
+export type MaStyle = 'table' | 'inline' | 'list'
 
 /** ค่าช่องด่วน `style` ที่ให้ระบบเลือกเองตามจำนวนรายการ (4 พ.ย. 2569) */
 export const MA_AUTO = 'อัตโนมัติ'
-export const MA_STYLE_OPTIONS = [MA_AUTO, 'แนบตาราง', 'ระบุในเนื้อหา'] as const
+export const MA_STYLE_OPTIONS = [MA_AUTO, 'ระบุในเนื้อหา', 'แนบรายการ', 'แนบตาราง'] as const
 /**
- * จำนวนรายการสูงสุดที่ยังระบุในเนื้อหาแล้วลายเซ็นอยู่หน้า 1 · เกินนี้ = แนบตาราง (อัตโนมัติ)
+ * จำนวนรายการสูงสุดที่ยังระบุในเนื้อหาแล้วลายเซ็นอยู่หน้า 1 · เกินนี้ = แนบรายการ (อัตโนมัติ)
  * 🔴 ประมาณจากหนังสือจริง `agro009` (9 รายการ → ลายเซ็นตกไปหน้า 2 คนเดียว) ยังไม่ได้วัดบนกระดาษทุกกรณี
  *    หัวเรื่อง/ย่อหน้าเปิดที่ยาวกว่าปกติกินที่มากขึ้น — ปรับค่านี้ที่เดียว (unit test อ้างค่านี้)
  */
 export const MA_AUTO_MAX_INLINE = 6
 /**
  * ค่าในช่องด่วน `style` → รูปแบบ
- * · `ระบุในเนื้อหา` / `แนบตาราง` = ตามที่เลือก
- * · `อัตโนมัติ` = ไม่เกิน MA_AUTO_MAX_INLINE รายการ ระบุในเนื้อหา · เกินนั้น แนบตาราง (`count` = แถวที่กรอกจริง)
+ * · `ระบุในเนื้อหา` / `แนบรายการ` / `แนบตาราง` = ตามที่เลือก
+ * · `อัตโนมัติ` = ไม่เกิน MA_AUTO_MAX_INLINE รายการ ระบุในเนื้อหา · เกินนั้น แนบรายการ (`count` = แถวที่กรอกจริง)
+ *   🔴 อัตโนมัติไม่เลือก "แนบตาราง" 7 คอลัมน์ให้ — ต้องกรอกเพิ่มเยอะ (เจ้าของสั่ง 4 พ.ย. 2569)
  * · ไม่มีค่า (หนังสือเก่าก่อน R26) = แนบตาราง (แบบเดิมของแม่แบบ)
  */
 export const maStyleOf = (v: string | undefined, count = 0): MaStyle => {
   if (v === 'ระบุในเนื้อหา') return 'inline'
-  if (v === MA_AUTO) return count > MA_AUTO_MAX_INLINE ? 'table' : 'inline'
+  if (v === 'แนบรายการ') return 'list'
+  if (v === MA_AUTO) return count > MA_AUTO_MAX_INLINE ? 'list' : 'inline'
   return 'table'
 }
 
@@ -76,6 +79,14 @@ const filled = (it: MaItem) => Boolean(it.name.trim() || it.detail.trim())
 /** แถวที่กรอกจริง (มีชื่อหรือรายละเอียด) — แถวว่างท้ายตารางไม่ถูกพิมพ์และไม่ถูกเก็บ */
 export const maItems = (ma: MaterialApproval | null | undefined): MaItem[] => (ma ? ma.items.filter(filled) : [])
 export const hasMaItems = (ma: MaterialApproval | null | undefined) => maItems(ma).length > 0
+
+export const MA_LIST_TITLE = 'รายการขออนุมัติใช้วัสดุ'
+
+/** แถวของ "แนบรายการ" = ชื่อ + รายละเอียด (ตัดขีดนำหน้า · หลายบรรทัดรวมเป็นบรรทัดเดียว · ว่าง = "-") */
+export function maListRows(ma: MaterialApproval | null | undefined): { name: string; detail: string }[] {
+  const clean = (s: string) => s.replace(/\s*\n\s*/g, ' ').replace(/^\s*[-–•]\s*/, '').trim()
+  return maItems(ma).map((it) => ({ name: clean(it.name) || '-', detail: clean(it.detail) || '-' }))
+}
 
 /**
  * ข้อความหนึ่งข้อในเนื้อหาหนังสือ (แบบที่ 1) = รายการ + รายละเอียด
