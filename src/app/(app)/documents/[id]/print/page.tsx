@@ -6,6 +6,7 @@ import { DocPaper } from '@/components/documents/doc-paper'
 import { PageHeader } from '@/components/ui/page-header'
 import { DataError } from '@/components/ui/data-error'
 import { PrintButton } from '@/components/documents/print-button'
+import { DocPdfButtons } from '@/components/documents/doc-pdf-buttons'
 import type { SellerSnapshot } from '@/lib/doc-server'
 
 export const metadata = { title: 'พิมพ์เอกสาร' }
@@ -56,7 +57,17 @@ export default async function PrintDocumentPage({
         className="print-hide"
         title={`พิมพ์${DOC_KIND_SHORT[doc.kind]}`}
         subtitle={doc.doc_no ? `เลขที่ ${doc.doc_no}` : 'ยังเป็นร่าง — ยังไม่มีเลขที่เอกสาร'}
-        action={<PrintButton docId={doc.id} canMarkSent={doc.status === 'issued'} />}
+        action={
+          <>
+            <PrintButton docId={doc.id} canMarkSent={doc.status === 'issued'} />
+            <DocPdfButtons
+              doc={doc}
+              lines={lines ?? []}
+              seller={seller}
+              fileName={`${DOC_KIND_SHORT[doc.kind]}-${(doc.doc_no ?? doc.id).replace(/[\\/:*?"<>|\s]+/g, '_')}`}
+            />
+          </>
+        }
         backHref={`/documents/${doc.id}`}
       />
 
