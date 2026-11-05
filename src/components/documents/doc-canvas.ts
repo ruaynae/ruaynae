@@ -116,11 +116,17 @@ export async function drawDocPages(
     o: { size?: number; weight?: 400 | 600 | 700; align?: Align; maxW?: number } = {},
   ) => {
     ctx.font = font(o.size ?? 13, o.weight ?? 400)
-    ctx.textAlign = o.align ?? 'left'
     ctx.fillStyle = '#000'
-    // maxW = บีบตัวอักษรแนวนอนให้พอดีช่อง — กันล้นเมื่อเครื่องใช้ฟอนต์ที่กว้างกว่าที่วัดไว้ (เจอบนไอโฟน)
-    if (o.maxW !== undefined && o.maxW > 0) ctx.fillText(s, x, cy, o.maxW)
-    else ctx.fillText(s, x, cy)
+    // 🔴 ไม่ใช้ ctx.textAlign = center/right — Safari บนไอโฟนคำนวณความกว้างข้อความไทยตอนจัดชิดผิด
+    // (ข้อความไทยเริ่มวาดที่จุดกึ่งกลางแล้วล้นออกขวา) · วัดเองด้วย measureText แล้ววาดชิดซ้ายที่ตำแหน่งที่คำนวณ
+    ctx.textAlign = 'left'
+    const raw = ctx.measureText(s).width
+    const w = o.maxW !== undefined && o.maxW > 0 ? Math.min(raw, o.maxW) : raw
+    const align = o.align ?? 'left'
+    const left = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x
+    // maxW = บีบตัวอักษรแนวนอนให้พอดีช่อง — กันล้นเมื่อฟอนต์กว้างกว่าที่วัดไว้
+    if (o.maxW !== undefined && o.maxW > 0 && raw > o.maxW) ctx.fillText(s, left, cy, o.maxW)
+    else ctx.fillText(s, left, cy)
   }
   const line = (ctx: Ctx, x1: number, y1: number, x2: number, y2: number, dotted = false) => {
     ctx.setLineDash(dotted ? [1, 2] : [])
