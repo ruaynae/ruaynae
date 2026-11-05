@@ -36,7 +36,8 @@ const segmenter =
     : null
 
 /** ตัดบรรทัดตามความกว้าง — ไทยไม่มีเว้นวรรค จึงตัดตามคำ (Intl.Segmenter) · คำที่ยาวเกินช่องตัดทีละตัวอักษร */
-function wrap(ctx: Ctx, text: string, maxW: number): string[] {
+function wrap(ctx: Ctx, text: string, rawMaxW: number): string[] {
+  const maxW = rawMaxW * 0.97 // เผื่อความต่างของฟอนต์ระหว่างวัดกับวาด
   const out: string[] = []
   for (const para of text.split('\n')) {
     if (para === '') {
@@ -73,6 +74,16 @@ export async function drawDocPages(
     ['400', '600', '700'].map((w) => document.fonts.load(`${w} 13px ${family}`, 'กขabc0123')),
   )
   await document.fonts.ready
+  // Safari: ฟอนต์ที่โหลดแล้วยังต้อง "ถูกใช้วาด" สักครั้งก่อน measureText จะคืนความกว้างของตัวจริง
+  // ไม่งั้นวัดด้วยฟอนต์สำรองแล้ววาดด้วยฟอนต์จริง (กว้างกว่า) → ข้อความล้นกรอบ
+  const warm = document.createElement('canvas').getContext('2d')
+  if (warm) {
+    for (const w of [400, 600, 700]) {
+      warm.font = `${w} 14px ${family}`
+      warm.fillText('กขคabc0123ภาษาไทยใบเสร็จรับเงิน', 0, 14)
+    }
+    await new Promise((r) => setTimeout(r, 60))
+  }
 
   const font = (size: number, weight: 400 | 600 | 700 = 400) => `${weight} ${size}px ${family}`
   const company = seller?.companyName ?? ''
@@ -102,12 +113,14 @@ export async function drawDocPages(
     s: string,
     x: number,
     cy: number,
-    o: { size?: number; weight?: 400 | 600 | 700; align?: Align } = {},
+    o: { size?: number; weight?: 400 | 600 | 700; align?: Align; maxW?: number } = {},
   ) => {
     ctx.font = font(o.size ?? 13, o.weight ?? 400)
     ctx.textAlign = o.align ?? 'left'
     ctx.fillStyle = '#000'
-    ctx.fillText(s, x, cy)
+    // maxW = บีบตัวอักษรแนวนอนให้พอดีช่อง — กันล้นเมื่อเครื่องใช้ฟอนต์ที่กว้างกว่าที่วัดไว้ (เจอบนไอโฟน)
+    if (o.maxW !== undefined && o.maxW > 0) ctx.fillText(s, x, cy, o.maxW)
+    else ctx.fillText(s, x, cy)
   }
   const line = (ctx: Ctx, x1: number, y1: number, x2: number, y2: number, dotted = false) => {
     ctx.setLineDash(dotted ? [1, 2] : [])
@@ -145,7 +158,7 @@ export async function drawDocPages(
   canvases.pop() // canvas สำหรับวัดอย่างเดียว ไม่ใช่หน้าจริง
 
   // หัว
-  const titleW = width(probe, DOC_KIND_LABEL[doc.kind], 16, 700) + 32
+  const titleW = Math.min(width(probe, DOC_KIND_LABEL[doc.kind], 16, 700) + 32, CW * 0.55)
   const titleH = 48
   const nameLines = wrapAt(probe, `${company}${seller?.branchLabel ? ` ${seller.branchLabel}` : ''}`, CW - titleW - 16, 20, 700)
   const headH = Math.max(titleH, nameLines.length * 28)
@@ -204,12 +217,12 @@ export async function drawDocPages(
       h: n * 18 + 8,
       draw: (ctx, y) => {
         const cy = (i: number) => y + 6 + i * 18 + 9
-        T(ctx, String(l.seq), (colEdges[0] + colEdges[1]) / 2, cy(0), { align: 'center' })
+        T(ctx, String(l.seq), (colEdges[0] + colEdges[1]) / 2, cy(0), { align: 'center', maxW: colEdges[1] - colEdges[0] - 6 })
         desc.forEach((d, i) => T(ctx, d, colEdges[1] + 6, cy(i)))
-        qtyLines.forEach((d, i) => T(ctx, d, (colEdges[2] + colEdges[3]) / 2, cy(i), { align: 'center' }))
+        qtyLines.forEach((d, i) => T(ctx, d, (colEdges[2] + colEdges[3]) / 2, cy(i), { align: 'center', maxW: colEdges[3] - colEdges[2] - 6 }))
         // ราคา/หน่วยที่พิมพ์คือยอดก่อน VAT ที่หารกลับแล้ว (เหมือนกระดาษ)
-        T(ctx, money(qty > 0 ? Number(l.line_total) / qty : 0), colEdges[4] - 6, cy(0), { align: 'right' })
-        T(ctx, money(Number(l.line_total)), colEdges[5] - 6, cy(0), { align: 'right' })
+        T(ctx, money(qty > 0 ? Number(l.line_total) / qty : 0), colEdges[4] - 6, cy(0), { align: 'right', maxW: colEdges[4] - colEdges[3] - 8 })
+        T(ctx, money(Number(l.line_total)), colEdges[5] - 6, cy(0), { align: 'right', maxW: colEdges[5] - colEdges[4] - 8 })
       },
     }
   })
@@ -252,7 +265,7 @@ export async function drawDocPages(
       // หัว
       nameLines.forEach((s, i) => T(ctx, s, PAD_X, y + i * 28 + 14, { size: 20, weight: 700 }))
       box(ctx, PAD_X + CW - titleW, y, titleW, titleH)
-      T(ctx, DOC_KIND_LABEL[doc.kind], PAD_X + CW - titleW / 2, y + titleH / 2, { size: 16, weight: 700, align: 'center' })
+      T(ctx, DOC_KIND_LABEL[doc.kind], PAD_X + CW - titleW / 2, y + titleH / 2, { size: 16, weight: 700, align: 'center', maxW: titleW - 12 })
       y += headH
 
       if (sellerLines.length) {
@@ -290,8 +303,8 @@ export async function drawDocPages(
       if (doc.valid_until && secondLabel) kv.push([secondLabel, slashDate(doc.valid_until), false])
       kv.forEach(([k, v, bold], i) => {
         const ry = y + 8 + i * 26 + 13
-        T(ctx, k, nx + 12, ry, { size: 12 })
-        T(ctx, v, nx + noW - 12, ry, { weight: bold ? 700 : 400, align: 'right' })
+        T(ctx, k, nx + 12, ry, { size: 12, maxW: noW * 0.5 })
+        T(ctx, v, nx + noW - 12, ry, { weight: bold ? 700 : 400, align: 'right', maxW: noW * 0.6 })
       })
     }
 
@@ -311,8 +324,8 @@ export async function drawDocPages(
     ]
     heads.forEach(([a, b], i) => {
       const cx = (colEdges[i] + colEdges[i + 1]) / 2
-      T(ctx, a, cx, tableTop + 10, { size: 12, align: 'center' })
-      T(ctx, b, cx, tableTop + 24, { size: 12, align: 'center' })
+      T(ctx, a, cx, tableTop + 10, { size: 12, align: 'center', maxW: colEdges[i + 1] - colEdges[i] - 6 })
+      T(ctx, b, cx, tableTop + 24, { size: 12, align: 'center', maxW: colEdges[i + 1] - colEdges[i] - 6 })
     })
     let ry = tableTop + HEAD_H
     for (const r of pg.rows) {
@@ -339,17 +352,17 @@ export async function drawDocPages(
     ctx.fillStyle = '#000'
     const cell = (a: string, b: string, row: number, weight: 400 | 600 = 400) => {
       const cy2 = gy + rh * row + rh / 2
-      T(ctx, a, (c1 + c2) / 2, cy2 - 8, { size: 12, weight, align: 'center' })
-      T(ctx, b, (c1 + c2) / 2, cy2 + 8, { size: 12, weight, align: 'center' })
+      T(ctx, a, (c1 + c2) / 2, cy2 - 8, { size: 12, weight, align: 'center', maxW: c2 - c1 - 8 })
+      T(ctx, b, (c1 + c2) / 2, cy2 + 8, { size: 12, weight, align: 'center', maxW: c2 - c1 - 8 })
     }
     cell('รวมเงิน', 'TOTAL', 0)
-    T(ctx, money(Number(doc.subtotal)), PAD_X + CW - 6, gy + rh / 2, { align: 'right' })
+    T(ctx, money(Number(doc.subtotal)), PAD_X + CW - 6, gy + rh / 2, { align: 'right', maxW: PAD_X + CW - c2 - 10 })
     if (hasVat) {
       cell('ภาษีมูลค่าเพิ่ม', `( VAT ${Math.round(Number(doc.vat_rate) * 100)}% )`, 1)
-      T(ctx, money(Number(doc.vat_amount)), PAD_X + CW - 6, gy + rh * 1.5, { align: 'right' })
+      T(ctx, money(Number(doc.vat_amount)), PAD_X + CW - 6, gy + rh * 1.5, { align: 'right', maxW: PAD_X + CW - c2 - 10 })
     }
     cell('ยอดเงินสุทธิ', 'NET AMOUNT', 2, 600)
-    T(ctx, money(Number(doc.total)), PAD_X + CW - 6, gy + rh * 2.5, { weight: 700, align: 'right' })
+    T(ctx, money(Number(doc.total)), PAD_X + CW - 6, gy + rh * 2.5, { weight: 700, align: 'right', maxW: PAD_X + CW - c2 - 10 })
 
     // ช่องรับชำระเงิน (ใบเสร็จ) + บัญชีธนาคาร
     let ly = gy + 8
