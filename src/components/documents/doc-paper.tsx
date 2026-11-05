@@ -43,12 +43,12 @@ export type PaperLine = {
 }
 
 /** เงินบนกระดาษ — ทศนิยมสองตำแหน่งเสมอ ต่างจากบนหน้าจอที่ตัดเศษทิ้ง */
-const money = (n: number) =>
+export const money = (n: number) =>
   n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 /** `2026-09-23` → `23 / 09 / 2569` แบบฟอร์มเดิม · วันที่ล้วนไม่มีเวลา จึงไม่ต้องแปลงเขตเวลา
  * (พ.ศ. เป็นเรื่องการแสดงผลเท่านั้น — ในฐานข้อมูลยังเป็น ค.ศ.) */
-const slashDate = (iso: string) => {
+export const slashDate = (iso: string) => {
   const [y, m, d] = iso.split('-')
   return `${d} / ${m} / ${Number(y) + 543}`
 }
@@ -57,7 +57,7 @@ const slashDate = (iso: string) => {
 const COLS = [8, 53, 11, 13, 15] as const
 const EDGES = COLS.slice(0, -1).map((_, i) => COLS.slice(0, i + 1).reduce((a, b) => a + b, 0))
 
-const SIGN_LABELS: Record<DocKind, [string, string]> = {
+export const SIGN_LABELS: Record<DocKind, [string, string]> = {
   quotation: ['ผู้สั่งซื้อ / อนุมัติ', 'ผู้เสนอราคา'],
   invoice: ['ผู้รับวางบิล', 'ผู้วางบิล'],
   receipt: ['ผู้รับเงิน', 'ผู้ส่งสินค้า'],
