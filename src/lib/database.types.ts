@@ -2895,7 +2895,7 @@ export type Database = {
         }[]
       }
       payroll_balances_through: {
-        Args: { p_through: string }
+        Args: { p_cash_through?: string; p_through: string }
         Returns: {
           accrued: number
           advanced: number
