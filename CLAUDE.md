@@ -101,7 +101,8 @@ create type advance_status as enum ('pending','approved','rejected');
 | `attachments` | `transaction_id`, `object_key`, `thumb_key`, `byte_size`, `content_type` | ตาม transaction |
 | `upload_intents` | `object_key`, `thumb_key`, `created_by`, `site_id`, `expires_at`, `consumed_at` | ของตัวเองเท่านั้น |
 | `advances` | เบิกล่วงหน้า: `employee_id`, `amount`, `advance_date` (**เลือกวันเองได้ ลงย้อนหลังได้**), `pay_method`, `site_id`, `payroll_run_id` (มีค่า = หักครบทั้งใบแล้ว), **`deducted_amount`** (หักคืนไปแล้วเท่าไหร่ · > 0 แต่ไม่ครบ = ค้างไปหักรอบหน้า), `mcp_key_id`, **`status`** (R14 · `pending` = คำขอของหัวหน้าโครงการ **ยังไม่ใช่เงิน** · `approved` = จ่ายแล้ว · `rejected` + `rejected_reason`), `approved_by/_at` | supervisor ยื่นคำขอ (`pending`) **โดยไม่ต้องผูกโครงการ** (22 ก.ย. 2569 · ค่าแรงเป็นของคน ไม่ใช่ของโครงการ) และเห็นเฉพาะใบที่ตัวเองยื่น · **เปลี่ยนสถานะเองไม่ได้** · ถ้าเลือกโครงการมา ต้องเป็นโครงการที่ตัวเองดูแล |
-| `payroll_runs` | `period_start`, `period_end`, `site_id`, `employee_id`, `status`, `total_accrued`, `total_advance_deducted`, `total_paid`, **`covers_work`** (false = รอบที่จ่ายแค่เงินที่ออกก่อน/โบนัส · ช่วงวันเป็นแค่ป้าย ไม่ปิดวันทำงาน — §17 ข้อ 31) · **`through_date`** (R17 · วันตัด "จ่ายถึงสิ้นเดือน" — เงินที่ออกก่อน/ใบเบิกที่ลงวันหลังวันนี้ไม่ถูกคืน/หัก · null = รอบเก่าไม่มีวันตัด) | **owner เท่านั้น** |
+| `payroll_runs` | `period_start`, `period_end`, `site_id`, `employee_id`, `status`, `total_accrued`, `total_advance_deducted`, `total_paid`, **`covers_work`** (false = รอบที่จ่ายแค่เงินที่ออกก่อน/โบนัส · ช่วงวันเป็นแค่ป้าย ไม่ปิดวันทำงาน — §17 ข้อ 31) · **`through_date`** (R17 · วันตัด "จ่ายถึงสิ้นเดือน" — **เฉพาะงาน** ที่ลงวันหลังวันนี้ไม่ถูกนับ · null = รอบเก่าไม่มีวันตัด
+      · R17b 5 พ.ย. 2569: เบิก/เงินที่ออกก่อนไม่ผูกวันตัดนี้อีกต่อไป — กวาดทุกใบที่ยังค้างเสมอไม่ว่าลงวันไหน) | **owner เท่านั้น** |
 | `payroll_lines` | `run_id`, `employee_id`, `days`, `accrued`, **`reimbursed`**, **`bonus`**, `advance_deducted`, `net_paid` (= เงินสดที่ยื่นให้) · **`breakdown`** jsonb = สำเนารายละเอียด ณ วันจ่าย (base · adjustments · advances · owed) ที่ใบสรุป `/payroll/slip` อ่าน · null = จ่ายก่อน R15 · **แก้ไม่ได้หลังเขียน** (`guard_payroll_line`) | ตาม run |
 | `recurring_expenses` | ค่าใช้จ่ายรายเดือนที่ระบบลงให้เอง: `name`, `amount`, `category_id`, `site_id` (NULL = ส่วนกลาง), `employee_id` (NULL = ไม่ผูกคน), `day_of_month`, `start_month`, `end_month`, `is_active` | **owner เท่านั้น** |
 | `customers` | ทะเบียนลูกค้าสำหรับเติมที่อยู่ให้ฟอร์มเอกสาร (R12): `name` (unique แบบ trim+lower), `tax_id`, `branch`, `address`, `phone`, `email` · แก้/ลบที่ `/settings/customers` · **ลบแล้วเอกสารเก่าไม่หายและไม่เปลี่ยน** เพราะใบถือสำเนาของตัวเอง | **owner เท่านั้น** |
@@ -209,7 +210,10 @@ employee_balance(p_employee uuid)      -- ประตูของ authenticated
 employee_balance_raw(p_employee uuid)  -- สูตรเปล่า ไม่มีด่าน · เฉพาะ definer/superuser
 overdrawn_employees()                  -- ใครติดลบอยู่เท่าไหร่ (invoker · ห่อ payroll_balances)
 overdrawn_summary()                    -- กี่คน รวมเท่าไหร่ — แถบเตือนหน้าแรก
-payroll_balances_through(p_through)    -- R17 · payroll_balances() ที่มีวันตัด (ตัวเดิมห่อตัวนี้ด้วย null)
+payroll_balances_through(p_through, p_cash_through default null)  -- R17 · payroll_balances() ที่มีวันตัด
+                                        -- (ตัวเดิมห่อตัวนี้ด้วย null, null) · R17b: p_through = งานเท่านั้น
+                                        -- p_cash_through = เบิก/เงินที่ออกก่อน (null = ไม่มีวันตัด เสมอ ยกเว้น
+                                        -- ตอนคำนวณ "ยอดก่อนเดือน M" ใน payroll_month_balances)
 payroll_month_balances(p_month)        -- R17 · ยอดของเดือนเดียว + carry_in (เบิกเกินยกมา) + earlier_unpaid
 payroll_open_months()                  -- R17 · เดือนที่มีของค้าง (ตัวเลือกในบอทและกล่องจ่าย)
 ```
@@ -642,6 +646,16 @@ docs/design/{demo.html,DESIGN.md} · docs/test-plan/*.md · docs/LESSONS.md
       `payroll_balances_through`) · ไม่ส่งวันตัด = แบบเดิม · โบนัสไม่ติดวันตัด · ปฏิทินอยู่ที่ `lib/wage-month.ts`
       · ✅ **apply บนฐานจริงแล้ว 2 ต.ค. 2569** · `verify-monthly-wages-db` 19/19 · line 94/94 · payday 35/35 · advance 29/29
       · ยอดของคนงาน 18 คนก่อน/หลัง apply ตรงกันทุกตัว · เหลือแถว 👤 บน LINE/เบราว์เซอร์ · ตารางตรวจรับ `docs/test-plan/R17-monthly-wages.md`
+      · **R17b (5 พ.ย. 2569 · คำสั่งเจ้าของ):** เบิก/เงินที่ออกก่อนของ "ช่วงรอยต่อ" (ลงวันหลังสิ้นเดือนแต่ก่อนวันกดจ่ายจริง
+      — เช่นจ่ายเดือน ต.ค. วันที่ 5 พ.ย. แต่มีเบิกวันที่ 1-4 พ.ย.) ต้องถูกกวาดเข้าหักกับเดือนที่กำลังจ่ายทันที ไม่ใช่ค้าง
+      ไปโผล่เป็น "เบิกของเดือนถัดไป" ทั้งที่เดือนถัดไปยังไม่ได้รับค่าแรงเลย · เดิม `through_date` ผูกวันตัดเดียวทั้งงาน
+      และเงิน (เบิก/เงินที่ออกก่อน) เข้าด้วยกัน ทั้งที่งานเดือนถัดไปต้องรอรอบเดือนถัดไปจริง (ยังไม่เกิดสิทธิ์) แต่เบิก/
+      เงินที่ออกก่อนเป็นหนี้ปัจจุบันเสมอไม่ว่าจะลงวันไหน (`payroll_open_months()` ก็ถือว่าใบเบิกค้างอยู่ "เดือนปัจจุบัน"
+      เสมออยู่แล้ว) · แก้โดยแยกวันตัดเป็นสองเส้นใน `payroll_balances_through(p_through, p_cash_through)` — งาน
+      ยังผูก `p_through` เดิม · เบิก/เงินที่ออกก่อนไม่มีวันตัดอีกต่อไป (`p_cash_through` เป็น `null` เสมอ ยกเว้นตอน
+      คำนวณยอด ณ สิ้นเดือนก่อนจริง ๆ ซึ่งยังต้องผูกพรมแดนเวลาเดิมไว้) · migration `20261105090000_monthly_wages_cash_sweep.sql`
+      · 🔴 **ยังไม่ apply** และ `verify-monthly-wages-db.mjs --with-migration` ยังไม่เคยรันจริง (เขียนในสภาพแวดล้อม
+      ที่ไม่มี `.env.local`) — ตัวเลขคำนวณมือ ต้องรันยืนยันก่อน apply จริงเสมอ
 - [ ] **R18 · เบิกวัสดุจากร้าน (Loyverse) เข้าต้นทุนโครงการ** (18 ต.ค. 2569) — **Loyverse POS เดิมเป็นหน้าร้าน+สต็อก ไม่สร้างเอง**
       · หัวหน้าโครงการคีย์ใบขอเบิก (เว็บ/LINE) → แท็บเล็ตแคชเชียร์เห็น → ออกบิลใน Loyverse จ่ายด้วย **"เบิกใช้งาน"** (ไม่เก็บเงิน)
       → ดึงบิลจาก API → รายจ่ายหมวด "วัสดุจากร้าน" **approved อัตโนมัติ** · ต้นทุน = `cost_total` ของบิล ไม่ใช่ราคาขาย
