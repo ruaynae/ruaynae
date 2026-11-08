@@ -33,6 +33,21 @@ export function DomesticBuilder({ saved, sites = [] }: { saved?: SavedDomestic; 
   const [name, setName] = useState(saved?.name ?? '')
   const [updatedAt, setUpdatedAt] = useState(saved?.updatedAt ?? '')
   const [siteId, setSiteId] = useState(saved?.siteId ?? '')
+  // ฉบับใหม่ (ยังไม่บันทึก): โหลดรายชื่อโครงการเองเพื่อผูกได้ตั้งแต่ก่อนบันทึก
+  const [loadedSites, setLoadedSites] = useState<Site[]>([])
+  useEffect(() => {
+    if (saved) return
+    let live = true
+    ;(async () => {
+      try {
+        const r = await fetch('/api/plans/sites')
+        const j = (await r.json().catch(() => ({}))) as { sites?: { id: string; name: string }[] }
+        if (live && r.ok) setLoadedSites((j.sites ?? []).map((x) => ({ id: x.id, name: x.name })))
+      } catch { /* ไม่มีรายชื่อ = ยังบันทึกโดยไม่ผูกได้ */ }
+    })()
+    return () => { live = false }
+  }, [saved])
+  const siteList = saved ? sites : loadedSites
   /** มีอะไรที่ยังไม่ได้บันทึก (ติ๊ก · ชื่อ · อัปโหลด BOQ ใหม่) */
   const [dirty, setDirty] = useState(false)
   const [busy, setBusy] = useState<null | 'save' | 'site' | 'delete'>(null)
@@ -116,7 +131,7 @@ export function DomesticBuilder({ saved, sites = [] }: { saved?: SavedDomestic; 
     setBusy('save')
     try {
       if (!saved) {
-        const r = await send('/api/domestic-plans', 'POST', { name, model: view, sourceFile: fileName })
+        const r = await send('/api/domestic-plans', 'POST', { name, model: view, sourceFile: fileName, siteId: siteId || null })
         if (!r.ok || !r.id) return failed(r.error ?? '')
         setDirty(false)
         toast.success('บันทึกแผนการใช้วัสดุแล้ว')
@@ -255,12 +270,24 @@ export function DomesticBuilder({ saved, sites = [] }: { saved?: SavedDomestic; 
             onChange={(e) => { setName(e.target.value); setDirty(true) }}
           />
         </label>
-        {saved && (
+        {(saved || siteList.length > 0) && (
           <label className="w-full sm:w-64">
             <span className="label-base">ผูกกับโครงการ</span>
-            <select className="input-base" value={siteId} disabled={busy === 'site'} onChange={(e) => void onSite(e.target.value)}>
+            <select
+              className="input-base"
+              value={siteId}
+              disabled={busy === 'site'}
+              onChange={(e) => {
+                if (saved) return void onSite(e.target.value)
+                const v = e.target.value
+                setSiteId(v)
+                // ยังไม่ได้ตั้งชื่อแผน → ใช้ชื่อโครงการที่เลือก
+                const picked = siteList.find((x) => x.id === v)
+                if (picked && !name.trim()) setName(picked.name.slice(0, 300))
+              }}
+            >
               <option value="">— ไม่ผูกโครงการ —</option>
-              {sites.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+              {siteList.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
             </select>
           </label>
         )}
