@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import * as Dialog from '@radix-ui/react-dialog'
-import { ArrowRightLeft, CalendarClock, Download, Eraser, FileSpreadsheet, LineChart, Loader2, Pencil, RotateCcw, Save, Trash2 } from 'lucide-react'
+import { Activity, ArrowRightLeft, CalendarClock, Download, Eraser, FileSpreadsheet, LineChart, Loader2, Pencil, RotateCcw, Save, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { planReport, type BoqCategory } from '@/lib/boq/core'
 import { withW124 } from '@/lib/boq/w124'
@@ -15,6 +15,7 @@ import { fmtDate, todayInBangkok } from '@/lib/format'
 import { PaperSelect, type Paper } from './paper-select'
 import { CurveImportDialog } from './curve-import-dialog'
 import { ScheduleImportDialog } from './schedule-import-dialog'
+import { ActivityEstimateDialog } from './activity-estimate-dialog'
 import { ProgressEntry } from './progress-entry'
 import { ProgressReportView } from './progress-report'
 
@@ -63,6 +64,7 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
   const [clearAllOpen, setClearAllOpen] = useState(false)
   const [curveOpen, setCurveOpen] = useState(false)
   const [schedOpen, setSchedOpen] = useState(false)
+  const [actOpen, setActOpen] = useState(false)
   const [paper, setPaper] = useState<Paper>('A3')
   const dirty = draft !== savedProgress
 
@@ -396,6 +398,9 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
           >
             <Eraser className="size-4" />ล้าง % ของ W{k + 1}
           </button>
+          <button type="button" className="btn-secondary" onClick={() => setActOpen(true)}>
+            <Activity className="size-4" />ประมาณจากข้อมูลในระบบ
+          </button>
           <button type="button" className="btn-secondary" onClick={() => setCurveOpen(true)}>
             <LineChart className="size-4" />นำเข้าเส้นผลงานสะสม
           </button>
@@ -403,6 +408,20 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
             <Eraser className="size-4" />ล้าง % ทุกสัปดาห์
           </button>
         </div>
+        {actOpen && (
+          <ActivityEstimateDialog
+            planId={plan.id}
+            plan={plan}
+            planCum={report.planCum}
+            onClose={() => setActOpen(false)}
+            onApply={(p, last) => {
+              setDraft(p)
+              setK(last - 1)
+              setActOpen(false)
+              toast.success(`ร่างผลงานจากต้นทุนในระบบถึง W${last} (ค่าประมาณ) — ตรวจกราฟแล้วกดบันทึกผลงาน`)
+            }}
+          />
+        )}
         {curveOpen && (
           <CurveImportDialog
             open
