@@ -94,6 +94,25 @@ export function readSchedule(g: Grid): FileSchedule | null {
   return { weeks, start: dateBelow(/^วันที่เริ่ม/), end: dateBelow(/^วันที่แล้วเสร็จ/), rows }
 }
 
+/**
+ * วางตารางวันเป็นข้อความ (ไม่มีไฟล์ Excel) — บรรทัดละงาน: `ชื่องาน` + แท็บ/ขีดตั้ง + `วันเริ่ม` + `วันเสร็จ` (ISO `2026-07-13`)
+ * · บรรทัดว่าง/หัวข้อ (ขึ้นต้น #) ข้าม · วันเสร็จก่อนวันเริ่ม = ข้ามบรรทัดนั้น
+ */
+export function parsePastedSchedule(text: string): FileRow[] {
+  const rows: FileRow[] = []
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim()
+    if (!line || line.startsWith('#')) continue
+    const parts = line.split(/\t|\|/).map((x) => x.trim()).filter(Boolean)
+    if (parts.length < 3) continue
+    const start = parts[parts.length - 2]
+    const end = parts[parts.length - 1]
+    if (!ISO.test(start) || !ISO.test(end) || diffDays(start, end) < 0) continue
+    rows.push({ name: parts.slice(0, -2).join(' '), planDates: { start, end }, planWeeks: null, actualWeeks: null })
+  }
+  return rows
+}
+
 export type ScheduleOptions = {
   /** วันเริ่ม/จำนวนวันของแผนที่จะใช้คิด offset (หลังตั้งตามไฟล์แล้วถ้าเลือก) */
   start: string

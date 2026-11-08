@@ -226,3 +226,11 @@ test('applySchedule (R31): จับคู่ชื่อ · แถว Actual = 
   // ตัวอ่านไฟล์: ไม่มีหัว W1 = null
   assert.equal(readSchedule({ name: 'x', rows: 2, cols: 2, v: () => null, w: () => '' }), null)
 })
+
+test('parsePastedSchedule (R31): แท็บ/ขีดตั้ง · ข้ามหัวข้อ/วันที่ผิด · ชื่อมีช่องว่างได้', async () => {
+  const { parsePastedSchedule } = await import('../../src/lib/boq/schedule-import.ts')
+  const rows = parsePastedSchedule('# หัวข้อ\nงานรื้อถอน\t2026-07-13\t2026-08-01\nงานพื้น ชั้น 1 | 2026-09-25 | 2026-11-13\nงานเสีย\t2026-09-25\t2026-09-01\nงานไม่มีวัน\n')
+  assert.equal(rows.length, 2)
+  assert.deepEqual(rows[0].planDates, { start: '2026-07-13', end: '2026-08-01' })
+  assert.equal(rows[1].name, 'งานพื้น ชั้น 1')
+})

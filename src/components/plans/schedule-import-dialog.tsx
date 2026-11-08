@@ -5,7 +5,7 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { CalendarClock, FileSpreadsheet, Loader2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { similarity, type BoqCategory } from '@/lib/boq/core'
-import { applySchedule, readSchedule, type FileSchedule } from '@/lib/boq/schedule-import'
+import { applySchedule, parsePastedSchedule, readSchedule, type FileSchedule } from '@/lib/boq/schedule-import'
 
 /**
  * R31 · ปรับวันของงานตามไฟล์แผนงาน Excel ของห้าง — เลือกไฟล์ → ดูตัวอย่างการจับคู่ → ใช้กับแผนที่บันทึกไว้
@@ -30,7 +30,8 @@ export function ScheduleImportDialog({
   const [reading, setReading] = useState(false)
   const [fileName, setFileName] = useState('')
   const [sched, setSched] = useState<FileSchedule | null>(null)
-  const [contractFrom, setContractFrom] = useState<'Plan' | 'Actual'>('Actual')
+  const [contractFrom, setContractFrom] = useState<'Plan' | 'Actual'>('Plan')
+  const [pasted, setPasted] = useState('')
   const [withOps, setWithOps] = useState(true)
   const [setDates, setSetDates] = useState(true)
   const input = useRef<HTMLInputElement>(null)
@@ -53,15 +54,18 @@ export function ScheduleImportDialog({
     }
   }
 
+  // วางข้อความแทนไฟล์ = ตารางวันของงาน (แถว Plan) ไม่มีวันเริ่ม/สิ้นสุดของโครงการ — ใช้วันของแผนเดิม
+  const pastedRows = useMemo(() => parsePastedSchedule(pasted), [pasted])
   const fileDays = sched?.start && sched.end ? diff(sched.start, sched.end) + 1 : null
   const canSetDates = !hasProgress && sched?.start != null && fileDays != null && fileDays >= 14 && fileDays <= 1500
   const useDates = setDates && canSetDates
   const start = useDates ? (sched?.start as string) : plan.start
   const days = useDates ? (fileDays as number) : plan.days
 
+  const rowsIn = sched?.rows ?? (pastedRows.length ? pastedRows : null)
   const result = useMemo(
-    () => (sched ? applySchedule(plan.categories, sched.rows, { start, days, contractFrom, withOps, similarity }) : null),
-    [sched, plan.categories, start, days, contractFrom, withOps],
+    () => (rowsIn ? applySchedule(plan.categories, rowsIn, { start, days, contractFrom: sched ? contractFrom : 'Plan', withOps: sched ? withOps : false, similarity }) : null),
+    [rowsIn, sched, plan.categories, start, days, contractFrom, withOps],
   )
   const span = (s: { offset: number; dur: number } | null) => (s ? `${th(addIso(start, s.offset))} – ${th(addIso(start, s.offset + s.dur - 1))} (${s.dur} วัน)` : '—')
 
@@ -93,17 +97,26 @@ export function ScheduleImportDialog({
             )}
           </div>
 
-          {sched && result && (
+          {!sched && (
+            <label className="block text-sm">
+              <span className="label-base">หรือวางตารางวันของงาน (ไม่มีไฟล์ Excel) — บรรทัดละงาน: ชื่องาน [แท็บ] วันเริ่ม [แท็บ] วันเสร็จ (เช่น 2026-07-13)</span>
+              <textarea className="input-base min-h-28 font-mono text-xs" value={pasted} onChange={(e) => setPasted(e.target.value)} placeholder={'งานรื้อถอน\t2026-07-13\t2026-08-01'} />
+              {pasted.trim() && <span className="mt-1 block text-xs text-muted-token">อ่านได้ {pastedRows.length} บรรทัด</span>}
+            </label>
+          )}
+
+          {rowsIn && result && (
             <>
+              {sched && (
               <fieldset className="space-y-2 rounded-md border border-line-soft bg-surface-2 p-3 text-sm">
                 <legend className="px-1 font-semibold text-ink">แถวไหนในไฟล์คือ &quot;แผนงานตามสัญญา&quot;</legend>
                 <label className="flex cursor-pointer items-start gap-2">
                   <input type="radio" name="sch-src" className="mt-1 accent-[var(--brand)]" checked={contractFrom === 'Actual'} onChange={() => setContractFrom('Actual')} />
-                  <span>แถว <b>Actual</b> (ช่องสีเหลือง) — ถ้าป้ายสัญลักษณ์ในไฟล์ระบุว่าสีเหลือง = แผนงานตามสัญญา · แถว Plan เป็นแผนการทำงานดำเนินการ</span>
+                  <span>แถว <b>Actual</b> — ถ้าไฟล์ใช้แถว Actual (ช่องสีเหลือง) วาดแผนตามสัญญา · แถว Plan เป็นแผนการทำงานดำเนินการ</span>
                 </label>
                 <label className="flex cursor-pointer items-start gap-2">
                   <input type="radio" name="sch-src" className="mt-1 accent-[var(--brand)]" checked={contractFrom === 'Plan'} onChange={() => setContractFrom('Plan')} />
-                  <span>แถว <b>Plan</b> — ถ้าไฟล์ใช้แถว Plan เป็นแผนตามสัญญา (แถว Actual เป็นผลงานจริง)</span>
+                  <span>แถว <b>Plan</b> (มีวันเริ่ม–เสร็จตรง ๆ) — ตรวจจากยอดรวมรายสัปดาห์ของแถว Plan ตรงกับแถว &quot;แผนงานตามสัญญา&quot; ท้ายตาราง</span>
                 </label>
                 <label className="flex cursor-pointer items-start gap-2 pt-1">
                   <input type="checkbox" className="mt-1 accent-[var(--brand)]" checked={withOps} onChange={(e) => setWithOps(e.target.checked)} />
@@ -118,6 +131,7 @@ export function ScheduleImportDialog({
                   </span>
                 </label>
               </fieldset>
+              )}
 
               <div className="space-y-2">
                 <p className="text-sm font-semibold text-ink">
