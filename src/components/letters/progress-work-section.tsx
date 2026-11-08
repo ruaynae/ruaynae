@@ -177,7 +177,8 @@ function Picker({
         setSrcFailed(false)
         setSrc({ id: planId, plan: j.plan })
         const weeks = filledWeeks(j.plan.progress)
-        setWeek(current?.planId === planId ? current.week : weeks[weeks.length - 1] ?? null)
+        // คงสัปดาห์เดิมของตารางที่แนบไว้ เฉพาะเมื่อสัปดาห์นั้นยังมีผลงานในแผน (ย้าย/ล้างผลงานแล้ว = ใช้สัปดาห์ล่าสุดที่กรอก)
+        setWeek(current?.planId === planId && weeks.includes(current.week) ? current.week : weeks[weeks.length - 1] ?? null)
       } catch {
         if (live) setSrcFailed(true)
       }
@@ -219,7 +220,7 @@ function Picker({
           <span className="label-base">ผลงาน ณ สิ้นสัปดาห์</span>
           <select
             className="input-base"
-            value={week ?? ''}
+            value={week != null && weeks.includes(week) ? week : ''}
             disabled={!ready || !weeks.length}
             onChange={(e) => setWeek(Number(e.target.value) || null)}
           >
@@ -241,7 +242,7 @@ function Picker({
         <button
           type="button"
           className="btn-primary"
-          disabled={!ready || !week}
+          disabled={!ready || !week || !weeks.includes(week)}
           onClick={() => ready && week && onPick(buildProgressWork(src.plan, week))}
         >
           <ClipboardList className="size-4" /> แนบผลงาน{week ? ` W${week}` : ''}
