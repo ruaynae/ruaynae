@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import * as Dialog from '@radix-ui/react-dialog'
-import { CalendarClock, Download, Eraser, FileSpreadsheet, Loader2, Pencil, RotateCcw, Save, Trash2 } from 'lucide-react'
+import { ArrowRightLeft, CalendarClock, Download, Eraser, FileSpreadsheet, Loader2, Pencil, RotateCcw, Save, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { planReport } from '@/lib/boq/core'
 import { withW124 } from '@/lib/boq/w124'
@@ -79,6 +79,30 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
       return { ...d, items }
     })
 
+
+  /** สัปดาห์ปัจจุบันตามวันจริง (เวลาไทย · 0 = W1) · วันนี้อยู่นอกช่วงสัญญา = null */
+  const curWeek = (() => {
+    const d = Math.floor((Date.parse(`${todayInBangkok()}T00:00:00Z`) - t0) / DAY / 7)
+    return d >= 0 && d < weeks ? d : null
+  })()
+  /** ย้าย % ที่กรอกของสัปดาห์ที่เปิดอยู่ ไปสัปดาห์ปัจจุบัน — ทับของเดิมในช่องเดียวกัน · ต้องกดบันทึกผลงานต่อ */
+  function moveToCurrent() {
+    if (curWeek == null || curWeek === k) return
+    const from = k
+    setDraft((d) => {
+      const items: PlanProgress['items'] = { ...d.items }
+      for (const [key, a] of Object.entries(d.items)) {
+        const row = pad(a)
+        if (row[from] == null) continue
+        row[curWeek] = row[from]
+        row[from] = null
+        items[key] = row
+      }
+      return { ...d, items }
+    })
+    setK(curWeek)
+    toast.success(`ย้าย % ของ W${from + 1} มา W${curWeek + 1} แล้ว — กดบันทึกผลงานเพื่อยืนยัน`)
+  }
 
   /** ล้าง % ที่กรอกของสัปดาห์เดียว (`week`) หรือทุกสัปดาห์ (ไม่ส่ง) — แก้แค่บนจอ ต้องกดบันทึกผลงานต่อ */
   function clearWeeks(week?: number) {
@@ -317,6 +341,11 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
           ))}
         </div>
         <div className="flex flex-wrap gap-2">
+          {curWeek != null && curWeek !== k && filled(k) && (
+            <button type="button" className="btn-primary" onClick={moveToCurrent}>
+              <ArrowRightLeft className="size-4" />ย้าย % ของ W{k + 1} มา W{curWeek + 1} (สัปดาห์นี้)
+            </button>
+          )}
           <button
             type="button"
             className="btn-secondary"
