@@ -670,7 +670,7 @@ export function distribute(categories: BoqCategory[], days: number, kind?: AltKi
 type StoredProgress = { items: Record<string, (number | null)[]> }
 
 export function planReport(
-  p: { name: string; categories: BoqCategory[]; start: string; days: number; w124: boolean; progress: StoredProgress },
+  p: { name: string; categories: BoqCategory[]; start: string; days: number; w124: boolean; progress: StoredProgress; project?: { total?: number | null } },
   todayIso: string,
 ): ProgressReport {
   const DAY = 864e5
@@ -682,7 +682,7 @@ export function planReport(
   /** วันสุดท้ายของสัปดาห์ k (0 = W1) — สัปดาห์สุดท้ายจบที่วันสิ้นสุดสัญญา */
   const weekEnd = (k: number) => t0 + (Math.min(p.days, 7 * (k + 1)) - 1) * DAY
 
-  type Row = { code: string; name: string; category: string; amount: number; offset: number; dur: number; items: { amount: number; eff: number[] }[] }
+  type Row = { code: string; name: string; category: string; amount: number; offset: number; dur: number; mult: number; items: { amount: number; eff: number[] }[] }
   const rows: Row[] = []
   let lastWeek = 0
   let catNo = 0
@@ -707,7 +707,7 @@ export function planReport(
         }
         return { amount: it.amount, eff }
       })
-      rows.push({ code: `${catNo}.${j}`, name: t.name, category: c.name, amount: items.reduce((s, x) => s + x.amount, 0), offset: t.offset, dur: t.dur, items })
+      rows.push({ code: `${catNo}.${j}`, name: t.name, category: c.name, amount: items.reduce((s, x) => s + x.amount, 0), offset: t.offset, dur: t.dur, mult: c.mult, items })
     })
   })
   const total = rows.reduce((s, r) => s + r.amount, 0) || 1
@@ -725,6 +725,12 @@ export function planReport(
   const actualCum: (number | null)[] = new Array(weeks).fill(null)
   for (const x of installments) actualCum[x.week - 1] = x.actual
   const lastDate = lastWeek ? weekEnd(lastWeek - 1) : null
+  // ผลงานรวมตัวคูณ ÷ ราคาสัญญา (สูตรเดียวกับ `pwTotal`/`ratio` ของตารางแนบหนังสือ) · ไม่มีราคาสัญญา = ใช้ยอดรวมตัวคูณของแผน
+  const multTotal = rows.reduce((s, r) => s + r.amount * r.mult, 0)
+  const contract = p.project?.total && p.project.total > 0 ? p.project.total : multTotal
+  const actualValueNow = lastWeek && contract > 0
+    ? rows.reduce((s, r) => s + r.mult * r.items.reduce((q, it) => q + it.amount * it.eff[lastWeek - 1], 0), 0) / contract
+    : undefined
   const alts = altKindsOf(p.categories)
   return {
     projectName: p.name,
@@ -738,6 +744,7 @@ export function planReport(
     ...(alts.includes('ops') ? { opsCum: distribute(p.categories, p.days, 'ops').cum } : {}),
     ...(p.w124 ? { w124Cum: w124Curve(dist.cum, p.days) } : {}),
     installments,
+    ...(actualValueNow != null ? { actualValueNow } : {}),
     tasks: rows.map((r) => ({
       code: r.code, name: r.name, category: r.category, amount: r.amount, weight: r.amount / total,
       plan: lastDate == null ? 0 : taskPlan(r, lastDate),

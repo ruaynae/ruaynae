@@ -175,3 +175,13 @@ test('fitCurve (R29): ยอดรวมถ่วงมูลค่าตรง�
   assert.deepEqual(readActualCurve(g), [0.1, 0.3, null])
   assert.equal(readActualCurve({ ...g, v: () => null, w: () => '' }), null)
 })
+
+test('planReport.actualValueNow = ผลงานรวมตัวคูณ ÷ ราคาสัญญา ตรงกับตารางแนบหนังสือ', () => {
+  const p = parsePlanInput(plan()).value
+  const progress = { weekly: true, items: { '0.0.0': [1], '0.0.1': [0.5], '0.0.2': [0] } }
+  const rep = planReport({ ...p, progress }, '2027-01-10')
+  const pw = buildProgressWork({ id: 'p1', name: p.name, project: p.project, categories: p.categories, start: p.start, days: p.days, progress }, 1)
+  assert.ok(Math.abs(rep.actualValueNow - ratio(pwTotal(pw).value, pw.contract)) < 1e-12)
+  // ต่างจากเลขต้นทุน (ก่อนตัวคูณ) เมื่อราคาสัญญาไม่เท่ายอดต้นทุน
+  assert.notEqual(Math.round(rep.actualValueNow * 1e6), Math.round(rep.installments[0].actual * 1e6))
+})

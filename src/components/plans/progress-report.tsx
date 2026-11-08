@@ -69,12 +69,15 @@ export function ProgressReportView({ report }: { report: ProgressReport }) {
         {[
           ['สัปดาห์ล่าสุดที่กรอก', cur ? `${curLabel}${cur.date ? ` · ${thDate(cur.date)}` : ''}` : curLabel],
           ['แผนงานสะสม ณ สิ้นสัปดาห์', ready ? p1(planNow) : '—'],
-          ['ผลงานจริงสะสม', cur ? p1(actualNow) : '—'],
+          ['ผลงานจริงสะสม', cur ? p1(report.actualValueNow ?? actualNow) : '—'],
           ['เร็ว (+) / ช้า (−)', ready ? signed(diff) : '—'],
         ].map(([l, v]) => (
           <div key={l}>
             <div className="text-xs text-muted-token">{l}</div>
             <div className="text-xl font-bold tabular-nums text-ink">{v}</div>
+            {l === 'ผลงานจริงสะสม' && cur && report.actualValueNow != null && (
+              <div className="text-xs text-muted-token">รวมตัวคูณ ตรงกับตารางแนบหนังสือ · เทียบแผน (ก่อนตัวคูณ) {p1(actualNow)}</div>
+            )}
           </div>
         ))}
         <div>
