@@ -9,9 +9,11 @@ import { maBodyLines, maItems, maStyleOf, type MaterialApproval } from '@/lib/ma
  * (§17 ข้อ 25) · กระดาษบนจอกับไฟล์ Word ต้องตัดย่อหน้า/ใส่เลขข้อด้วยกติกาเดียวกัน
  */
 
-/** การจัดวางหน้ารูปแนบ: 1 รูปต่อแถว · 2 รูปต่อแถว (ตาราง) · p = 1 รูปต่อ 1 หน้ากระดาษ (แค็ตตาล็อกเต็มหน้า) */
-export type PhotoLayout = '1' | '2' | 'p'
-export const photoLayoutOf = (v: unknown): PhotoLayout => (v === '2' ? '2' : v === 'p' ? 'p' : '1')
+/** การจัดวางหน้ารูปแนบ: 1 รูปต่อแถว · 2 รูปต่อแถว (ตาราง) · 6 = 6 รูปต่อหน้า (2 คอลัมน์ × 3 แถว ไม่มีเส้น) · p = 1 รูปต่อ 1 หน้ากระดาษ (แค็ตตาล็อกเต็มหน้า) */
+export type PhotoLayout = '1' | '2' | '6' | 'p'
+export const photoLayoutOf = (v: unknown): PhotoLayout => (v === '2' ? '2' : v === '6' ? '6' : v === 'p' ? 'p' : '1')
+/** จำนวนรูปต่อหน้ากระดาษของแต่ละการจัดวาง (หน้าใหม่ = กระดาษใหม่ที่มีขอบของตัวเอง) */
+export const PHOTOS_PER_PAGE: Record<'1' | '2' | '6', number> = { '1': 2, '2': 6, '6': 6 }
 
 export const MONTHS_TH = [
   'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',

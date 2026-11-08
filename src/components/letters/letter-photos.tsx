@@ -136,6 +136,7 @@ export function LetterPhotos({
           <select id="lp-layout" value={layout} onChange={(e) => onLayout(photoLayoutOf(e.target.value))} className="input-base">
             <option value="1">1 รูปต่อแถว (รูปใหญ่)</option>
             <option value="2">2 รูปต่อแถว (ตาราง)</option>
+            <option value="6">6 รูปต่อหน้า (2 คอลัมน์ × 3 แถว)</option>
             <option value="p">1 รูปต่อ 1 หน้า (แค็ตตาล็อกเต็มหน้า)</option>
           </select>
         </div>

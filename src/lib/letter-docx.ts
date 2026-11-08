@@ -252,7 +252,26 @@ function letterBodyXml({ letter, logo, photos, photoTitle, photoLayout, material
     if (photoTitle.trim() && !(photoLayout === 'p' && photos[0]?.heading?.trim())) x.push(para(spacing() + CENTER, runs(photoTitle.trim(), { b: true }), { b: true }))
     photos.forEach((p, i) => rels.push({ rid: `rIdPhoto${i + 1}`, file: `photo${i + 1}.jpeg`, data: p.data }))
 
-    if (photoLayout === '2') {
+    if (photoLayout === '6') {
+      // 6 รูปต่อหน้า — ตาราง 2 คอลัมน์ × 3 แถว ไม่มีเส้น · ขึ้นหน้าใหม่ทุก 6 รูป
+      const half = TEXT_WIDTH / 2
+      const cell = (p: DocxPhoto | undefined, i: number) => {
+        if (!p) return `<w:tc><w:tcPr><w:tcW w:w="${half}" w:type="dxa"/></w:tcPr>${para(spacing(0, 240))}</w:tc>`
+        const [cx, cy] = fit(p, 2.9, 2.55)
+        return `<w:tc><w:tcPr><w:tcW w:w="${half}" w:type="dxa"/></w:tcPr>` +
+          para(spacing(60, 120) + CENTER, inlineImage(`rIdPhoto${i + 1}`, cx, cy, 100 + i)) +
+          (p.caption ? para(spacing(0, 120) + CENTER, runs(p.caption, { sz: 24 }), { sz: 24 }) : '') + '</w:tc>'
+      }
+      for (let g = 0; g < photos.length; g += 6) {
+        if (g > 0) x.push('<w:p><w:r><w:br w:type="page"/></w:r></w:p>')
+        let tbl = `<w:tbl><w:tblPr><w:tblW w:w="${TEXT_WIDTH}" w:type="dxa"/><w:jc w:val="center"/><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid><w:gridCol w:w="${half}"/><w:gridCol w:w="${half}"/></w:tblGrid>`
+        for (let i = g; i < Math.min(g + 6, photos.length); i += 2) {
+          tbl += `<w:tr><w:trPr><w:cantSplit/></w:trPr>${cell(photos[i], i)}${cell(photos[i + 1], i + 1)}</w:tr>`
+        }
+        x.push(tbl + '</w:tbl>')
+        x.push(para(spacing(0, 120)))
+      }
+    } else if (photoLayout === '2') {
       const half = TEXT_WIDTH / 2
       const cell = (p: DocxPhoto | undefined, i: number) => {
         if (!p) return `<w:tc><w:tcPr><w:tcW w:w="${half}" w:type="dxa"/></w:tcPr>${para(spacing(0, 240))}</w:tc>`

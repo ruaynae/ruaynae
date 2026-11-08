@@ -449,8 +449,9 @@ export function LetterForm({
         return
       }
       if (!r.ok) throw new Error('SAVE')
-      const saved = (await r.json().catch(() => ({}))) as { headingsMissing?: boolean }
+      const saved = (await r.json().catch(() => ({}))) as { headingsMissing?: boolean; layoutMissing?: boolean }
       if (saved.headingsMissing) toast.warning('เก็บรูปแล้ว แต่หัวข้อต่อหน้ายังไม่ถูกเก็บ — รัน migration 20261104090000_letter_photo_heading.sql')
+      if (saved.layoutMissing) toast.warning('เก็บรูปแล้ว แต่การจัดวาง "6 รูปต่อหน้า" ยังไม่ถูกเก็บ — รัน migration 20261108090000_letter_photo_layout_six.sql (ก่อนรัน ใช้พิมพ์จากหน้านี้ได้ตามปกติ)')
       hadPhotos.current = next.length > 0
     } catch {
       toast.error('บันทึกหนังสือแล้ว แต่เก็บรูปแนบไม่สำเร็จ — ตรวจสัญญาณแล้วกดบันทึกอีกครั้ง')

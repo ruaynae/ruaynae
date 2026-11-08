@@ -122,6 +122,8 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
   }
   const { error: mErr } = await sb.from('letters').update({ photo_title: title, photo_layout: layout }).eq('id', id)
   if (mErr) console.error('[letters] บันทึกหัวข้อรูปแนบไม่ได้', mErr.message)
+  // เช็คการจัดวาง '6' ยังไม่อยู่ใน check เดิม (ยังไม่รัน migration) = บันทึกไม่ลง · บอกหน้าจอให้เตือน
+  const layoutMissing = Boolean(mErr) && layout === '6'
 
   if (intentIds.length) {
     const { error } = await sb.from('upload_intents').update({ consumed_at: new Date().toISOString() }).in('id', intentIds)
@@ -133,5 +135,5 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
     // `catalog/…` เป็นของคลัง — ห้ามลบ (หนังสืออื่นอาจใช้อยู่)
     if (!keep.has(k) && !isSharedKey(k)) await deleteObject(k).catch((e) => console.error('[letters] ลบไฟล์รูปแนบไม่ได้', k, e instanceof Error ? e.message : e))
   }
-  return NextResponse.json({ ok: true, ...(headingsMissing ? { headingsMissing: true } : {}) })
+  return NextResponse.json({ ok: true, ...(headingsMissing ? { headingsMissing: true } : {}), ...(layoutMissing ? { layoutMissing: true } : {}) })
 }

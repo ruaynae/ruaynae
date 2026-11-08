@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { BLANK, bodyBlocks, letterDateLine, type LetterPaperData, type PhotoLayout } from '@/lib/letters'
+import { BLANK, PHOTOS_PER_PAGE, bodyBlocks, letterDateLine, type LetterPaperData, type PhotoLayout } from '@/lib/letters'
 import { hasItems, type ChangeOrder } from '@/lib/change-order'
 import { ChangeOrderPaper } from '@/components/letters/change-order-paper'
 import { MaterialApprovalPaper } from '@/components/letters/material-approval-paper'
@@ -173,40 +173,44 @@ export function LetterPaper({
         ))
       )}
 
-      {photos.length > 0 && photoLayout !== 'p' && (
-        <article className="paper letter-sheet">
-          {photoTitle.trim() && <p className="lt-photo-title">{photoTitle.trim()}</p>}
-          {photoLayout === '2' ? (
-            <table className="lt-grid">
-              <tbody>
-                {Array.from({ length: Math.ceil(photos.length / 2) }, (_, r) => (
-                  <tr key={r}>
-                    {[photos[r * 2], photos[r * 2 + 1]].map((p, c) => (
-                      <td key={c}>
-                        {p && (
-                          <>
-                            <StampedImg p={p} stampUrl={stampUrl} />
-                            {p.caption && <p>{p.caption}</p>}
-                          </>
-                        )}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            photos.map((p, i) => (
-              <div key={i}>
-                <p className="lt-photo">
-                  <StampedImg p={p} stampUrl={stampUrl} style={{ maxHeight: photos.length === 1 ? 560 * 1.333 : 270 * 1.333 }} />
-                </p>
-                {p.caption && <p className="lt-caption">{p.caption}</p>}
-              </div>
-            ))
-          )}
-        </article>
-      )}
+      {photos.length > 0 && photoLayout !== 'p' && (() => {
+        // แบ่งเป็นหน้า ๆ — ทุกหน้ากระดาษมีขอบของตัวเอง (เดิมรูปที่ล้นไปหน้าถัดไปชิดขอบบน) · หัวข้อรวมขึ้นเฉพาะหน้าแรก
+        const per = photos.length === 1 && photoLayout === '1' ? 1 : PHOTOS_PER_PAGE[photoLayout]
+        const pages = Array.from({ length: Math.ceil(photos.length / per) }, (_, k) => photos.slice(k * per, (k + 1) * per))
+        const cell = (p: PaperPhoto | undefined, c: number) => (
+          <td key={c}>
+            {p && (
+              <>
+                <StampedImg p={p} stampUrl={stampUrl} />
+                {p.caption && <p>{p.caption}</p>}
+              </>
+            )}
+          </td>
+        )
+        return pages.map((pg, k) => (
+          <article key={k} className="paper letter-sheet">
+            {k === 0 && photoTitle.trim() && <p className="lt-photo-title">{photoTitle.trim()}</p>}
+            {photoLayout === '2' || photoLayout === '6' ? (
+              <table className={photoLayout === '6' ? 'lt-grid lt-six' : 'lt-grid'}>
+                <tbody>
+                  {Array.from({ length: Math.ceil(pg.length / 2) }, (_, r) => (
+                    <tr key={r}>{[pg[r * 2], pg[r * 2 + 1]].map((p, c) => cell(p, c))}</tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              pg.map((p, i) => (
+                <div key={i}>
+                  <p className="lt-photo">
+                    <StampedImg p={p} stampUrl={stampUrl} style={{ maxHeight: photos.length === 1 ? 560 * 1.333 : 270 * 1.333 }} />
+                  </p>
+                  {p.caption && <p className="lt-caption">{p.caption}</p>}
+                </div>
+              ))
+            )}
+          </article>
+        ))
+      })()}
     </>
   )
 }
