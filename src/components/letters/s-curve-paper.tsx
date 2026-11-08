@@ -116,7 +116,7 @@ export function SCurvePaper({ s, company }: { s: SCurveAttach; company: string }
         </table>
         <Chart s={s} />
         <p className="sc-legend">
-          <i style={{ background: C.plan }} /> แผนงานสะสม
+          <i style={{ background: C.plan }} /> แผนงานตามสัญญา
           <i style={{ background: C.actual }} /> ผลงานจริงสะสม
           <i style={{ background: C.bar }} /> แผนรายสัปดาห์
           {s.w124Cum && <><i style={{ background: C.muted }} /> แผนงานตาม ว.124</>}
