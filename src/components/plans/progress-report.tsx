@@ -22,7 +22,8 @@ const W124_TONE: Record<W124State, BadgeTone> = { pass: 'done', pending: 'info',
 const thDate = (iso: string) =>
   new Date(`${iso}T00:00:00Z`).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', timeZone: 'UTC' })
 const p1 = (x: number) => `${(x * 100).toFixed(1)}%`
-const signed = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : ''}${(Math.abs(x) * 100).toFixed(1)}%`
+const p2 = (x: number) => `${(x * 100).toFixed(2)}%`
+const signed = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : ''}${(Math.abs(x) * 100).toFixed(2)}%`
 
 function Bar({ value, plan }: { value: number; plan: number }) {
   return (
@@ -68,15 +69,15 @@ export function ProgressReportView({ report }: { report: ProgressReport }) {
       <section className="card-surface grid grid-cols-2 gap-4 p-4 lg:grid-cols-5">
         {[
           ['สัปดาห์ล่าสุดที่กรอก', cur ? `${curLabel}${cur.date ? ` · ${thDate(cur.date)}` : ''}` : curLabel],
-          ['แผนงานสะสม ณ สิ้นสัปดาห์', ready ? p1(planNow) : '—'],
-          ['ผลงานจริงสะสม', cur ? p1(report.actualValueNow ?? actualNow) : '—'],
+          ['แผนงานสะสม ณ สิ้นสัปดาห์', ready ? p2(planNow) : '—'],
+          ['ผลงานจริงสะสม', cur ? p2(report.actualValueNow ?? actualNow) : '—'],
           ['เร็ว (+) / ช้า (−)', ready ? signed(diff) : '—'],
         ].map(([l, v]) => (
           <div key={l}>
             <div className="text-xs text-muted-token">{l}</div>
             <div className="text-xl font-bold tabular-nums text-ink">{v}</div>
             {l === 'ผลงานจริงสะสม' && cur && report.actualValueNow != null && (
-              <div className="text-xs text-muted-token">รวมตัวคูณ ตรงกับตารางแนบหนังสือ · เทียบแผน (ก่อนตัวคูณ) {p1(actualNow)}</div>
+              <div className="text-xs text-muted-token">รวมตัวคูณ ตรงกับตารางแนบหนังสือ · เทียบแผน (ก่อนตัวคูณ) {p2(actualNow)}</div>
             )}
           </div>
         ))}
