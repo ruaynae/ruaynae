@@ -75,6 +75,11 @@ test('buildProgressWork: % เดียวใช้กับค่าวัส�
   assert.deepEqual([demo.pm, demo.pl], [0, 0.5])
   assert.deepEqual([trim.pm, trim.pl], [0, 0])
   assert.equal(pw.asOf, '2027-01-07')
+  // วันส่งงวดแก้ได้ (เก็บใน asOf) · ไม่กระทบสัปดาห์ที่ดึง %
+  const edited = parseProgressWork({ ...JSON.parse(JSON.stringify(pw)), asOf: '2027-02-20' })
+  assert.equal(edited.asOf, '2027-02-20')
+  assert.equal(edited.week, 1)
+  assert.equal(edited.planStart, p.start)
   assert.equal(pw.unsplit, 0)
   const t = pwTotal(pw)
   assert.equal(t.matDone, 400000)

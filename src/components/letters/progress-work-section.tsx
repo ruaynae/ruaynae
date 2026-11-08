@@ -22,12 +22,14 @@ const thShort = (iso: string) =>
   new Date(`${iso}T00:00:00Z`).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', timeZone: 'UTC' })
 
 export function ProgressWorkSection({
-  value, onChange, siteId,
+  value, onChange, siteId, defaultDate,
 }: {
   value: ProgressWork | null
   onChange: (pw: ProgressWork | null) => void
   /** โครงการของชุดเลข — แผนของโครงการนี้ขึ้นก่อน */
   siteId: string | null
+  /** วันที่ของหนังสือ (`YYYY-MM-DD`) — ค่าตั้งต้นของ "ผลงาน ณ วันที่" (วันส่งงวดจริง) */
+  defaultDate: string
 }) {
   const [picking, setPicking] = useState(false)
   const checked = Boolean(value) || picking
@@ -68,8 +70,8 @@ export function ProgressWorkSection({
               <dd className="mt-0.5 break-words text-sm font-semibold text-ink">{value.planName}</dd>
             </div>
             <div className="rounded-md border border-line-soft bg-surface-2 px-2 py-2">
-              <dt className="text-xs text-muted-token">ผลงาน ณ</dt>
-              <dd className="mt-0.5 font-semibold text-ink">W{value.week} · {thShort(value.asOf)}</dd>
+              <dt className="text-xs text-muted-token">% จากสัปดาห์</dt>
+              <dd className="mt-0.5 font-semibold text-ink">W{value.week} · สิ้น {thShort(weekEndIso(value.planStart, value.planDays, value.week))}</dd>
             </div>
             <div className="rounded-md border border-brand bg-brand-tint px-2 py-2">
               <dt className="text-xs text-muted-token">ผลงานสะสม</dt>
@@ -79,6 +81,15 @@ export function ProgressWorkSection({
           <p className="text-sm text-ink-2">
             มูลค่าที่แล้วเสร็จ (รวมตัวคูณ) ฿{money(total.value)} · ค่าวัสดุ {pct(ratio(total.matDone, total.mat))} · ค่าแรง {pct(ratio(total.labDone, total.lab))}
           </p>
+          <label className="block sm:w-64">
+            <span className="label-base">ผลงาน ณ วันที่ (วันส่งงวด)</span>
+            <input
+              type="date"
+              className="input-base"
+              value={value.asOf}
+              onChange={(e) => e.target.value && onChange({ ...value, asOf: e.target.value })}
+            />
+          </label>
           {value.unsplit > 0 && (
             <p className="flex items-start gap-2 rounded-md border border-status-progress-ring bg-status-progress-bg px-3 py-2 text-sm text-status-progress">
               <AlertTriangle className="mt-0.5 size-4 shrink-0" />
@@ -104,7 +115,8 @@ export function ProgressWorkSection({
           current={value}
           onCancel={() => setPicking(false)}
           onPick={(pw) => {
-            onChange(pw)
+            // วันส่งงวดจริง: คงวันที่ที่แก้ไว้เดิมตอนดึงใหม่ · ครั้งแรกใช้วันที่ของหนังสือ
+            onChange({ ...pw, asOf: value?.asOf ?? defaultDate })
             setPicking(false)
             toast.success(`แนบปริมาณงานที่แล้วเสร็จ W${pw.week} แล้ว (ยังไม่บันทึก)`)
           }}

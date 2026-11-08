@@ -100,7 +100,7 @@ export function ProgressWorkPaper({ pw, company }: { pw: ProgressWork; company: 
                   <td className="ma-b ma-k">สถานที่:</td>
                   <td>{pw.location || BLANK}</td>
                   <td className="ma-b ma-k2">ผลงาน ณ วันที่:</td>
-                  <td>{thDate(pw.asOf)} (สิ้นสัปดาห์ที่ {pw.week})</td>
+                  <td>{thDate(pw.asOf)}</td>
                 </tr>
               </tbody>
             </table>

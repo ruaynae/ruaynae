@@ -642,7 +642,7 @@ export function LetterForm({
             />
           )}
 
-          {isDelivery && <ProgressWorkSection value={pw} onChange={setPw} siteId={cur?.siteId ?? null} />}
+          {isDelivery && <ProgressWorkSection value={pw} onChange={setPw} siteId={cur?.siteId ?? null} defaultDate={d.date} />}
 
           <section className="card-surface space-y-3.5 p-4">
             <h2 className="flex items-center gap-2 text-base font-semibold text-ink">

@@ -35,8 +35,11 @@ export type ProgressWork = {
   owner: string
   /** สัปดาห์ที่ดึงผลงาน (1 = W1) */
   week: number
-  /** วันสุดท้ายของสัปดาห์นั้น `YYYY-MM-DD` */
+  /** วันที่ที่พิมพ์ในตาราง "ผลงาน ณ วันที่" = วันส่งงวดจริง (เจ้าของกรอก · ตั้งต้น = วันที่ของหนังสือ) `YYYY-MM-DD` */
   asOf: string
+  /** วันเริ่ม/ระยะเวลาของแผน ณ ตอนดึง — ไว้คำนวณวันสิ้นสัปดาห์ของ `week` ที่หน้าจอ */
+  planStart: string
+  planDays: number
   /** ราคาค่าก่อสร้างตามสัญญา (ตัวหารของ "คิดเป็น %") */
   contract: number
   /** รายการที่ BOQ ไม่ได้แยกค่าวัสดุ/ค่าแรง (ลงช่องค่าวัสดุทั้งก้อน) — ใช้เตือนบนจอ */
@@ -113,6 +116,8 @@ export function buildProgressWork(src: PwSource, week: number): ProgressWork {
     owner: src.project.owner,
     week,
     asOf: weekEndIso(src.start, src.days, week),
+    planStart: src.start,
+    planDays: src.days,
     contract,
     unsplit,
     cats,
@@ -258,6 +263,8 @@ export function parseProgressWork(v: unknown): ProgressWork | null {
     owner: str(v.owner),
     week: week as number,
     asOf: v.asOf,
+    planStart: typeof v.planStart === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.planStart) ? v.planStart : v.asOf,
+    planDays: Number.isInteger(v.planDays) && (v.planDays as number) >= 1 && (v.planDays as number) <= 1500 ? (v.planDays as number) : 7 * (week as number),
     contract,
     unsplit: Number.isInteger(v.unsplit) && (v.unsplit as number) >= 0 ? (v.unsplit as number) : 0,
     cats,
