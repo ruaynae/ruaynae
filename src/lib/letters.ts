@@ -42,8 +42,8 @@ export const LETTER_LIMITS = {
   intro: 2000,
   signerTitle: 80,
   /** รูปแนบท้ายต่อไฟล์ — คำขอทั้งก้อนต้องไม่ชนเพดาน body ของ Vercel (~4.5 MB) */
-  /** ต้องตรงกับ check `seq` ของ `letter_photos` และ `LETTER_PHOTO_MAX` (R27 ขยาย 12 → 60 · แค็ตตาล็อกหนังสือเดียวเกิน 12 หน้าแล้ว) */
-  photos: 60,
+  /** ต้องตรงกับ check `seq` ของ `letter_photos` และ `LETTER_PHOTO_MAX` (R27 ขยาย 12 → 60 · 8 พ.ย. ขยายเป็น 102 ตามคำสั่งเจ้าของ · แค็ตตาล็อกหนังสือเดียวเกิน 12 หน้าแล้ว) */
+  photos: 102,
   photoBytes: 3.6 * 1024 * 1024,
 } as const
 

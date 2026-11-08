@@ -17,7 +17,7 @@ export const CATALOG_LIMITS = {
 } as const
 
 /** เพดานรูปแนบท้ายหนังสือ — ต้องตรงกับ `LETTER_LIMITS.photos` และ check `seq` ใน migration */
-export const LETTER_PHOTO_MAX = 60
+export const LETTER_PHOTO_MAX = 102
 
 /** ตัวช่วยพิมพ์ช่อง "หมวด" (datalist) — พิมพ์เองได้ */
 export const CATALOG_CATEGORIES = [
