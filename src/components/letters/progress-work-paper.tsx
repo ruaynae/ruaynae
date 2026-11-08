@@ -23,11 +23,10 @@ function SumCells({ s, mult, contract }: { s: PwSum; mult: number | null; contra
   return (
     <>
       <td className="pw-n">{n2(s.mat)}</td>
-      <td className="pw-c">{s.mat > 0 ? p2(ratio(s.matDone, s.mat)) : '-'}</td>
       <td className="pw-n">{n2(s.matDone)}</td>
       <td className="pw-n">{n2(s.lab)}</td>
-      <td className="pw-c">{s.lab > 0 ? p2(ratio(s.labDone, s.lab)) : '-'}</td>
       <td className="pw-n">{n2(s.labDone)}</td>
+      <td className="pw-c">{s.mat + s.lab > 0 ? p2(ratio(s.done, s.mat + s.lab)) : '-'}</td>
       <td className="pw-n">{n2(s.done)}</td>
       <td className="pw-c">{mult == null ? '' : mult.toFixed(4)}</td>
       <td className="pw-n">{n2(s.value)}</td>
@@ -41,7 +40,7 @@ function Row({ r, contract }: { r: PwRow; contract: number }) {
     return (
       <tr className={r.k === 'cat' ? 'pw-cat' : 'pw-task'}>
         <td className="pw-c">{r.no}</td>
-        <td colSpan={13}>{r.name}</td>
+        <td colSpan={12}>{r.name}</td>
       </tr>
     )
   }
@@ -55,11 +54,10 @@ function Row({ r, contract }: { r: PwRow; contract: number }) {
         <td className="pw-n">{it.qty == null ? '' : it.qty.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
         <td className="pw-c">{it.unit}</td>
         <td className="pw-n">{n2(it.mat)}</td>
-        <td className="pw-c">{it.mat > 0 ? p2(it.pm) : '-'}</td>
         <td className="pw-n">{n2(s.matDone)}</td>
         <td className="pw-n">{n2(it.lab)}</td>
-        <td className="pw-c">{it.lab > 0 ? p2(it.pl) : '-'}</td>
         <td className="pw-n">{n2(s.labDone)}</td>
+        <td className="pw-c">{it.mat > 0 ? p2(it.pm) : it.lab > 0 ? p2(it.pl) : '-'}</td>
         <td className="pw-n">{n2(s.done)}</td>
         <td className="pw-c">{r.mult.toFixed(4)}</td>
         <td className="pw-n">{n2(s.value)}</td>
@@ -115,8 +113,9 @@ export function ProgressWorkPaper({ pw, company }: { pw: ProgressWork; company: 
                   <th rowSpan={2}>รายการ</th>
                   <th rowSpan={2}>จำนวน</th>
                   <th rowSpan={2}>หน่วย</th>
-                  <th colSpan={3}>ค่าวัสดุ</th>
-                  <th colSpan={3}>ค่าแรงงาน</th>
+                  <th colSpan={2}>ค่าวัสดุ</th>
+                  <th colSpan={2}>ค่าแรงงาน</th>
+                  <th rowSpan={2}>%<br />แล้วเสร็จ</th>
                   <th rowSpan={2}>รวมมูลค่า<br />ที่แล้วเสร็จ</th>
                   <th rowSpan={2}>{multLabel}</th>
                   <th rowSpan={2}>รวมเป็น<br />มูลค่า</th>
@@ -124,10 +123,8 @@ export function ProgressWorkPaper({ pw, company }: { pw: ProgressWork; company: 
                 </tr>
                 <tr>
                   <th>มูลค่างาน</th>
-                  <th>% แล้วเสร็จ</th>
                   <th>ที่แล้วเสร็จ</th>
                   <th>มูลค่างาน</th>
-                  <th>% แล้วเสร็จ</th>
                   <th>ที่แล้วเสร็จ</th>
                 </tr>
               </thead>
