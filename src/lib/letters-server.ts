@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { hasSCurve, parseSCurveAttach, type SCurveAttach } from '@/lib/s-curve-attach'
 import { getSupabaseServer } from '@/lib/supabase/server'
 import { isUuid } from '@/lib/transactions'
 import { LETTER_LIMITS, splitLines, stripItemNo, type Letterhead } from '@/lib/letters'
@@ -60,6 +61,8 @@ export type LetterInput = {
   materialApproval: MaterialApproval | null
   /** ปริมาณงานที่แล้วเสร็จ (R28 · หนังสือส่งมอบงาน) — `letters.fields.progressWork` (jsonb เดิม) */
   progressWork: ProgressWork | null
+  /** S-Curve แนบหนังสือส่งมอบงาน (R30) — `letters.fields.sCurve` (jsonb เดิม) */
+  sCurve: SCurveAttach | null
 }
 
 export type ParsedLetter = { ok: true; value: LetterInput } | { ok: false; error: string }
@@ -135,6 +138,7 @@ export function parseLetterInput(body: Record<string, unknown>): ParsedLetter {
       changeOrder: changeOrderOf(body.changeOrder, templateId),
       materialApproval: templateId === 'material' ? compactMaterialApproval(parseMaterialApproval(body.materialApproval)) : null,
       progressWork: templateId === 'delivery' ? progressWorkOf(body.progressWork) : null,
+      sCurve: templateId === 'delivery' ? sCurveOf(body.sCurve) : null,
     },
   }
 }
@@ -143,6 +147,12 @@ export function parseLetterInput(body: Record<string, unknown>): ParsedLetter {
 function progressWorkOf(v: unknown): ProgressWork | null {
   const pw = parseProgressWork(v)
   return hasPwItems(pw) ? pw : null
+}
+
+/** S-Curve เก็บเฉพาะหนังสือส่งมอบงานที่ผ่านตัวตรวจ */
+function sCurveOf(v: unknown): SCurveAttach | null {
+  const s = parseSCurveAttach(v)
+  return hasSCurve(s) ? s : null
 }
 
 /** ตารางงานเพิ่ม-ลดเก็บเฉพาะหนังสือแบบ "งานเพิ่ม / งานลด" ที่มีแถวจริง */
@@ -156,7 +166,7 @@ function changeOrderOf(v: unknown, templateId: string | null): ChangeOrder | nul
  * ค่าช่องด่วน + ตารางงานเพิ่ม-ลด ลง jsonb `letters.fields` ก้อนเดียว
  * · คีย์ `changeOrder` ที่ client ส่งมาในช่องด่วนถูกทิ้งเสมอ — ตารางมาจาก `v.changeOrder` ที่ผ่านตัวตรวจแล้วเท่านั้น
  */
-const JSON_KEYS = new Set(['changeOrder', 'materialApproval', 'progressWork'])
+const JSON_KEYS = new Set(['changeOrder', 'materialApproval', 'progressWork', 'sCurve'])
 
 function letterFieldsJson(v: LetterInput): Json {
   const out: Record<string, Json> = {}
@@ -164,6 +174,7 @@ function letterFieldsJson(v: LetterInput): Json {
   if (v.changeOrder) out.changeOrder = v.changeOrder as unknown as Json
   if (v.materialApproval) out.materialApproval = v.materialApproval as unknown as Json
   if (v.progressWork) out.progressWork = v.progressWork as unknown as Json
+  if (v.sCurve) out.sCurve = v.sCurve as unknown as Json
   return out
 }
 

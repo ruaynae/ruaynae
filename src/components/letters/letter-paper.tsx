@@ -1,3 +1,5 @@
+import { SCurvePaper } from '@/components/letters/s-curve-paper'
+import { hasSCurve, type SCurveAttach } from '@/lib/s-curve-attach'
 import type { CSSProperties } from 'react'
 import { BLANK, PHOTOS_PER_PAGE, bodyBlocks, letterDateLine, type LetterPaperData, type PhotoLayout } from '@/lib/letters'
 import { hasItems, type ChangeOrder } from '@/lib/change-order'
@@ -65,6 +67,7 @@ export function LetterPaper({
   materialApproval = null,
   materialList = null,
   progressWork = null,
+  sCurve = null,
 }: {
   letter: LetterPaperData
   logoUrl: string | null
@@ -85,6 +88,7 @@ export function LetterPaper({
   materialList?: MaterialApproval | null
   /** ปริมาณงานที่แล้วเสร็จ (R28 · หนังสือส่งมอบงาน) — แผ่นแนวนอนต่อจากหนังสือ ก่อนรูปภาพ · ต้นฉบับเท่านั้น */
   progressWork?: ProgressWork | null
+  sCurve?: SCurveAttach | null
 }) {
   const lh = letter.letterhead
   const rows = [
@@ -160,6 +164,7 @@ export function LetterPaper({
       {materialApproval && hasMaItems(materialApproval) && <MaterialApprovalPaper ma={materialApproval} letter={letter} />}
       {materialList && hasMaItems(materialList) && <MaterialListPaper ma={materialList} />}
       {hasPwItems(progressWork) && <ProgressWorkPaper pw={progressWork} company={lh.companyName} />}
+      {hasSCurve(sCurve) && <SCurvePaper s={sCurve} company={lh.companyName} />}
 
       {photos.length > 0 && photoLayout === 'p' && (
         // 1 รูปต่อ 1 หน้ากระดาษ (แค็ตตาล็อก · R27) — หัวข้อขึ้นต่อหน้า (heading ของรูป · หน้าแรกถอยไปใช้หัวข้อรวม) · ไม่พิมพ์คำอธิบายใต้รูป (ตรงกับไฟล์ Word)

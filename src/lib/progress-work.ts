@@ -56,6 +56,8 @@ export type PwSource = {
   progress: { items: Record<string, (number | null)[]> }
   start: string
   days: number
+  /** เปิดประเมิน ว.124 ในแผนนี้ (ใช้กับ S-Curve แนบหนังสือ · R30) */
+  w124?: boolean
 }
 
 const DAY = 864e5

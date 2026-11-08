@@ -185,3 +185,24 @@ test('planReport.actualValueNow = ผลงานรวมตัวคูณ ÷ 
   // ต่างจากเลขต้นทุน (ก่อนตัวคูณ) เมื่อราคาสัญญาไม่เท่ายอดต้นทุน
   assert.notEqual(Math.round(rep.actualValueNow * 1e6), Math.round(rep.installments[0].actual * 1e6))
 })
+
+test('S-Curve แนบหนังสือ (R30): ภาพนิ่ง ณ สัปดาห์ที่ตัด · ไป-กลับผ่านตัวตรวจ · ค่าเสียถูกปฏิเสธ', async () => {
+  const { buildSCurveAttach, parseSCurveAttach, hasSCurve } = await import('../../src/lib/s-curve-attach.ts')
+  const p = parsePlanInput({ ...plan(), days: 28 }).value
+  const items = { '0.0.0': [0.2, 0.5, 0.9, 1], '0.0.1': [0, 0.3, 0.6, 1], '0.0.2': [0.1, 0.4, 0.7, 1] }
+  // ตัดที่ W2 — ผลงาน W3–W4 ต้องไม่เข้า
+  const cut = Object.fromEntries(Object.entries(items).map(([k, a]) => [k, a.slice(0, 2)]))
+  const rep = planReport({ ...p, progress: { items: cut } }, '2027-02-01')
+  const s = buildSCurveAttach(rep, { planId: 'p1', planName: p.name, project: p.name, week: 2, asOf: '2027-01-14' })
+  assert.equal(s.actualCum.length, 4)
+  assert.ok(s.actualCum[0] != null && s.actualCum[1] != null && s.actualCum[2] == null && s.actualCum[3] == null)
+  assert.ok(Math.abs(s.planNow - rep.planCum[1]) < 1e-12)
+  assert.ok(Math.abs(s.actualNow - s.actualCum[1]) < 1e-12)
+  assert.ok(hasSCurve(s))
+  assert.deepEqual(parseSCurveAttach(JSON.parse(JSON.stringify(s))), s)
+  assert.equal(parseSCurveAttach(null), null)
+  assert.equal(parseSCurveAttach({ ...s, week: 9 }), null)
+  assert.equal(parseSCurveAttach({ ...s, asOf: '14/1/2027' }), null)
+  assert.equal(parseSCurveAttach({ ...s, planCum: [0.1, 2, 0.3, 0.4] }), null)
+  assert.equal(parseSCurveAttach({ ...s, actualCum: [0.1] }), null)
+})

@@ -22,6 +22,8 @@ import { MA_LIMITS, contractFromRefs, emptyMaterialApproval, maItems, maStyleOf,
 import { MaterialLibraryPicker, type PickedMaterial } from '@/components/letters/material-library-picker'
 import { ProgressWorkSection } from '@/components/letters/progress-work-section'
 import { PW_ATTACHMENT, type ProgressWork } from '@/lib/progress-work'
+import { SCurveSection } from '@/components/letters/s-curve-section'
+import { SC_ATTACHMENT, type SCurveAttach } from '@/lib/s-curve-attach'
 import { LETTER_PHOTO_MAX, appendCatalogPhotos, catalogToRow, mergeCatalogRows } from '@/lib/material-library'
 import { LETTER_TEMPLATES, findLetterTemplate } from '@/lib/letter-templates'
 import {
@@ -66,6 +68,8 @@ export type FormLetter = {
   materialApproval?: MaterialApproval | null
   /** ปริมาณงานที่แล้วเสร็จ (R28 · แบบ "ส่งมอบงานงวด") */
   progressWork?: ProgressWork | null
+  /** S-Curve แนบหนังสือ (R30 · แบบ "ส่งมอบงานงวด") */
+  sCurve?: SCurveAttach | null
 }
 
 type Draft = {
@@ -152,6 +156,7 @@ export function LetterForm({
   const [co, setCoState] = useState<ChangeOrder | null>(initial?.changeOrder ?? null)
   const [ma, setMaState] = useState<MaterialApproval | null>(initial?.materialApproval ?? null)
   const [pw, setPwState] = useState<ProgressWork | null>(initial?.progressWork ?? null)
+  const [sc, setScState] = useState<SCurveAttach | null>(initial?.sCurve ?? null)
 
   const [d, setD] = useState<Draft>(() => {
     if (initial) {
@@ -238,7 +243,7 @@ export function LetterForm({
     for (const f of t.fields ?? []) fields[f.k] = f.auto ? autoFieldValue(f.auto, entries, d.seriesId, d.date) : f.def ?? ''
     const g = generateFromTemplate(t, fields, company, ma)
     // ปริมาณงานที่แนบไว้แล้ว (R28) — กลับมาแบบส่งมอบงาน บรรทัดสิ่งที่ส่งมาด้วยต้องตามมาด้วย
-    const attachments = id === 'delivery' && pw ? [g.attachments, PW_ATTACHMENT].filter(Boolean).join('\n') : g.attachments
+    const attachments = id === 'delivery' ? [g.attachments, pw ? PW_ATTACHMENT : '', sc ? SC_ATTACHMENT : ''].filter(Boolean).join('\n') : g.attachments
     setD((p) => ({ ...p, templateId: id, fields, subject: g.subject, attachments, body: g.body, closing: g.closing }))
     setGen(g)
     if (g.photoTitle) setPhotoTitle(g.photoTitle)
@@ -303,12 +308,19 @@ export function LetterForm({
 
   /* ── ปริมาณงานที่แล้วเสร็จ (R28) — ติ๊กแนบ = เติมบรรทัด "สิ่งที่ส่งมาด้วย" · ไม่แนบ = ถอดบรรทัดนั้นออก ── */
   const isDelivery = template?.id === 'delivery'
+  /** บรรทัด "สิ่งที่ส่งมาด้วย" ของตารางปริมาณงาน / S-Curve (R30) — ติ๊ก = เติม · เอาออก = ถอด */
+  const setAttachLine = (line: string, on: boolean) =>
+    setD((p) => {
+      const lines = splitLines(p.attachments).map(stripItemNo).filter((x) => x !== line)
+      return { ...p, attachments: (on ? [...lines, line] : lines).join('\n') }
+    })
   function setPw(next: ProgressWork | null) {
     setPwState(next)
-    setD((p) => {
-      const lines = splitLines(p.attachments).map(stripItemNo).filter((x) => x !== PW_ATTACHMENT)
-      return { ...p, attachments: (next ? [...lines, PW_ATTACHMENT] : lines).join('\n') }
-    })
+    setAttachLine(PW_ATTACHMENT, next != null)
+  }
+  function setSc(next: SCurveAttach | null) {
+    setScState(next)
+    setAttachLine(SC_ATTACHMENT, next != null)
   }
 
   /** เลือกจากคลังวัสดุ (R27): เติมแถวรายการ + ต่อหน้าแค็ตตาล็อกท้ายหนังสือ (อ้างไฟล์ในคลัง ไม่คัดลอก) */
@@ -382,6 +394,7 @@ export function LetterForm({
       changeOrder: isChange ? co : null,
       materialApproval: isMaterial ? ma : null,
       progressWork: isDelivery ? pw : null,
+      sCurve: isDelivery ? sc : null,
     }
     try {
       const r = await fetch(savedId ? `/api/letters/${savedId}` : '/api/letters', {
@@ -646,6 +659,7 @@ export function LetterForm({
           )}
 
           {isDelivery && <ProgressWorkSection value={pw} onChange={setPw} siteId={cur?.siteId ?? null} defaultDate={d.date} />}
+          {isDelivery && <SCurveSection value={sc} onChange={setSc} siteId={cur?.siteId ?? null} defaultDate={d.date} />}
 
           <section className="card-surface space-y-3.5 p-4">
             <h2 className="flex items-center gap-2 text-base font-semibold text-ink">
@@ -835,6 +849,7 @@ export function LetterForm({
             materialApproval={isMaterial && maStyle === 'table' ? maValue : null}
             materialList={isMaterial && maStyle === 'list' ? maValue : null}
             progressWork={isDelivery ? pw : null}
+            sCurve={isDelivery ? sc : null}
           />
         </div>
       </div>

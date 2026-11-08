@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { parseSCurveAttach } from '@/lib/s-curve-attach'
 import { getBranding } from '@/lib/branding'
 import { getSupabaseServer } from '@/lib/supabase/server'
 import { todayInBangkok } from '@/lib/format'
@@ -117,12 +118,13 @@ export function toFormLetter(r: LetterRowData): FormLetter {
   const fields: Record<string, string> = {}
   if (r.fields && typeof r.fields === 'object' && !Array.isArray(r.fields)) {
     for (const [k, v] of Object.entries(r.fields as Record<string, unknown>)) {
-      if (k !== 'changeOrder' && k !== 'materialApproval' && k !== 'progressWork') fields[k] = String(v ?? '')
+      if (k !== 'changeOrder' && k !== 'materialApproval' && k !== 'progressWork' && k !== 'sCurve') fields[k] = String(v ?? '')
     }
   }
   const co = r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).changeOrder : null
   const ma = r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).materialApproval : null
   const pw = r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).progressWork : null
+  const sc = r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).sCurve : null
   return {
     id: r.id,
     seriesId: r.series_id,
@@ -142,5 +144,6 @@ export function toFormLetter(r: LetterRowData): FormLetter {
     changeOrder: parseChangeOrder(co),
     materialApproval: parseMaterialApproval(ma),
     progressWork: parseProgressWork(pw),
+    sCurve: parseSCurveAttach(sc),
   }
 }

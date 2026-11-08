@@ -682,6 +682,12 @@
   .pw-sheet .pw-catTotal td { font-weight: 700; background: #e0ecff; }
   .pw-sheet .pw-grand td { font-weight: 700; background: #fde68a; }
   .pw-sheet .pw-foot { margin-top: 4pt; font-size: 15pt; }
+  /* S-Curve แนบหนังสือ (R30) */
+  .letter-sheet.ma-sheet.sc-sheet { font-size: 15pt; padding: 40px 36px; }
+  .sc-sheet .sc-svg { display: block; width: 100%; height: auto; }
+  .sc-sheet .sc-legend { margin-top: 6pt; font-size: 13pt; display: flex; flex-wrap: wrap; align-items: center; gap: 4pt 12pt; }
+  .sc-sheet .sc-legend i { display: inline-block; width: 22pt; height: 4pt; margin-right: 4pt; vertical-align: middle; }
+  .sc-sheet .sc-foot { margin-top: 6pt; font-size: 15pt; }
   .pw-sheet .pw-table th, .pw-sheet .pw-sub td, .pw-sheet .pw-catTotal td, .pw-sheet .pw-grand td {
     print-color-adjust: exact; -webkit-print-color-adjust: exact;
   }

@@ -114,7 +114,8 @@ export function ProgressWorkSection({
           siteId={siteId}
           current={value}
           onCancel={() => setPicking(false)}
-          onPick={(pw) => {
+          onPick={(src, week) => {
+            const pw = buildProgressWork(src, week)
             // วันส่งงวดจริง: คงวันที่ที่แก้ไว้เดิมตอนดึงใหม่ · ครั้งแรกใช้วันที่ของหนังสือ
             onChange({ ...pw, asOf: value?.asOf ?? defaultDate })
             setPicking(false)
@@ -130,13 +131,14 @@ export function ProgressWorkSection({
  * ตัวเลือกแผน + สัปดาห์ — mount เฉพาะตอนเปิด แล้วโหลดตอน mount (§17 ข้อ 46)
  * · setState หลัง await เท่านั้น (§17 ข้อ 16)
  */
-function Picker({
-  siteId, current, onCancel, onPick,
+export function Picker({
+  siteId, current, onCancel, onPick, buttonLabel = 'แนบผลงาน',
 }: {
   siteId: string | null
-  current: ProgressWork | null
+  current: { planId: string; week: number } | null
   onCancel: () => void
-  onPick: (pw: ProgressWork) => void
+  onPick: (src: PwSource, week: number) => void
+  buttonLabel?: string
 }) {
   const [plans, setPlans] = useState<PlanOption[] | null>(null)
   const [failed, setFailed] = useState(false)
@@ -243,9 +245,9 @@ function Picker({
           type="button"
           className="btn-primary"
           disabled={!ready || !week || !weeks.includes(week)}
-          onClick={() => ready && week && onPick(buildProgressWork(src.plan, week))}
+          onClick={() => ready && week && onPick(src.plan, week)}
         >
-          <ClipboardList className="size-4" /> แนบผลงาน{week ? ` W${week}` : ''}
+          <ClipboardList className="size-4" /> {buttonLabel}{week ? ` W${week}` : ''}
         </button>
         {current && <button type="button" className="btn-secondary" onClick={onCancel}>ยกเลิก</button>}
       </div>

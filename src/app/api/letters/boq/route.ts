@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
   if (req.nextUrl.searchParams.get('progress') === '1') {
     return NextResponse.json({
       plan: {
-        id: plan.id, name: plan.name, categories: plan.categories, progress: plan.progress, start: plan.start, days: plan.days,
+        id: plan.id, name: plan.name, categories: plan.categories, progress: plan.progress, start: plan.start, days: plan.days, w124: plan.w124,
         project: { name: plan.project.name, owner: plan.project.owner, loc1: plan.project.loc1, loc2: plan.project.loc2, total: plan.project.total },
       },
     })
