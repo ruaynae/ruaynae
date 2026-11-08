@@ -710,6 +710,14 @@
   .ds-sheet .ds-c { text-align: center; font-variant-numeric: tabular-nums; }
   .ds-sheet .ds-sum td { font-weight: 700; }
   .ds-sheet .ds-note { margin-top: 3pt; }
+  .ds-sheet .ds-annex { text-align: right; font-weight: 700; text-decoration: underline; margin-bottom: 6pt !important; }
+  .ds-sheet .ds-u { text-decoration: underline; margin-bottom: 6pt; }
+  .ds-sheet .ds-conclusion { break-inside: avoid; margin-top: 6pt; }
+  .ds-sheet .ds-opt { display: flex; gap: 10pt; margin: 0 0 12pt 14pt; }
+  .ds-sheet .ds-box { flex: none; width: 16pt; height: 16pt; margin-top: 3pt; border: 1pt solid #000; text-align: center; line-height: 14pt; font-size: 13pt; font-weight: 700; }
+  .ds-sheet .ds-line { height: 18pt; border-bottom: 1pt dotted #000; margin: 0; }
+  .ds-sheet .ds-sign { text-align: center; margin-top: 18pt !important; }
+  .ds-sheet .ds-sign + .ds-sign { margin-top: 2pt !important; }
   /* แผนบำรุงรักษาครุภัณฑ์ (R33) */
   .ma-sheet.mp-sheet { font-size: 14pt; }
   .mp-sheet .mp-sub { font-weight: 700; margin: 4pt 0 6pt; }

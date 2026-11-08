@@ -21,3 +21,11 @@ test('ไม่มีเหล็ก = steel null · ตัวตรวจปฏ
   assert.equal(hasDomesticSummary(parseDomesticSummary(s)), true)
   assert.equal(hasDomesticSummary(null), false)
 })
+
+test('ผ่านทั้งโครงการ: พัสดุ ≥ 60% และเหล็ก (ถ้ามี) ≥ 90%', async () => {
+  const { dsOverallPass } = await import('../../src/lib/domestic-summary.ts')
+  const base = { v: 1, planId: '', planName: '', project: '' }
+  assert.equal(dsOverallPass({ ...base, material: { count: 1, domestic: 70, foreign: 30 }, steel: null }), true)
+  assert.equal(dsOverallPass({ ...base, material: { count: 1, domestic: 50, foreign: 50 }, steel: null }), false)
+  assert.equal(dsOverallPass({ ...base, material: { count: 1, domestic: 100, foreign: 0 }, steel: { count: 1, domestic: 80, foreign: 20 } }), false)
+})

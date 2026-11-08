@@ -1,4 +1,4 @@
-import { DS_MIN_MATERIAL, DS_MIN_STEEL, DS_TITLE, dsPass, dsRate, dsTotal, type DomesticSummary, type DsPart } from '@/lib/domestic-summary'
+import { DS_MIN_MATERIAL, DS_MIN_STEEL, DS_TITLE, dsOverallPass, dsPass, dsRate, dsTotal, type DomesticSummary, type DsPart } from '@/lib/domestic-summary'
 
 const money = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const pct = (x: number) => `${(x * 100).toFixed(2)}%`
@@ -37,6 +37,36 @@ function Block({ what, p, min }: { what: string; p: DsPart; min: number }) {
   )
 }
 
+const REG = 'กฎกระทรวงกำหนดพัสดุและวิธีการจัดซื้อจัดจ้างพัสดุที่รัฐต้องการส่งเสริมหรือสนับสนุน (ฉบับที่ ๒) พ.ศ. ๒๕๖๓'
+
+/** ช่องสรุปตามแบบ (ภาคผนวก ๔) — ติ๊กช่องที่ตรงกับผลคำนวณให้ · เหตุผลกรณีไม่เป็นไปตามกฎเว้นเส้นไว้ให้เขียนเอง · ลงชื่อประธานกรรมการตรวจรับพัสดุ */
+function Conclusion({ ok }: { ok: boolean }) {
+  return (
+    <section className="ds-conclusion">
+      <p className="ds-b ds-u">สรุป</p>
+      <div className="ds-opt">
+        <span className="ds-box">{ok ? '✓' : ''}</span>
+        <div>
+          <p>เป็นไปตาม{REG}</p>
+          <p>๑. ร้อยละ ๖๐ พัสดุทั่วไป (มูลค่า)</p>
+          <p>๒. ร้อยละ ๙๐ เหล็ก (ปริมาณ)</p>
+        </div>
+      </div>
+      <div className="ds-opt">
+        <span className="ds-box">{ok ? '' : '✓'}</span>
+        <div>
+          <p>ไม่เป็นไปตาม{REG}</p>
+          <p>เหตุผล/ความจำเป็นที่หน่วยงานของรัฐไม่สามารถดำเนินการได้</p>
+          <p className="ds-line" />
+          <p className="ds-line" />
+        </div>
+      </div>
+      <p className="ds-sign">ลงชื่อ .......................................... (ประธานกรรมการตรวจรับพัสดุ)</p>
+      <p className="ds-sign">(..........................................)</p>
+    </section>
+  )
+}
+
 /**
  * แผ่น A4 แนวตั้ง "ตารางรายงานผลการใช้พัสดุที่ผลิตภายในประเทศ" (R35) — ต่อจากหนังสือ "ขอส่งสรุปการใช้พัสดุในประเทศ"
  * 🔴 ไม่มี `'use client'` — ผังกระดาษล้วน · ตัวเลขจากภาพนิ่ง `DomesticSummary` ไม่คิดใหม่ในกระดาษ
@@ -44,10 +74,12 @@ function Block({ what, p, min }: { what: string; p: DsPart; min: number }) {
 export function DomesticSummaryPaper({ ds }: { ds: DomesticSummary }) {
   return (
     <article className="paper letter-sheet ds-sheet">
+      <p className="ds-annex">ภาคผนวก ๔</p>
       {ds.project && <p className="ds-head">{ds.project}</p>}
       <p className="ds-head ds-title">{DS_TITLE}</p>
       <Block what="พัสดุ" p={ds.material} min={DS_MIN_MATERIAL} />
       {ds.steel ? <Block what="เหล็ก" p={ds.steel} min={DS_MIN_STEEL} /> : <p className="ds-b">เหล็ก: โครงการนี้ไม่มีรายการเหล็ก</p>}
+      <Conclusion ok={dsOverallPass(ds)} />
     </article>
   )
 }

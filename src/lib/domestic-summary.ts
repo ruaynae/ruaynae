@@ -51,6 +51,8 @@ export const dsTotal = (p: DsPart) => r2(p.domestic + p.foreign)
 /** สัดส่วนในประเทศ (0–1) — ไม่มีมูลค่า = 0 */
 export const dsRate = (p: DsPart) => (dsTotal(p) > 0 ? p.domestic / dsTotal(p) : 0)
 export const dsPass = (p: DsPart, min: number) => dsTotal(p) > 0 && dsRate(p) >= min
+/** ผ่านทั้งโครงการ = พัสดุ ≥ 60% และ (ถ้ามีเหล็ก) เหล็ก ≥ 90% */
+export const dsOverallPass = (s: DomesticSummary) => dsPass(s.material, DS_MIN_MATERIAL) && (!s.steel || dsPass(s.steel, DS_MIN_STEEL))
 export const hasDomesticSummary = (s: DomesticSummary | null | undefined): s is DomesticSummary => Boolean(s && s.material.count > 0)
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
