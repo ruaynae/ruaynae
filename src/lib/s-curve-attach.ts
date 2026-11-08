@@ -9,7 +9,6 @@ import type { ProgressReport } from './boq/progress-core'
 export const SC_ATTACHMENT = 'แผนงานก่อสร้างแสดงความก้าวหน้า (S-Curve) 1 ชุด'
 export const SC_MAX_WEEKS = 300
 
-export type ScPaper = 'A4' | 'A3'
 export type SCurveCheck = { x: number; marks: { y: number; text: string }[] }
 
 export type SCurveAttach = {
@@ -21,8 +20,6 @@ export type SCurveAttach = {
   week: number
   /** ผลงาน ณ วันที่ (วันส่งงวดจริง · แก้ได้) `YYYY-MM-DD` */
   asOf: string
-  /** ขนาดแผ่นตอนพิมพ์: A4 = แผ่นแนวนอนหมุนลงกระดาษแนวตั้ง · A3 = หน้า A3 แนวนอนของตัวเอง (ไม่มีค่า = A4) */
-  paper?: ScPaper
   labels: string[]
   sublabels: string[]
   planWeekly: number[]
@@ -117,7 +114,6 @@ export function parseSCurveAttach(v: unknown): SCurveAttach | null {
     project: str(v.project),
     week: week as number,
     asOf: v.asOf,
-    ...(v.paper === 'A3' ? { paper: 'A3' as const } : {}),
     labels,
     sublabels,
     planWeekly,

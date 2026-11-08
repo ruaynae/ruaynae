@@ -19,13 +19,12 @@ const p2 = (x: number) => `${(x * 100).toFixed(2)}%`
 const thDate = (iso: string) =>
   new Date(`${iso}T00:00:00Z`).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
 
-function Chart({ s, a3 }: { s: SCurveAttach; a3: boolean }) {
-  // A3 = ผืนกราฟกว้างกว่า (ตัวอักษรขนาดเท่าเดิม จึงเห็นรายละเอียดมากขึ้น)
-  const W = a3 ? 1560 : 1000
-  const H = a3 ? 800 : 430
-  const fz = a3 ? 1.35 : 1 // ขนาดตัวอักษรในกราฟ
+function Chart({ s }: { s: SCurveAttach }) {
+  const W = 1000
+  const H = 430
+  const fz = 1
   const n = s.planCum.length
-  const M = a3 ? { l: 76, r: 86, t: 40, b: 66 } : M0
+  const M = M0
   const pw = W - M.l - M.r
   const ph = H - M.t - M.b
   const bw = pw / n
@@ -38,7 +37,7 @@ function Chart({ s, a3 }: { s: SCurveAttach; a3: boolean }) {
     return d
   }
   const lastActual = s.actualCum.reduce<number>((a, v, i) => (v != null ? i : a), -1)
-  const every = Math.max(1, Math.ceil(n / (a3 ? 38 : 24)))
+  const every = Math.max(1, Math.ceil(n / 24))
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="sc-svg" role="img" aria-label="S-Curve แผนงานเทียบผลงานจริง" fontFamily={font}>
       <rect width={W} height={H} fill="#fff" />
@@ -95,10 +94,9 @@ function Chart({ s, a3 }: { s: SCurveAttach; a3: boolean }) {
 }
 
 export function SCurvePaper({ s, company }: { s: SCurveAttach; company: string }) {
-  const a3 = s.paper === 'A3'
   return (
-    <div className={a3 ? 'sc3-fit' : 'ma-fit'}>
-      <article className={`paper letter-sheet sc-sheet ${a3 ? 'sc3-sheet' : 'ma-sheet'}`}>
+    <div className="ma-fit">
+      <article className="paper letter-sheet sc-sheet ma-sheet">
         <p className="ma-title">แผนงานก่อสร้างแสดงความก้าวหน้า (S-Curve)</p>
         <table className="ma-head">
           <tbody>
@@ -116,7 +114,7 @@ export function SCurvePaper({ s, company }: { s: SCurveAttach; company: string }
             </tr>
           </tbody>
         </table>
-        <Chart s={s} a3={a3} />
+        <Chart s={s} />
         <p className="sc-legend">
           <i style={{ background: C.plan }} /> แผนงานสะสม
           <i style={{ background: C.actual }} /> ผลงานจริงสะสม
