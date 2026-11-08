@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import * as Dialog from '@radix-ui/react-dialog'
-import { ArrowRightLeft, CalendarClock, Download, Eraser, FileSpreadsheet, Loader2, Pencil, RotateCcw, Save, Trash2 } from 'lucide-react'
+import { ArrowRightLeft, CalendarClock, Download, Eraser, FileSpreadsheet, LineChart, Loader2, Pencil, RotateCcw, Save, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { planReport } from '@/lib/boq/core'
 import { withW124 } from '@/lib/boq/w124'
@@ -13,6 +13,7 @@ import {
 } from '@/lib/boq/plan-store'
 import { fmtDate, todayInBangkok } from '@/lib/format'
 import { PaperSelect, type Paper } from './paper-select'
+import { CurveImportDialog } from './curve-import-dialog'
 import { ProgressEntry } from './progress-entry'
 import { ProgressReportView } from './progress-report'
 
@@ -59,6 +60,7 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
   const split = splitCount(plan.categories)
   const [delOpen, setDelOpen] = useState(false)
   const [clearAllOpen, setClearAllOpen] = useState(false)
+  const [curveOpen, setCurveOpen] = useState(false)
   const [paper, setPaper] = useState<Paper>('A3')
   const dirty = draft !== savedProgress
 
@@ -357,10 +359,29 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
           >
             <Eraser className="size-4" />ล้าง % ของ W{k + 1}
           </button>
+          <button type="button" className="btn-secondary" onClick={() => setCurveOpen(true)}>
+            <LineChart className="size-4" />นำเข้าเส้นผลงานสะสม
+          </button>
           <button type="button" className="btn-secondary text-urgent" disabled={!anyFilled} onClick={() => setClearAllOpen(true)}>
             <Eraser className="size-4" />ล้าง % ทุกสัปดาห์
           </button>
         </div>
+        {curveOpen && (
+          <CurveImportDialog
+            open
+            onOpenChange={setCurveOpen}
+            plan={plan}
+            weeks={weeks}
+            curWeek={curWeek}
+            defaultTarget={report.installments.length ? report.installments[report.installments.length - 1].actual : null}
+            hasProgress={anyFilled}
+            onApply={(p, last) => {
+              setDraft(p)
+              setK(last - 1)
+              toast.success(`ลงผลงานรายสัปดาห์ถึง W${last} แล้ว — ตรวจกราฟแล้วกดบันทึกผลงาน`)
+            }}
+          />
+        )}
         <ProgressEntry
           categories={plan.categories}
           progress={draft}

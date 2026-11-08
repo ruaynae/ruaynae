@@ -146,3 +146,32 @@ test('rebaseSchedule (R28b): ย้ายวันแผนตามโครง
   for (const t of short.categories.flatMap((c) => c.tasks)) assert.ok(t.offset + t.dur <= 30)
   assert.equal(parsePlanInput({ ...plan(), categories: short.categories, start: '2026-01-01', days: 30 }).ok, true)
 })
+
+test('fitCurve (R29): ยอดรวมถ่วงมูลค่าตรงเส้นที่ให้ · % รายรายการไม่ลดลง · งานที่แผนว่าควรเสร็จก่อนได้มากกว่า', async () => {
+  const { fitCurve, interpolateCum, readActualCurve } = await import('../../src/lib/boq/curve-fit.ts')
+  const many = plan()
+  many.categories[0].tasks.push({ name: 'งานหลัง', amount: 400000, source: '', offset: 14, dur: 14, on: true, items: [item('ทาสี', 100000, 300000)] })
+  const p = parsePlanInput({ ...many, days: 28 }).value
+  const cum = interpolateCum([0.1, null, 0.4, null, 0.9]) // W1..W5 · เส้นตรงระหว่างจุดที่รู้
+  assert.ok(Math.abs(cum[1] - 0.25) < 1e-12)
+  assert.equal(interpolateCum([null, null]).every((x) => x == null), true)
+  const r = fitCurve(p, [...cum.slice(0, 4)])
+  assert.equal(r.lastWeek, 4)
+  assert.ok(r.maxErr < 5e-5)
+  for (const a of Object.values(r.items)) for (let w = 1; w < 4; w += 1) assert.ok(a[w] >= a[w - 1])
+  // W1: งานแรกควรเสร็จก่อนงานหลัง
+  assert.ok(r.items['0.0.0'][0] > r.items['0.1.0'][0])
+  // ผลลัพธ์ผ่านตัวตรวจผลงานและ planReport ได้ยอดตรง
+  const pr = parseProgress({ weekly: true, items: r.items }, p)
+  assert.equal(pr.ok, true)
+  const rep = planReport({ ...p, progress: pr.value }, '2027-02-01')
+  assert.ok(Math.abs(rep.installments[3].actual - cum[3]) < 5e-5)
+  // เส้นสูงกว่าแผนก็ถึงเป้า (งานที่ยังไม่ถึงเวลาไต่ตาม)
+  const hi = fitCurve(p, [0.95])
+  assert.ok(Math.abs(hi.items['0.1.0'][0] - 0.95) < 0.2 && hi.maxErr < 5e-5)
+  // อ่านเส้นจริงจากชีตจำลอง
+  const cells = { '3,4': 'W1', '3,5': 'W2', '3,6': 'W3', '5,1': 'ดำเนินการ ได้จริง', '5,2': 'ความคืบหน้าสะสม / สัปดาห์ (%)', '5,4': 0.1, '5,5': 0.3 }
+  const g = { name: 'x', rows: 8, cols: 8, v: (r, c) => cells[`${r},${c}`] ?? null, w: (r, c) => String(cells[`${r},${c}`] ?? '') }
+  assert.deepEqual(readActualCurve(g), [0.1, 0.3, null])
+  assert.equal(readActualCurve({ ...g, v: () => null, w: () => '' }), null)
+})
