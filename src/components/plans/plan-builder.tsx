@@ -1,9 +1,9 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { PaperSelect, type Paper } from './paper-select'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, Download, FileSpreadsheet, Loader2, RotateCcw, Save, Upload } from 'lucide-react'
+import { AlertTriangle, Building2, Download, FileSpreadsheet, Loader2, RotateCcw, Save, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   ALT_PLANS, altKindsOf, autoSchedule, distribute, setAltPlan, spanOf, w124Curve, type AltKind, type BoqCategory, type BoqModel,
@@ -11,6 +11,11 @@ import {
 import { planMessage, type SavedPlan, type SavedPlanInput } from '@/lib/boq/plan-store'
 import { fmtMoney, todayInBangkok } from '@/lib/format'
 import { useSCurve, type CurveData } from './s-curve'
+
+type SiteInfo = {
+  id: string; name: string; fullName: string; clientName: string; address: string
+  start: string | null; end: string | null; contractAmount: number | null; contractNo: string; contractDate: string | null
+}
 
 /**
  * แผนงานก่อสร้างจาก BOQ — อัปโหลด → ตรวจ/แก้ → ดาวน์โหลด Excel
@@ -55,6 +60,11 @@ export function PlanBuilder({ saved }: { saved?: SavedPlan }) {
   const [w124, setW124] = useState(saved?.w124 ?? false)
   const [exporting, setExporting] = useState(false)
   const [saving, setSaving] = useState(false)
+  /** โครงการที่ดึงข้อมูลมาเติมฟอร์ม (R30b) — ส่งไปตอนบันทึกเพื่อผูกแผนกับโครงการ */
+  const [pickSite, setPickSite] = useState<SiteInfo[] | null>(null)
+  const [pickCompany, setPickCompany] = useState('')
+  const [pickBusy, setPickBusy] = useState(false)
+  const [siteId, setSiteId] = useState('')
   const canvas = useRef<HTMLCanvasElement>(null)
 
   const [view, setView] = useState<View>('plan')
@@ -106,6 +116,52 @@ export function PlanBuilder({ saved }: { saved?: SavedPlan }) {
     } finally {
       setReading(false)
     }
+  }
+
+  /** รายชื่อโครงการ + ข้อมูลสัญญา — โหลดเมื่อฟอร์มขึ้น (หลังอ่าน BOQ) · ล้มเหลวกดเลือกซ้ำเพื่อลองใหม่ */
+  async function fetchSites() {
+    try {
+      const r = await fetch('/api/plans/sites')
+      const j = (await r.json().catch(() => ({}))) as { sites?: SiteInfo[]; company?: string }
+      if (!r.ok || !j.sites) return void toast.error('โหลดรายชื่อโครงการไม่สำเร็จ ลองใหม่อีกครั้ง')
+      setPickSite(j.sites)
+      setPickCompany(j.company ?? '')
+      if (!j.sites.length) toast.info('ยังไม่มีโครงการ — สร้างที่เมนูโครงการก่อน')
+    } catch {
+      toast.error('โหลดรายชื่อโครงการไม่สำเร็จ ตรวจการเชื่อมต่อแล้วลองใหม่')
+    }
+  }
+  async function loadSites() {
+    if (pickSite || pickBusy) return
+    setPickBusy(true)
+    await fetchSites()
+    setPickBusy(false)
+  }
+  /** เติมช่องจากโครงการ — เติมเฉพาะที่โครงการมีข้อมูล (ไม่ทับช่องด้วยค่าว่าง) · วันที่สัญญาเป็นข้อความไทย */
+  function applySite(id: string) {
+    setSiteId(id)
+    const s = pickSite?.find((x) => x.id === id)
+    if (!s || !project) return
+    const thDateLong = (iso: string) => isoToDate(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+    setProject({
+      ...project,
+      name: s.fullName || s.name || project.name,
+      owner: s.clientName || project.owner,
+      loc1: s.address || project.loc1,
+      contractor: pickCompany || project.contractor,
+      contractNo: s.contractNo || project.contractNo,
+      contractDate: s.contractDate ? thDateLong(s.contractDate) : project.contractDate,
+      total: s.contractAmount ?? project.total,
+    })
+    const filled = ['ชื่อโครงการ', s.clientName && 'เจ้าของโครงการ', s.contractAmount != null && 'ค่าก่อสร้าง', s.contractNo && 'เลขที่สัญญา'].filter(Boolean)
+    if (s.start && !typing(s.start)) {
+      const d = s.end && !typing(s.end) ? spanDays(s.start, s.end) : null
+      setStart(s.start)
+      if (d && okDays(d)) applyDays(d)
+      else if (d) toast.warning('ระยะเวลาของโครงการนี้อยู่นอกช่วง 14–1,500 วัน — ตั้งวันสิ้นสุดเองในฟอร์ม')
+      filled.push('วันเริ่ม–สิ้นสุด')
+    }
+    toast.success(`ดึงข้อมูลจากโครงการแล้ว: ${filled.join(' · ')} — ตรวจและแก้ได้`)
   }
 
   const okDays = (d: number) => d >= 14 && d <= 1500
@@ -184,7 +240,7 @@ export function PlanBuilder({ saved }: { saved?: SavedPlan }) {
       const res = await fetch(saved ? `/api/plans/${saved.id}` : '/api/plans', {
         method: saved ? 'PATCH' : 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(saved ? { expectedUpdatedAt: saved.updatedAt, plan } : { plan }),
+        body: JSON.stringify(saved ? { expectedUpdatedAt: saved.updatedAt, plan } : { plan, siteId: siteId || undefined }),
       })
       const j = (await res.json().catch(() => ({}))) as { id?: string; error?: string }
       if (!res.ok) {
@@ -249,6 +305,26 @@ export function PlanBuilder({ saved }: { saved?: SavedPlan }) {
       />
     </label>
   )
+
+  const formReady = project != null
+  useEffect(() => {
+    // ฟอร์มขึ้นแล้ว (อ่าน BOQ เสร็จ) → โหลดรายชื่อโครงการล่วงหน้า · ไม่ใช่หน้าแก้แผนที่บันทึกไว้ · setState หลัง await เท่านั้น (§17 ข้อ 16)
+    if (!formReady || saved) return
+    let live = true
+    ;(async () => {
+      try {
+        const r = await fetch('/api/plans/sites')
+        const j = (await r.json().catch(() => ({}))) as { sites?: SiteInfo[]; company?: string }
+        if (!live) return
+        if (!r.ok || !j.sites) return void toast.error('โหลดรายชื่อโครงการไม่สำเร็จ — กดที่ช่องเลือกเพื่อลองใหม่')
+        setPickSite(j.sites)
+        setPickCompany(j.company ?? '')
+      } catch {
+        if (live) toast.error('โหลดรายชื่อโครงการไม่สำเร็จ — กดที่ช่องเลือกเพื่อลองใหม่')
+      }
+    })()
+    return () => { live = false }
+  }, [formReady, saved])
 
   if (!model || !project) {
     return (
@@ -316,6 +392,26 @@ export function PlanBuilder({ saved }: { saved?: SavedPlan }) {
 
       <section className="card-surface p-4">
         <h2 className="sec-head">ข้อมูลโครงการและสัญญา</h2>
+        {!saved && (
+          <div className="mb-3 flex flex-wrap items-end gap-2 rounded-md border border-line-soft bg-surface-2 p-3">
+            <label className="min-w-0 flex-1 sm:max-w-md">
+              <span className="label-base flex items-center gap-1.5"><Building2 className="size-4" />ดึงข้อมูลจากโครงการที่สร้างไว้</span>
+              <select
+                className="input-base"
+                value={siteId}
+                disabled={pickBusy}
+                onMouseDown={() => { if (!pickSite) void loadSites() }}
+                onChange={(e) => e.target.value && applySite(e.target.value)}
+              >
+                <option value="">{pickBusy ? 'กำลังโหลด…' : pickSite ? 'เลือกโครงการ…' : 'โหลดรายชื่อไม่สำเร็จ — กดเพื่อลองใหม่'}</option>
+                {(pickSite ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </label>
+            <p className="min-w-0 basis-full text-xs text-muted-token">
+              เติมชื่อโครงการ เจ้าของ ค่าก่อสร้าง เลขที่/วันที่สัญญา วันเริ่ม–สิ้นสุด และผู้รับจ้าง (ชื่อบริษัท) · เติมเฉพาะที่โครงการมีข้อมูล · แก้ได้ทุกช่อง · เมื่อบันทึกแผน ระบบผูกแผนกับโครงการนี้ให้
+            </p>
+          </div>
+        )}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {field('name', 'ชื่อโครงการ', { wide: true })}
           {field('owner', 'เจ้าของโครงการ')}
