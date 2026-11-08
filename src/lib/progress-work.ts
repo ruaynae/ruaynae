@@ -5,8 +5,9 @@ import type { BoqCategory } from './boq/core'
  *
  * ภาพนิ่งของผลงาน ณ สิ้นสัปดาห์ที่เลือก จากแผนงานที่บันทึกไว้ (เมนูแผนงาน) — เก็บใน `letters.fields.progressWork`
  * (jsonb เดิม · ไม่มี migration) · แก้ผลงานในแผนทีหลัง หนังสือที่ส่งไปแล้วไม่เปลี่ยน (กด "ดึงผลงานใหม่" เอง)
- * · แยกค่าวัสดุ / ค่าแรง ตาม ปร.4 · % ของแต่ละหมวด/งาน **ถ่วงตามมูลค่า** (ไม่ใช่ค่าเฉลี่ยของ % รายการ)
- * · ไฟล์ล้วน ไม่ import ค่าจากไฟล์อื่น (unit test รันด้วย node ตรง ๆ) — กติกา % ค่าแรงต้องตรงกับ `itemSeries()` ใน core.ts
+ * · แยกยอดค่าวัสดุ / ค่าแรง ตาม ปร.4 · % แล้วเสร็จกรอกช่องเดียวต่อรายการ ใช้กับทั้งสองก้อน (คำสั่งเจ้าของ 8 พ.ย. 2569)
+ * · % ของแต่ละหมวด/งาน **ถ่วงตามมูลค่า** (ไม่ใช่ค่าเฉลี่ยของ % รายการ)
+ * · ไฟล์ล้วน ไม่ import ค่าจากไฟล์อื่น (unit test รันด้วย node ตรง ๆ)
  */
 
 export const PW_TITLE = 'แบบแสดงรายการ ปริมาณงาน และราคา ที่แล้วเสร็จ'
@@ -49,7 +50,7 @@ export type PwSource = {
   name: string
   project: { name: string; owner: string; loc1: string; loc2: string; total: number | null }
   categories: BoqCategory[]
-  progress: { items: Record<string, (number | null)[]>; lab?: Record<string, (number | null)[]> }
+  progress: { items: Record<string, (number | null)[]> }
   start: string
   days: number
 }
@@ -66,7 +67,7 @@ function at(vals: readonly (number | null)[] | undefined, k: number, fallback: n
 /** สัปดาห์ที่มีผลงานกรอกไว้อย่างน้อยหนึ่งช่อง (1 = W1) */
 export function filledWeeks(p: PwSource['progress']): number[] {
   const s = new Set<number>()
-  for (const a of [...Object.values(p.items), ...Object.values(p.lab ?? {})]) a.forEach((x, k) => { if (x != null) s.add(k + 1) })
+  for (const a of Object.values(p.items)) a.forEach((x, k) => { if (x != null) s.add(k + 1) })
   return [...s].sort((a, b) => a - b)
 }
 
@@ -92,9 +93,9 @@ export function buildProgressWork(src: PwSource, week: number): ProgressWork {
           if (!split) unsplit += 1
           const mat = split ? (it.mat as number) : it.amount
           const lab = split ? (it.lab as number) : 0
-          // ช่องหลักเป็นของ "ก้อนที่มี" — ค่าแรงล้วนกรอกช่องเดียว (= % ค่าแรง) · มีสองก้อน = ค่าแรงยังไม่เคยกรอก เท่าค่าวัสดุ
-          const pl = mat > 0 && lab > 0 ? at(src.progress.lab?.[key], k, m) : lab > 0 ? m : 0
+          // % เดียวของรายการ ใช้กับทั้งค่าวัสดุและค่าแรง · ก้อนที่เป็น 0 แสดง "-"
           const pm = mat > 0 ? m : 0
+          const pl = lab > 0 ? m : 0
           return { name: it.name, qty: it.qty, unit: it.unit, mat, lab, pm, pl }
         }),
       })

@@ -16,13 +16,8 @@ export type PlanProject = {
 export type PlanProgress = {
   /** รูปแบบรายสัปดาห์ (26 ต.ค. 2569) — ไม่มีธงนี้ = แบบงวดเดิม `{ dates, items }` ที่ `parseProgress` แปลงให้ */
   weekly: true
-  /** % สะสม ณ สิ้นสัปดาห์ ยาวเท่าจำนวนสัปดาห์ของสัญญา (0 = W1) — รายการที่แยกค่าวัสดุ/ค่าแรง = % ค่าวัสดุ */
+  /** % สะสม ณ สิ้นสัปดาห์ ยาวเท่าจำนวนสัปดาห์ของสัญญา (0 = W1) — รายการที่แยกค่าวัสดุ/ค่าแรง ใช้ % เดียวกับทั้งสองก้อน */
   items: Record<string, (number | null)[]>
-  /**
-   * % ค่าแรง (R28) เฉพาะรายการที่แยกค่าวัสดุ/ค่าแรง — คีย์/กติกาเดียวกับ `items`
-   * · ไม่มี/ยังไม่เคยกรอก = เท่า % ค่าวัสดุของสัปดาห์นั้น (`itemSeries` ใน core.ts)
-   */
-  lab?: Record<string, (number | null)[]>
 }
 export type SavedPlanInput = {
   name: string
@@ -196,10 +191,8 @@ export function parseProgress(
     return out
   }
   const items = series(raw, legacy)
-  // % ค่าแรงมีแต่ในรูปแบบรายสัปดาห์ (R28 มาทีหลัง R20l)
-  const lab = series(!legacy && isObj(v.lab) ? v.lab : {}, false)
-  if (!items || !lab) return fail('PROGRESS_VALUE_INVALID')
-  return { ok: true, value: { weekly: true, items, ...(Object.keys(lab).length ? { lab } : {}) } }
+  if (!items) return fail('PROGRESS_VALUE_INVALID')
+  return { ok: true, value: { weekly: true, items } }
 }
 
 /** แถวจากฐานข้อมูล → แผนงาน (jsonb ผ่านตัวตรวจอีกรอบ — ข้อมูลเก่าที่รูปร่างเพี้ยนต้องไม่ทำหน้าพัง) */
@@ -285,7 +278,7 @@ export function fillSplit(target: BoqCategory[], source: BoqCategory[]) {
 /** สัปดาห์ล่าสุดที่กรอกผลงานอย่างน้อยหนึ่งช่อง (1 = W1) · 0 = ยังไม่กรอก */
 export function lastFilledWeek(p: PlanProgress) {
   let last = 0
-  ;[...Object.values(p.items), ...Object.values(p.lab ?? {})].forEach((a) => a.forEach((x, k) => { if (x != null) last = Math.max(last, k + 1) }))
+  Object.values(p.items).forEach((a) => a.forEach((x, k) => { if (x != null) last = Math.max(last, k + 1) }))
   return last
 }
 

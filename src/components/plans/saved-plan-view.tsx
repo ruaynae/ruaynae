@@ -49,8 +49,7 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
   })
   const weekStart = (i: number) => new Date(t0 + i * 7 * DAY).toISOString().slice(0, 10)
   const weekEnd = (i: number) => new Date(t0 + (Math.min(plan.days, 7 * (i + 1)) - 1) * DAY).toISOString().slice(0, 10)
-  const allSeries = (p: PlanProgress) => [...Object.values(p.items), ...Object.values(p.lab ?? {})]
-  const filled = (i: number) => allSeries(draft).some((a) => a[i] != null)
+  const filled = (i: number) => Object.values(draft.items).some((a) => a[i] != null)
   const [busy, setBusy] = useState<null | 'save' | 'site' | 'export' | 'delete' | 'split'>(null)
   const splitInput = useRef<HTMLInputElement>(null)
   const split = splitCount(plan.categories)
@@ -75,36 +74,17 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
       for (const key of keys) items[key] = pad(items[key]).map((x, i) => (i === k ? v : x))
       return { ...d, items }
     })
-  /** % ค่าแรง (R28) — ช่องค่าแรงที่ว่างทั้งแถว = ไม่เก็บคีย์ (เท่าค่าวัสดุ) */
-  const setLab = (keys: string[], v: number | null) =>
-    setDraft((d) => {
-      const lab = { ...(d.lab ?? {}) }
-      for (const key of keys) {
-        const next = pad(lab[key]).map((x, i) => (i === k ? v : x))
-        if (next.some((x) => x != null)) lab[key] = next
-        else delete lab[key]
-      }
-      return Object.keys(lab).length ? { ...d, lab } : { weekly: true as const, items: d.items }
-    })
-  /** "ทั้งงาน" — ช่องหลักและช่องค่าแรงพร้อมกัน */
-  const setTask = (keys: string[], v: number | null) => {
-    setItems(keys, v)
-    setLab(keys, v)
-  }
+
 
   /** ล้าง % ที่กรอกของสัปดาห์เดียว (`week`) หรือทุกสัปดาห์ (ไม่ส่ง) — แก้แค่บนจอ ต้องกดบันทึกผลงานต่อ */
   function clearWeeks(week?: number) {
     setDraft((d) => {
-      const wipe = (src: Record<string, (number | null)[]>) => {
-        const out: Record<string, (number | null)[]> = {}
-        if (week != null) for (const [key, a] of Object.entries(src)) out[key] = pad(a).map((x, i) => (i === week ? null : x))
-        return out
-      }
-      const lab = wipe(d.lab ?? {})
-      return { weekly: true, items: wipe(d.items), ...(Object.keys(lab).length ? { lab } : {}) }
+      const items: PlanProgress['items'] = {}
+      if (week != null) for (const [key, a] of Object.entries(d.items)) items[key] = pad(a).map((x, i) => (i === week ? null : x))
+      return { ...d, items }
     })
   }
-  const anyFilled = allSeries(draft).some((a) => a.some((x) => x != null))
+  const anyFilled = Object.values(draft.items).some((a) => a.some((x) => x != null))
 
   function failed(code: string) {
     toast.error(planMessage(code))
@@ -256,7 +236,7 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
         <section className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-surface-2 p-4 text-sm">
           <p className="min-w-0 flex-1 text-ink-2">
             {split.split ? `แยกค่าวัสดุ/ค่าแรงแล้ว ${split.split} จาก ${split.total} รายการ` : 'แผนนี้ยังไม่ได้แยกค่าวัสดุ/ค่าแรง'}
-            {' '}— เลือกไฟล์ BOQ ตามสัญญาฉบับเดิม ระบบจะเติมให้ (ผลงานที่กรอกไว้ไม่หาย) แล้วกรอก % ค่าวัสดุกับค่าแรงแยกกันได้
+            {' '}— เลือกไฟล์ BOQ ตามสัญญาฉบับเดิม ระบบจะเติมยอดค่าวัสดุ/ค่าแรงให้ (ผลงานที่กรอกไว้ไม่หาย) · % ที่กรอกใช้กับทั้งสองก้อน
           </p>
           <input ref={splitInput} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => void onSplitFile(e.target.files?.[0])} />
           <button type="button" className="btn-secondary" disabled={busy === 'split'} onClick={() => splitInput.current?.click()}>
@@ -310,8 +290,7 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
           k={k}
           weekLabel={`W${k + 1} · ${fmtDate(weekStart(k))} – ${fmtDate(weekEnd(k))}`}
           onItem={(key, v) => setItems([key], v)}
-          onLab={(key, v) => setLab([key], v)}
-          onTask={setTask}
+          onTask={setItems}
         />
         <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 lg:bottom-4 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface p-3 shadow-e2">
           <span className="min-w-0 flex-1 text-sm text-muted-token">
