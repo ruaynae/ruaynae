@@ -129,7 +129,7 @@ export function LetterForm({
   initial: FormLetter | null
   initialSeriesId: string | null
   /** รูปแนบที่เก็บไว้กับหนังสือ (หน้า `/letters/[id]`) */
-  initialPhotos?: { photos: { key: string; url: string; caption: string; heading?: string; stamped?: boolean }[]; title: string; layout: PhotoLayout }
+  initialPhotos?: { photos: { key: string; url: string; caption: string; heading?: string; stamped?: boolean; asPage?: boolean }[]; title: string; layout: PhotoLayout }
   /** รูปตราประทับบริษัท (คลังวัสดุ · R27) — ไม่มี = ไม่โชว์ช่องติ๊กประทับตรา */
   stampUrl?: string | null
 }) {
@@ -441,7 +441,7 @@ export function LetterForm({
       const r = await fetch(`/api/letters/${id}/photos`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: photoTitle, layout: photoLayout, photos: next.map((p) => ({ key: p.key, caption: p.caption, heading: p.heading ?? '', stamped: p.stamped === true })) }),
+        body: JSON.stringify({ title: photoTitle, layout: photoLayout, photos: next.map((p) => ({ key: p.key, caption: p.caption, heading: p.heading ?? '', stamped: p.stamped === true, asPage: p.asPage === true })) }),
       })
       if (r.status === 503) {
         if (!warnedPhotos.current) toast.warning('ยังไม่ได้ติดตั้งที่เก็บรูปแนบในฐานข้อมูล — รูปยังไม่ถูกเก็บกับหนังสือ (รัน migration 20261023120000_letter_photos.sql)')
@@ -449,8 +449,9 @@ export function LetterForm({
         return
       }
       if (!r.ok) throw new Error('SAVE')
-      const saved = (await r.json().catch(() => ({}))) as { headingsMissing?: boolean; layoutMissing?: boolean }
+      const saved = (await r.json().catch(() => ({}))) as { headingsMissing?: boolean; layoutMissing?: boolean; pageMissing?: boolean }
       if (saved.headingsMissing) toast.warning('เก็บรูปแล้ว แต่หัวข้อต่อหน้ายังไม่ถูกเก็บ — รัน migration 20261104090000_letter_photo_heading.sql')
+      if (saved.pageMissing) toast.warning('เก็บรูปแล้ว แต่ธง "หน้าเอกสาร" ของ PDF ยังไม่ถูกเก็บ — รัน migration 20261108090000_letter_photo_layout_six.sql')
       if (saved.layoutMissing) toast.warning('เก็บรูปแล้ว แต่การจัดวาง "6 รูปต่อหน้า" ยังไม่ถูกเก็บ — รัน migration 20261108090000_letter_photo_layout_six.sql (ก่อนรัน ใช้พิมพ์จากหน้านี้ได้ตามปกติ)')
       hadPhotos.current = next.length > 0
     } catch {
@@ -470,6 +471,7 @@ export function LetterForm({
       photos.forEach((p) => p.file && fd.append('photo', p.file))
       fd.append('captions', JSON.stringify(photos.filter((p) => p.file).map((p) => p.caption)))
       fd.append('headings', JSON.stringify(photos.filter((p) => p.file).map((p) => p.heading ?? '')))
+      fd.append('pages', JSON.stringify(photos.filter((p) => p.file).map((p) => p.asPage === true)))
       fd.append('photoTitle', photoTitle)
       fd.append('photoLayout', photoLayout)
       fd.append('copies', String(copies))
@@ -825,7 +827,7 @@ export function LetterForm({
             copies={copies}
             letter={paper}
             logoUrl={logoUrl}
-            photos={photos.map((p) => ({ url: p.url, caption: p.caption, heading: p.heading, stamped: p.stamped }))}
+            photos={photos.map((p) => ({ url: p.url, caption: p.caption, heading: p.heading, stamped: p.stamped, asPage: p.asPage }))}
             photoTitle={photoTitle}
             photoLayout={photoLayout}
             stampUrl={stampUrl}

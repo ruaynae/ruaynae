@@ -17,7 +17,7 @@ import { bodyBlocks, letterDateLine, type LetterPaperData, type PhotoLayout } fr
  */
 
 export type DocxImage = { data: Buffer; width: number; height: number }
-export type DocxPhoto = DocxImage & { caption: string; heading?: string }
+export type DocxPhoto = DocxImage & { caption: string; heading?: string; asPage?: boolean }
 
 const FONT = 'TH Sarabun New'
 const EMU = 914400
@@ -252,61 +252,86 @@ function letterBodyXml({ letter, logo, photos, photoTitle, photoLayout, material
     if (photoTitle.trim() && !(photoLayout === 'p' && photos[0]?.heading?.trim())) x.push(para(spacing() + CENTER, runs(photoTitle.trim(), { b: true }), { b: true }))
     photos.forEach((p, i) => rels.push({ rid: `rIdPhoto${i + 1}`, file: `photo${i + 1}.jpeg`, data: p.data }))
 
-    if (photoLayout === '6') {
-      // 6 รูปต่อหน้า — ตาราง 2 คอลัมน์ × 3 แถว ไม่มีเส้น · ขึ้นหน้าใหม่ทุก 6 รูป
+    // หน้าเอกสาร (PDF · asPage) = 1 หน้าต่อ 1 แผ่นเต็มหน้า · รูปถ่ายที่ติดกันจัดตามการจัดวางที่เลือก (ไม่ใช้กับแบบ p ที่ทุกรูปเต็มหน้าอยู่แล้ว)
+    const emitSix = (idx: number[]) => {
       const half = TEXT_WIDTH / 2
-      const cell = (p: DocxPhoto | undefined, i: number) => {
-        if (!p) return `<w:tc><w:tcPr><w:tcW w:w="${half}" w:type="dxa"/></w:tcPr>${para(spacing(0, 240))}</w:tc>`
+      const cell = (i: number | undefined) => {
+        if (i == null) return `<w:tc><w:tcPr><w:tcW w:w="${half}" w:type="dxa"/></w:tcPr>${para(spacing(0, 240))}</w:tc>`
+        const p = photos[i]
         const [cx, cy] = fit(p, 2.9, 2.55)
         return `<w:tc><w:tcPr><w:tcW w:w="${half}" w:type="dxa"/></w:tcPr>` +
           para(spacing(60, 120) + CENTER, inlineImage(`rIdPhoto${i + 1}`, cx, cy, 100 + i)) +
           (p.caption ? para(spacing(0, 120) + CENTER, runs(p.caption, { sz: 24 }), { sz: 24 }) : '') + '</w:tc>'
       }
-      for (let g = 0; g < photos.length; g += 6) {
+      for (let g = 0; g < idx.length; g += 6) {
         if (g > 0) x.push('<w:p><w:r><w:br w:type="page"/></w:r></w:p>')
         let tbl = `<w:tbl><w:tblPr><w:tblW w:w="${TEXT_WIDTH}" w:type="dxa"/><w:jc w:val="center"/><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid><w:gridCol w:w="${half}"/><w:gridCol w:w="${half}"/></w:tblGrid>`
-        for (let i = g; i < Math.min(g + 6, photos.length); i += 2) {
-          tbl += `<w:tr><w:trPr><w:cantSplit/></w:trPr>${cell(photos[i], i)}${cell(photos[i + 1], i + 1)}</w:tr>`
-        }
+        for (let k = g; k < Math.min(g + 6, idx.length); k += 2) tbl += `<w:tr><w:trPr><w:cantSplit/></w:trPr>${cell(idx[k])}${cell(idx[k + 1])}</w:tr>`
         x.push(tbl + '</w:tbl>')
         x.push(para(spacing(0, 120)))
       }
-    } else if (photoLayout === '2') {
+    }
+    const emitTwo = (idx: number[]) => {
       const half = TEXT_WIDTH / 2
-      const cell = (p: DocxPhoto | undefined, i: number) => {
-        if (!p) return `<w:tc><w:tcPr><w:tcW w:w="${half}" w:type="dxa"/></w:tcPr>${para(spacing(0, 240))}</w:tc>`
+      const cell = (i: number | undefined) => {
+        if (i == null) return `<w:tc><w:tcPr><w:tcW w:w="${half}" w:type="dxa"/></w:tcPr>${para(spacing(0, 240))}</w:tc>`
+        const p = photos[i]
         const [cx, cy] = fit(p, 2.95, 2.4)
         return `<w:tc><w:tcPr><w:tcW w:w="${half}" w:type="dxa"/></w:tcPr>` +
           para(spacing(0, 240) + CENTER, inlineImage(`rIdPhoto${i + 1}`, cx, cy, 100 + i)) +
           para(spacing(80, 240) + CENTER, runs(p.caption, { sz: 28 }), { sz: 28 }) + '</w:tc>'
       }
       const border = ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']
-        .map((s) => `<w:${s} w:val="single" w:sz="4" w:space="0" w:color="000000"/>`).join('')
+        .map((sd) => `<w:${sd} w:val="single" w:sz="4" w:space="0" w:color="000000"/>`).join('')
       let tbl = `<w:tbl><w:tblPr><w:tblW w:w="${TEXT_WIDTH}" w:type="dxa"/><w:jc w:val="center"/><w:tblBorders>${border}</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="80" w:type="dxa"/><w:left w:w="80" w:type="dxa"/><w:bottom w:w="80" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w="${half}"/><w:gridCol w:w="${half}"/></w:tblGrid>`
-      for (let i = 0; i < photos.length; i += 2) {
-        tbl += `<w:tr><w:trPr><w:cantSplit/></w:trPr>${cell(photos[i], i)}${cell(photos[i + 1], i + 1)}</w:tr>`
-      }
+      for (let k = 0; k < idx.length; k += 2) tbl += `<w:tr><w:trPr><w:cantSplit/></w:trPr>${cell(idx[k])}${cell(idx[k + 1])}</w:tr>`
       x.push(tbl + '</w:tbl>')
       // เอกสารต้องจบด้วยย่อหน้า ไม่ใช่ตาราง
       x.push(para(spacing(0, 240)))
-    } else if (photoLayout === 'p') {
+    }
+    const emitRows = (idx: number[]) => {
+      const maxH = photos.length === 1 ? 7.8 : 3.75
+      for (const i of idx) {
+        const p = photos[i]
+        const [cx, cy] = fit(p, 6.0, maxH)
+        x.push(para(spacing(p.caption ? 40 : 200, 240) + CENTER, inlineImage(`rIdPhoto${i + 1}`, cx, cy, 100 + i)))
+        if (p.caption) x.push(para(spacing(200, 240) + CENTER, runs(p.caption)))
+      }
+    }
+    const emitPage = (i: number, hasHead: boolean) => {
+      const [cx, cy] = fit(photos[i], 6.3, hasHead ? 8.4 : 9.1)
+      x.push(para(spacing(0, 240) + CENTER, inlineImage(`rIdPhoto${i + 1}`, cx, cy, 100 + i)))
+    }
+
+    if (photoLayout === 'p') {
       // 1 รูปต่อ 1 หน้ากระดาษ (แค็ตตาล็อกเต็มหน้า · R27) — คำอธิบายใต้รูปไม่พิมพ์ (รูปมีชื่อสินค้าในหน้าอยู่แล้ว)
       photos.forEach((p, i) => {
         if (i > 0) x.push('<w:p><w:r><w:br w:type="page"/></w:r></w:p>')
         // หัวข้อของหน้า: ของรูปนั้นก่อน · หน้าแรกถอยไปใช้หัวข้อรวม (ที่ถูกใส่ไปแล้วด้านบน)
         const own = p.heading?.trim() ?? ''
         if (own && !(i === 0 && own === photoTitle.trim())) x.push(para(spacing() + CENTER, runs(own, { b: true }), { b: true }))
-        const hasHead = own || (i === 0 && photoTitle.trim())
-        const [cx, cy] = fit(p, 6.3, hasHead ? 8.4 : 9.1)
-        x.push(para(spacing(0, 240) + CENTER, inlineImage(`rIdPhoto${i + 1}`, cx, cy, 100 + i)))
+        emitPage(i, Boolean(own || (i === 0 && photoTitle.trim())))
       })
     } else {
-      const maxH = photos.length === 1 ? 7.8 : 3.75
+      const emit = photoLayout === '6' ? emitSix : photoLayout === '2' ? emitTwo : emitRows
+      let run: number[] = []
+      let first = true
+      const flush = () => {
+        if (!run.length) return
+        if (!first) x.push('<w:p><w:r><w:br w:type="page"/></w:r></w:p>')
+        emit(run)
+        run = []
+        first = false
+      }
       photos.forEach((p, i) => {
-        const [cx, cy] = fit(p, 6.0, maxH)
-        x.push(para(spacing(p.caption ? 40 : 200, 240) + CENTER, inlineImage(`rIdPhoto${i + 1}`, cx, cy, 100 + i)))
-        if (p.caption) x.push(para(spacing(200, 240) + CENTER, runs(p.caption)))
+        if (p.asPage) {
+          flush()
+          if (!first) x.push('<w:p><w:r><w:br w:type="page"/></w:r></w:p>')
+          emitPage(i, first && Boolean(photoTitle.trim()))
+          first = false
+        } else run.push(i)
       })
+      flush()
     }
   }
 

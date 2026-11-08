@@ -20,7 +20,7 @@ import { hasPwItems, type ProgressWork } from '@/lib/progress-work'
 const pageHeading = (p: { heading?: string }, i: number, groupTitle: string) =>
   p.heading?.trim() || (i === 0 ? groupTitle.trim() : '')
 
-export type PaperPhoto = { url: string; caption: string; heading?: string; stamped?: boolean }
+export type PaperPhoto = { url: string; caption: string; heading?: string; stamped?: boolean; asPage?: boolean }
 
 /** รูปแนบ + ตราประทับซ้อนมุมขวาล่าง — multiply: พื้นขาวของตราที่สแกนมาไม่บังหน้าแค็ตตาล็อก (ตำแหน่ง/ขนาดตรงกับไฟล์ Word) */
 function StampedImg({ p, stampUrl, style }: { p: PaperPhoto; stampUrl: string | null; style?: CSSProperties }) {
@@ -175,8 +175,19 @@ export function LetterPaper({
 
       {photos.length > 0 && photoLayout !== 'p' && (() => {
         // แบ่งเป็นหน้า ๆ — ทุกหน้ากระดาษมีขอบของตัวเอง (เดิมรูปที่ล้นไปหน้าถัดไปชิดขอบบน) · หัวข้อรวมขึ้นเฉพาะหน้าแรก
-        const per = photos.length === 1 && photoLayout === '1' ? 1 : PHOTOS_PER_PAGE[photoLayout]
-        const pages = Array.from({ length: Math.ceil(photos.length / per) }, (_, k) => photos.slice(k * per, (k + 1) * per))
+        // หน้าเอกสาร (PDF · asPage) = 1 หน้าต่อ 1 แผ่นเต็มหน้า · รูปถ่ายที่ติดกันจัดตามการจัดวางที่เลือก
+        type Group = { page: PaperPhoto } | { photos: PaperPhoto[] }
+        const groups: Group[] = []
+        for (const p of photos) {
+          if (p.asPage) groups.push({ page: p })
+          else {
+            const last = groups[groups.length - 1]
+            const per = PHOTOS_PER_PAGE[photoLayout]
+            if (last && 'photos' in last && last.photos.length < per) last.photos.push(p)
+            else groups.push({ photos: [p] })
+          }
+        }
+        const single = photos.length === 1 && photoLayout === '1'
         const cell = (p: PaperPhoto | undefined, c: number) => (
           <td key={c}>
             {p && (
@@ -187,29 +198,41 @@ export function LetterPaper({
             )}
           </td>
         )
-        return pages.map((pg, k) => (
-          <article key={k} className="paper letter-sheet">
-            {k === 0 && photoTitle.trim() && <p className="lt-photo-title">{photoTitle.trim()}</p>}
-            {photoLayout === '2' || photoLayout === '6' ? (
-              <table className={photoLayout === '6' ? 'lt-grid lt-six' : 'lt-grid'}>
-                <tbody>
-                  {Array.from({ length: Math.ceil(pg.length / 2) }, (_, r) => (
-                    <tr key={r}>{[pg[r * 2], pg[r * 2 + 1]].map((p, c) => cell(p, c))}</tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              pg.map((p, i) => (
-                <div key={i}>
-                  <p className="lt-photo">
-                    <StampedImg p={p} stampUrl={stampUrl} style={{ maxHeight: photos.length === 1 ? 560 * 1.333 : 270 * 1.333 }} />
-                  </p>
-                  {p.caption && <p className="lt-caption">{p.caption}</p>}
-                </div>
-              ))
-            )}
-          </article>
-        ))
+        return groups.map((g, k) => {
+          const title = k === 0 && photoTitle.trim() ? <p className="lt-photo-title">{photoTitle.trim()}</p> : null
+          if ('page' in g) {
+            return (
+              <article key={k} className="paper letter-sheet lt-fullpage">
+                {title}
+                <p className="lt-photo"><StampedImg p={g.page} stampUrl={stampUrl} /></p>
+              </article>
+            )
+          }
+          const pg = g.photos
+          return (
+            <article key={k} className="paper letter-sheet">
+              {title}
+              {photoLayout === '2' || photoLayout === '6' ? (
+                <table className={photoLayout === '6' ? 'lt-grid lt-six' : 'lt-grid'}>
+                  <tbody>
+                    {Array.from({ length: Math.ceil(pg.length / 2) }, (_, r) => (
+                      <tr key={r}>{[pg[r * 2], pg[r * 2 + 1]].map((p, c) => cell(p, c))}</tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                pg.map((p, i) => (
+                  <div key={i}>
+                    <p className="lt-photo">
+                      <StampedImg p={p} stampUrl={stampUrl} style={{ maxHeight: single ? 560 * 1.333 : 270 * 1.333 }} />
+                    </p>
+                    {p.caption && <p className="lt-caption">{p.caption}</p>}
+                  </div>
+                ))
+              )}
+            </article>
+          )
+        })
       })()}
     </>
   )

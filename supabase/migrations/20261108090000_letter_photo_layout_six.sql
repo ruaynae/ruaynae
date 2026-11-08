@@ -13,3 +13,6 @@ begin
   end loop;
 end $$;
 alter table public.letters add constraint letters_photo_layout_check check (photo_layout in ('1', '2', '6', 'p'));
+
+-- หน้า PDF ที่แนบ = "หน้าเอกสาร" แสดงเต็มหน้ากระดาษ 1 หน้าต่อ 1 แผ่น (ไม่ปนในตารางรูป 6 รูป) · ยังไม่รัน = พิมพ์จากหน้าจอได้ แต่เปิดใหม่แล้วธงหาย
+alter table public.letter_photos add column if not exists as_page boolean not null default false;

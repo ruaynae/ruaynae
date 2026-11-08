@@ -36,6 +36,7 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
     caption: typeof p?.caption === 'string' ? p.caption.trim().slice(0, 200) : '',
     heading: typeof p?.heading === 'string' ? p.heading.trim().slice(0, 200) : '',
     stamped: p?.stamped === true,
+    asPage: p?.asPage === true,
   }))
   if (photos.some((p) => !LETTER_PHOTO_KEY.test(p.key)) || new Set(photos.map((p) => p.key)).size !== photos.length) {
     return NextResponse.json({ error: 'BAD_REQUEST' }, { status: 400 })
@@ -98,18 +99,27 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
     }
   }
   let headingsMissing = false
+  let pageMissing = false
   if (photos.length) {
     // 🔴 ส่ง `stamped` เฉพาะเมื่อมีหน้าที่ประทับตรา — ยังไม่รัน migration R27 หนังสือที่ไม่ใช้ตราประทับยังบันทึกได้เหมือนเดิม
     const anyStamp = photos.some((p) => p.stamped)
     // 🔴 เช่นเดียวกัน `heading` (migration 20261104090000) ส่งเฉพาะเมื่อมีหน้าที่ตั้งหัวข้อ
     const anyHeading = photos.some((p) => p.heading)
-    const rowsOf = (withHeading: boolean) =>
+    // 🔴 `as_page` (migration 20261108090000) ส่งเฉพาะเมื่อมีหน้าเอกสาร (PDF) — ยังไม่รันก็บันทึกหนังสือที่ไม่มี PDF ได้เหมือนเดิม
+    const anyPage = photos.some((p) => p.asPage)
+    const rowsOf = (withHeading: boolean, withPage = anyPage) =>
       photos.map((p, i) => ({
         letter_id: id, seq: i + 1, object_key: p.key, caption: p.caption, byte_size: sizes.get(p.key) ?? 0,
         ...(anyStamp ? { stamped: p.stamped } : {}),
         ...(withHeading ? { heading: p.heading } : {}),
+        ...(withPage ? { as_page: p.asPage } : {}),
       }))
     let { error } = await sb.from('letter_photos').insert(rowsOf(anyHeading))
+    // ยังไม่รัน migration ธงหน้าเอกสาร → เก็บรูปไว้ก่อนโดยไม่มีธง แล้วบอกหน้าจอ
+    if (error && anyPage && (error.code === '42703' || error.code === 'PGRST204')) {
+      pageMissing = true
+      ;({ error } = await sb.from('letter_photos').insert(rowsOf(anyHeading, false)))
+    }
     // ยังไม่รัน migration หัวข้อ → เก็บรูปไว้ก่อนโดยไม่มีหัวข้อ (แถวเดิมถูกลบไปแล้ว ห้ามปล่อยให้รูปหาย) แล้วบอกหน้าจอ
     if (error && anyHeading && (error.code === '42703' || error.code === 'PGRST204')) {
       headingsMissing = true
@@ -135,5 +145,5 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
     // `catalog/…` เป็นของคลัง — ห้ามลบ (หนังสืออื่นอาจใช้อยู่)
     if (!keep.has(k) && !isSharedKey(k)) await deleteObject(k).catch((e) => console.error('[letters] ลบไฟล์รูปแนบไม่ได้', k, e instanceof Error ? e.message : e))
   }
-  return NextResponse.json({ ok: true, ...(headingsMissing ? { headingsMissing: true } : {}), ...(layoutMissing ? { layoutMissing: true } : {}) })
+  return NextResponse.json({ ok: true, ...(headingsMissing ? { headingsMissing: true } : {}), ...(layoutMissing ? { layoutMissing: true } : {}), ...(pageMissing ? { pageMissing: true } : {}) })
 }

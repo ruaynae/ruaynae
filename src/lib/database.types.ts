@@ -965,6 +965,7 @@ export type Database = {
       }
       letter_photos: {
         Row: {
+          as_page: boolean
           byte_size: number
           caption: string
           created_at: string
@@ -976,6 +977,7 @@ export type Database = {
           stamped: boolean
         }
         Insert: {
+          as_page?: boolean
           byte_size?: number
           caption?: string
           created_at?: string
@@ -987,6 +989,7 @@ export type Database = {
           stamped?: boolean
         }
         Update: {
+          as_page?: boolean
           byte_size?: number
           caption?: string
           created_at?: string

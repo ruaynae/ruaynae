@@ -77,6 +77,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     } catch {
       headings = []
     }
+    let pages: unknown = []
+    try {
+      pages = JSON.parse(String(form.get('pages') ?? '[]'))
+    } catch {
+      pages = []
+    }
     photoTitle = String(form.get('photoTitle') ?? '').trim().slice(0, 200)
     photoLayout = photoLayoutOf(form.get('photoLayout'))
     copies = form.get('copies') === '2' ? 2 : 1
@@ -89,7 +95,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         const img = await normalizePhoto(await f.arrayBuffer())
         const caption = Array.isArray(captions) ? String(captions[i] ?? '').trim().slice(0, 200) : ''
         const heading = Array.isArray(headings) ? String(headings[i] ?? '').trim().slice(0, 200) : ''
-        photos.push({ ...img, caption, heading })
+        photos.push({ ...img, caption, heading, asPage: Array.isArray(pages) && pages[i] === true })
       } catch {
         return NextResponse.json({ error: 'LETTER_PHOTO_INVALID' }, { status: 422 })
       }
@@ -118,7 +124,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       }
       try {
         const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
-        return { ...(await normalizePhoto(buf, p.stamped ? stamp : null)), caption: p.caption, heading: p.heading }
+        return { ...(await normalizePhoto(buf, p.stamped ? stamp : null)), caption: p.caption, heading: p.heading, asPage: p.asPage }
       } catch {
         console.error('[letters] รูปแนบเสีย', p.key)
         return null

@@ -7,7 +7,7 @@ import { LETTER_LIMITS, photoLayoutOf, type PhotoLayout } from '@/lib/letters'
 import { openPdf, pdfErrorText } from '@/lib/pdf-pages'
 
 /** `file` = เพิ่งเลือก (ยังไม่อัป) · `key` = อยู่ใน R2 แล้ว (เก็บกับหนังสือ) · `url` = blob หรือลิงก์ presigned */
-export type LetterPhoto = { file?: File; key?: string; url: string; caption: string; /** หัวข้อบนหน้านี้ (เฉพาะแบบ 1 รูปต่อ 1 หน้า) */ heading?: string; /** ประทับตราบริษัทมุมขวาล่าง (R27) */ stamped?: boolean }
+export type LetterPhoto = { file?: File; key?: string; url: string; caption: string; /** หัวข้อบนหน้านี้ (เฉพาะแบบ 1 รูปต่อ 1 หน้า) */ heading?: string; /** ประทับตราบริษัทมุมขวาล่าง (R27) */ stamped?: boolean; /** หน้าเอกสาร (จาก PDF) — แสดงเต็มหน้ากระดาษ 1 หน้าต่อ 1 แผ่น ไม่ปนในตารางรูป */ asPage?: boolean }
 
 /**
  * รูปแนบท้ายหนังสือ (ไม่บังคับ · D9) — เช่นเส้นทางเข้า-ออก แบบป้าย ภาพผลงานงวด
@@ -95,7 +95,7 @@ export function LetterPhotos({
           for (let i = 1; i <= n; i++) {
             setProgress(`กำลังแปลงหน้า ${i}/${pdf.pages}`)
             const file = await pdf.page(i)
-            added.push({ file, url: URL.createObjectURL(file), caption: '' })
+            added.push({ file, url: URL.createObjectURL(file), caption: '', asPage: true })
           }
           room -= n
           if (pdf.pages > n) toast.error(`แนบได้ ${LETTER_LIMITS.photos} หน้า/รูปต่อฉบับ — หน้าที่เกินถูกข้าม`)
@@ -194,6 +194,16 @@ export function LetterPhotos({
                   ประทับตราหน้านี้
                 </label>
               )}
+              {layout !== 'p' && (
+                <label className="flex items-center gap-1.5 border-t border-line-soft px-2 py-1 text-xs text-ink-2">
+                  <input
+                    type="checkbox"
+                    checked={p.asPage === true}
+                    onChange={(e) => onChange(photos.map((x, j) => (j === i ? { ...x, asPage: e.target.checked } : x)))}
+                  />
+                  หน้าเอกสาร (เต็มหน้า)
+                </label>
+              )}
               {layout === 'p' && (
                 <input
                   value={p.heading ?? ''}
@@ -226,7 +236,7 @@ export function LetterPhotos({
         <p className="text-xs text-muted-token">แบบ 1 รูปต่อ 1 หน้า: ช่องหัวข้อหน้านี้ใต้แต่ละรูปคือหัวข้อของหน้านั้น · เว้นว่างไว้ = หน้าแรกใช้หัวข้อรวม หน้าอื่นไม่มีหัวข้อ</p>
       )}
       <p className="text-xs text-muted-token">
-        รูปและหน้า PDF จะอยู่ท้ายหนังสือ (PDF แปลงเป็นรูปทีละหน้า) ในไฟล์ Word และตอนพิมพ์ · เก็บไว้กับหนังสือในทะเบียนเมื่อกดบันทึก/ดาวน์โหลด/พิมพ์
+        รูปและหน้า PDF จะอยู่ท้ายหนังสือ (PDF แปลงเป็นรูปทีละหน้า · แต่ละหน้า PDF ขึ้นเต็มกระดาษ 1 แผ่น ส่วนรูปถ่ายจัดตามการจัดวางที่เลือก) ในไฟล์ Word และตอนพิมพ์ · เก็บไว้กับหนังสือในทะเบียนเมื่อกดบันทึก/ดาวน์โหลด/พิมพ์
       </p>
     </div>
   )
