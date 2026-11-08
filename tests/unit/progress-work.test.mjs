@@ -170,7 +170,7 @@ test('fitCurve (R29): ยอดรวมถ่วงมูลค่าตรง�
   const hi = fitCurve(p, [0.95])
   assert.ok(Math.abs(hi.items['0.1.0'][0] - 0.95) < 0.2 && hi.maxErr < 5e-5)
   // อ่านเส้นจริงจากชีตจำลอง
-  const cells = { '3,4': 'W1', '3,5': 'W2', '3,6': 'W3', '5,1': 'ดำเนินการ ได้จริง', '5,2': 'ความคืบหน้าสะสม / สัปดาห์ (%)', '5,4': 0.1, '5,5': 0.3 }
+  const cells = { '3,4': 'W1', '3,5': 'W2', '3,6': 'W3', '4,1': 'ดำเนินการ ได้จริง', '4,2': 'ความคืบหน้า / สัปดาห์ (%)', '5,2': 'ความคืบหน้าสะสม / สัปดาห์ (%)', '4,4': 0.05, '5,4': 0.1, '5,5': 0.3 }
   const g = { name: 'x', rows: 8, cols: 8, v: (r, c) => cells[`${r},${c}`] ?? null, w: (r, c) => String(cells[`${r},${c}`] ?? '') }
   assert.deepEqual(readActualCurve(g), [0.1, 0.3, null])
   assert.equal(readActualCurve({ ...g, v: () => null, w: () => '' }), null)

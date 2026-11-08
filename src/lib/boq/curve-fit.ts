@@ -100,8 +100,10 @@ export function readActualCurve(g: Grid): (number | null)[] | null {
   let n = 0
   while (/^W\d+$/i.test(t(g, hr, c0 + n))) n += 1
   for (let r = hr + 1; r < g.rows; r += 1) {
-    const label = Array.from({ length: Math.min(c0, 8) }, (_, c) => t(g, r, c)).join('')
-    if (!label.includes('ได้จริง') || !label.includes('สะสม')) continue
+    const label = (rr: number) => Array.from({ length: Math.min(c0, 8) }, (_, c) => t(g, rr, c)).join('')
+    // ป้าย "ดำเนินการ ได้จริง" ผสานช่องลงมาหลายแถว (เหลือแค่แถวบนสุด) · "สะสม" อยู่ที่แถวของเส้นเอง
+    if (!label(r).includes('สะสม')) continue
+    if (![0, 1, 2, 3].some((d) => r - d > hr && label(r - d).includes('ได้จริง'))) continue
     const out: (number | null)[] = []
     for (let k = 0; k < n; k += 1) {
       const v = g.v(r, c0 + k)
