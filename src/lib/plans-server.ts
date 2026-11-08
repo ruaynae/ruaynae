@@ -29,8 +29,11 @@ export async function readJson(req: Request): Promise<Record<string, unknown> | 
 }
 
 type Load =
-  | { state: 'ok'; plan: SavedPlan; sites: { id: string; name: string }[] }
+  | { state: 'ok'; plan: SavedPlan; sites: PlanSite[] }
   | { state: 'not_found' | 'missing' | 'error' }
+
+/** โครงการในช่องผูกโครงการ · วันเริ่ม/กำหนดส่งมอบไว้เทียบกับวันของแผน (R28b) */
+export type PlanSite = { id: string; name: string; start: string | null; end: string | null }
 
 /** อ่านแผนงานหนึ่งฉบับ (+ รายชื่อโครงการสำหรับช่องผูกโครงการ) — ใช้ทั้งหน้าแผนงานและหน้าแก้ */
 export async function loadPlan(id: string, withSites: boolean): Promise<Load> {
@@ -39,7 +42,7 @@ export async function loadPlan(id: string, withSites: boolean): Promise<Load> {
   const [{ data, error }, sites] = await Promise.all([
     sb.from('construction_plans').select(PLAN_COLUMNS).eq('id', id).maybeSingle(),
     withSites
-      ? sb.from('sites').select('id, name').order('name', { ascending: true }).range(0, 199)
+      ? sb.from('sites').select('id, name, start_date, end_date').order('name', { ascending: true }).range(0, 199)
       : Promise.resolve({ data: [], error: null }),
   ])
   if (error) {
@@ -54,7 +57,8 @@ export async function loadPlan(id: string, withSites: boolean): Promise<Load> {
     return { state: 'error' }
   }
   if (sites.error) console.error('[plans] อ่านรายชื่อโครงการไม่ได้', sites.error.message)
-  return { state: 'ok', plan, sites: sites.data ?? [] }
+  const list = (sites.data ?? []) as { id: string; name: string; start_date?: string | null; end_date?: string | null }[]
+  return { state: 'ok', plan, sites: list.map((x) => ({ id: x.id, name: x.name, start: x.start_date ?? null, end: x.end_date ?? null })) }
 }
 
 type LoadDomestic =

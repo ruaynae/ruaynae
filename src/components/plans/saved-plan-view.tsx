@@ -4,11 +4,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import * as Dialog from '@radix-ui/react-dialog'
-import { Download, Eraser, FileSpreadsheet, Loader2, Pencil, RotateCcw, Save, Trash2 } from 'lucide-react'
+import { CalendarClock, Download, Eraser, FileSpreadsheet, Loader2, Pencil, RotateCcw, Save, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { planReport } from '@/lib/boq/core'
 import { withW124 } from '@/lib/boq/w124'
-import { fillSplit, lastFilledWeek, planMessage, planWeeks, splitCount, type PlanProgress, type SavedPlan } from '@/lib/boq/plan-store'
+import {
+  fillSplit, lastFilledWeek, planMessage, planWeeks, rebaseSchedule, spanDaysIso, splitCount, type PlanProgress, type SavedPlan,
+} from '@/lib/boq/plan-store'
 import { fmtDate, todayInBangkok } from '@/lib/format'
 import { PaperSelect, type Paper } from './paper-select'
 import { ProgressEntry } from './progress-entry'
@@ -20,7 +22,8 @@ import { ProgressReportView } from './progress-report'
  * · ดาวน์โหลด Excel = ไฟล์แผนงานพร้อมผลงานที่กรอกไว้ในช่องสีเหลือง
  */
 
-type Site = { id: string; name: string }
+/** โครงการในช่องผูกโครงการ · `start`/`end` = วันเริ่มงาน/กำหนดส่งมอบของโครงการ (R28b) */
+type Site = { id: string; name: string; start: string | null; end: string | null }
 
 async function patch(id: string, body: Record<string, unknown>) {
   const res = await fetch(`/api/plans/${id}`, {
@@ -50,7 +53,8 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
   const weekStart = (i: number) => new Date(t0 + i * 7 * DAY).toISOString().slice(0, 10)
   const weekEnd = (i: number) => new Date(t0 + (Math.min(plan.days, 7 * (i + 1)) - 1) * DAY).toISOString().slice(0, 10)
   const filled = (i: number) => Object.values(draft.items).some((a) => a[i] != null)
-  const [busy, setBusy] = useState<null | 'save' | 'site' | 'export' | 'delete' | 'split'>(null)
+  const [busy, setBusy] = useState<null | 'save' | 'site' | 'export' | 'delete' | 'split' | 'dates'>(null)
+  const [datesOpen, setDatesOpen] = useState(false)
   const splitInput = useRef<HTMLInputElement>(null)
   const split = splitCount(plan.categories)
   const [delOpen, setDelOpen] = useState(false)
@@ -178,6 +182,37 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
     }
   }
 
+  /** R28b: วันของแผนไม่ตรงกับวันสัญญาของโครงการที่ผูกไว้ */
+  const site = sites.find((x) => x.id === siteId)
+  const siteDays = site?.start && site.end ? spanDaysIso(site.start, site.end) : null
+  const datesDiffer = Boolean(site?.start && siteDays && siteDays >= 14 && siteDays <= 1500 && (site.start !== plan.start || siteDays !== plan.days))
+  const rebased = datesDiffer && site?.start && siteDays ? rebaseSchedule({ ...plan, progress: savedProgress }, site.start, siteDays) : null
+
+  async function onUseSiteDates() {
+    if (!rebased || !site?.start || !siteDays) return
+    if (dirty) return void toast.warning('บันทึกผลงานที่กรอกค้างไว้ก่อน แล้วค่อยเปลี่ยนวันของแผน')
+    setBusy('dates')
+    try {
+      const r = await patch(plan.id, {
+        expectedUpdatedAt: updatedAt,
+        plan: {
+          name: plan.name, project: plan.project, factor: plan.factor, vat: plan.vat, categories: rebased.categories,
+          start: site.start, days: siteDays, periods: plan.periods, w124: plan.w124, sourceFile: plan.sourceFile,
+        },
+        progress: rebased.progress,
+      })
+      if (!r.ok) return failed(r.error)
+      setUpdatedAt(r.updatedAt)
+      setDatesOpen(false)
+      toast.success('เปลี่ยนวันของแผนตามโครงการแล้ว')
+      router.refresh()
+    } catch {
+      toast.error('บันทึกไม่สำเร็จ ตรวจการเชื่อมต่อแล้วลองใหม่')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   async function onDelete() {
     setBusy('delete')
     try {
@@ -213,6 +248,19 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
         </label>
         {siteId && <Link href={`/sites/${siteId}`} className="btn-secondary">เปิดหน้าโครงการ</Link>}
       </section>
+
+      {datesDiffer && site?.start && site.end && (
+        <section className="flex flex-wrap items-center gap-3 rounded-md border border-status-progress-ring bg-status-progress-bg p-4 text-sm text-status-progress">
+          <CalendarClock className="size-5 shrink-0" />
+          <p className="min-w-[14rem] flex-1">
+            วันของแผนนี้ ({fmtDate(plan.start)} – {fmtDate(end)}) ไม่ตรงกับวันสัญญาของโครงการ ({fmtDate(site.start)} – {fmtDate(site.end)})
+            — ตารางปริมาณงานที่แนบหนังสือส่งมอบงานใช้วันของแผน
+          </p>
+          <button type="button" className="btn-secondary" disabled={busy === 'dates'} onClick={() => setDatesOpen(true)}>
+            <CalendarClock className="size-4" />ใช้วันตามโครงการ
+          </button>
+        </section>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <PaperSelect value={paper} onChange={setPaper} />
@@ -335,6 +383,36 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
                 }}
               >
                 <Eraser className="size-4" />ล้างทุกสัปดาห์
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      <Dialog.Root open={datesOpen} onOpenChange={(v) => { if (!busy) setDatesOpen(v) }}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40 animate-fade-in" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line bg-surface p-5 shadow-e3 animate-pop-in">
+            <Dialog.Title className="text-lg font-bold text-ink">ใช้วันตามโครงการ</Dialog.Title>
+            <Dialog.Description asChild>
+              <div className="mt-1 space-y-2 text-sm text-muted-token">
+                {site?.start && site.end && (
+                  <p>
+                    เปลี่ยนวันของแผนเป็น <b className="text-ink">{fmtDate(site.start)} – {fmtDate(site.end)}</b> ({siteDays} วัน) ·
+                    ลำดับและระยะเวลาของงานแต่ละงานคงเดิม แต่เลื่อนไปตามวันเริ่มใหม่
+                  </p>
+                )}
+                <p>ผลงานที่กรอกไว้ย้ายไปอยู่สัปดาห์ของวันที่เดิม (ไม่ใช่เลข W เดิม)</p>
+                {rebased && rebased.dropped > 0 && (
+                  <p className="font-semibold text-urgent">ผลงาน {rebased.dropped} ช่องตกนอกช่วงสัญญาใหม่และจะถูกทิ้ง — ตรวจแล้วกรอกใหม่ในสัปดาห์ที่ถูกต้อง</p>
+                )}
+              </div>
+            </Dialog.Description>
+            <div className="mt-5 flex justify-end gap-2">
+              <Dialog.Close disabled={busy !== null} className="btn-secondary">ปิด</Dialog.Close>
+              <button type="button" className="btn-primary" disabled={busy !== null} onClick={() => void onUseSiteDates()}>
+                {busy === 'dates' ? <Loader2 className="size-4 animate-spin" /> : <CalendarClock className="size-4" />}
+                เปลี่ยนวัน
               </button>
             </div>
           </Dialog.Content>

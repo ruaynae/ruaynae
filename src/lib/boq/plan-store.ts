@@ -275,6 +275,58 @@ export function fillSplit(target: BoqCategory[], source: BoqCategory[]) {
   return { categories, filled }
 }
 
+/** จำนวนวันจากวันเริ่มถึงวันสิ้นสุด (นับทั้งสองวัน) · ผิดรูป = null */
+export function spanDaysIso(start: string, end: string): number | null {
+  if (!isIsoDate(start) || !isIsoDate(end)) return null
+  const d = Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / DAY) + 1
+  return d > 0 ? d : null
+}
+
+/**
+ * ย้ายวันของแผนไปตามวันสัญญาของโครงการ (R28b) — งานคงตำแหน่งเทียบวันเริ่มเดิม (บีบให้อยู่ในระยะใหม่)
+ * · ผลงานที่กรอกไว้ย้ายตาม**วันที่จริง** ของสิ้นสัปดาห์เดิม → สัปดาห์ใหม่ที่วันนั้นตกอยู่ (ไม่ใช่ตามเลข W)
+ * · สัปดาห์ที่ตกนอกสัญญาใหม่ถูกทิ้ง และนับไว้ใน `dropped` ให้หน้าจอเตือน
+ */
+export function rebaseSchedule(
+  p: { categories: BoqCategory[]; start: string; days: number; progress: PlanProgress },
+  start: string,
+  days: number,
+) {
+  const clamp = (s: Span): Span => {
+    const offset = Math.max(0, Math.min(days - 1, s.offset))
+    return { offset, dur: Math.max(1, Math.min(s.dur, days - offset)) }
+  }
+  const categories = p.categories.map((c) => ({
+    ...c,
+    tasks: c.tasks.map((t) => {
+      const base = clamp({ offset: t.offset, dur: t.dur })
+      return {
+        ...t, ...base,
+        ...(t.fast ? { fast: clamp(t.fast) } : {}),
+        ...(t.ops ? { ops: clamp(t.ops) } : {}),
+      }
+    }),
+  }))
+  const oldWeeks = planWeeks(p.days)
+  const weeks = planWeeks(days)
+  const t0 = Date.parse(`${p.start}T00:00:00Z`)
+  const n0 = Date.parse(`${start}T00:00:00Z`)
+  let dropped = 0
+  const items: PlanProgress['items'] = {}
+  for (const [key, arr] of Object.entries(p.progress.items)) {
+    const out: (number | null)[] = new Array(weeks).fill(null)
+    arr.slice(0, oldWeeks).forEach((v, k) => {
+      if (v == null) return
+      const end = t0 + (Math.min(p.days, 7 * (k + 1)) - 1) * DAY
+      const j = Math.floor((end - n0) / DAY / 7)
+      if (j < 0 || j >= weeks) dropped += 1
+      else out[j] = v
+    })
+    if (out.some((x) => x != null)) items[key] = out
+  }
+  return { categories, progress: { weekly: true as const, items }, dropped }
+}
+
 /** สัปดาห์ล่าสุดที่กรอกผลงานอย่างน้อยหนึ่งช่อง (1 = W1) · 0 = ยังไม่กรอก */
 export function lastFilledWeek(p: PlanProgress) {
   let last = 0

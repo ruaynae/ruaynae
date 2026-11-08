@@ -121,3 +121,23 @@ test('pwRows/pwPages: ครบทุกแถว ไม่ซ้ำ · หั�
   assert.equal(rows[rows.length - 1].k, 'grand')
   assert.equal(PW_ATTACHMENT, 'แบบแสดงรายการ ปริมาณงาน และราคา ที่แล้วเสร็จ 1 ชุด')
 })
+
+test('rebaseSchedule (R28b): ย้ายวันแผนตามโครงการ · ผลงานย้ายตามวันที่จริง ไม่ใช่เลข W', async () => {
+  const { rebaseSchedule, spanDaysIso } = await import('../../src/lib/boq/plan-store.ts')
+  // กรณีจริงของเจ้าของ: แผนตั้งวันเริ่มตามค่าตั้งต้น 15 พ.ย. แต่สัญญาเริ่ม 17 มิ.ย. – 13 ธ.ค. (180 วัน)
+  assert.equal(spanDaysIso('2026-06-17', '2026-12-13'), 180)
+  assert.equal(spanDaysIso('2026-12-13', '2026-06-17'), null)
+  const p = parsePlanInput({ ...plan(), start: '2026-11-15', days: 180 }).value
+  const r = rebaseSchedule({ ...p, progress: { weekly: true, items: { '0.0.0': [0.5, 0.8], '0.0.1': [1] } } }, '2026-06-17', 180)
+  // สิ้น W1 เดิม = 21 พ.ย. → สัปดาห์ที่ 23 ของสัญญาใหม่ (index 22) · W2 เดิม (28 พ.ย.) → index 23
+  assert.equal(r.progress.items['0.0.0'][22], 0.5)
+  assert.equal(r.progress.items['0.0.0'][23], 0.8)
+  assert.equal(r.progress.items['0.0.1'][22], 1)
+  assert.equal(r.dropped, 0)
+  // ผลงานที่ตกนอกสัญญาใหม่ถูกนับว่าทิ้ง · งานถูกบีบให้อยู่ในระยะใหม่
+  const short = rebaseSchedule({ ...p, progress: { weekly: true, items: { '0.0.0': [0.5] } } }, '2026-01-01', 30)
+  assert.equal(short.dropped, 1)
+  assert.deepEqual(short.progress.items, {})
+  for (const t of short.categories.flatMap((c) => c.tasks)) assert.ok(t.offset + t.dur <= 30)
+  assert.equal(parsePlanInput({ ...plan(), categories: short.categories, start: '2026-01-01', days: 30 }).ok, true)
+})
