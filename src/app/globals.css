@@ -662,6 +662,26 @@
   .ma-sheet .ma-table th { font-weight: 700; text-align: center; vertical-align: middle; }
   .ma-sheet .ma-table tr { break-inside: avoid; }
 
+  /* ── ปริมาณงานที่แล้วเสร็จ (R28) — แผ่นแนวนอนเดียวกับ R26 · 14 คอลัมน์ ตัวเลขเล็กลงให้ยอดหลักล้านพอดีช่อง ── */
+  .ma-sheet.pw-sheet { font-size: 15pt; padding: 40px 36px; }
+  .pw-sheet .ma-title { font-size: 18pt; margin-bottom: 4pt; }
+  .pw-sheet .ma-head { margin-bottom: 0; }
+  .pw-sheet .pw-unit { text-align: right; font-size: 13pt; }
+  .pw-sheet .pw-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13pt; line-height: 1.25; }
+  .pw-sheet .pw-table th, .pw-sheet .pw-table td { border: 0.75pt solid #000; padding: 0 3pt; vertical-align: top; overflow-wrap: anywhere; }
+  .pw-sheet .pw-table th { font-weight: 700; text-align: center; vertical-align: middle; background: #e5e7eb; line-height: 1.1; }
+  .pw-sheet .pw-table tr { break-inside: avoid; }
+  .pw-sheet .pw-n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .pw-sheet .pw-c { text-align: center; white-space: nowrap; }
+  .pw-sheet .pw-cat td, .pw-sheet .pw-task td { font-weight: 700; }
+  .pw-sheet .pw-sub td { font-weight: 700; background: #f3f4f6; }
+  .pw-sheet .pw-catTotal td { font-weight: 700; background: #e0ecff; }
+  .pw-sheet .pw-grand td { font-weight: 700; background: #fde68a; }
+  .pw-sheet .pw-foot { margin-top: 4pt; font-size: 15pt; }
+  .pw-sheet .pw-table th, .pw-sheet .pw-sub td, .pw-sheet .pw-catTotal td, .pw-sheet .pw-grand td {
+    print-color-adjust: exact; -webkit-print-color-adjust: exact;
+  }
+
   /* "แนบรายการ" (แผ่นแนวตั้ง · ตาราง 3 คอลัมน์) — ไหลข้ามหน้าเอง หัวตารางซ้ำ ไม่ตัดแถว */
   .letter-sheet .ml-title { margin: 0 0 10pt; text-align: center; font-weight: 700; }
   .letter-sheet .ml-table { width: 100%; border-collapse: collapse; table-layout: fixed; }

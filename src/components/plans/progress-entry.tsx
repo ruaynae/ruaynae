@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Check, ChevronDown } from 'lucide-react'
-import type { BoqCategory } from '@/lib/boq/core'
+import { isSplitItem, type BoqCategory, type BoqItem } from '@/lib/boq/core'
 import { itemKey, type PlanProgress } from '@/lib/boq/plan-store'
 import { fmtMoney } from '@/lib/format'
 
@@ -10,6 +10,7 @@ import { fmtMoney } from '@/lib/format'
  * ช่องกรอกผลงานของสัปดาห์หนึ่ง — % แล้วเสร็จสะสม ณ สิ้นสัปดาห์ของแต่ละรายการย่อย (ปร.4)
  * · ช่องว่าง = เท่าสัปดาห์ก่อน (ตัวเลขจาง ๆ ในช่องคือค่าที่ยกมา) — กติกาเดียวกับช่องว่างในไฟล์ Excel
  * · "ทั้งงาน" = ใส่ % เดียวกันให้ทุกรายการของงานนั้นในคลิกเดียว (งานที่ไม่ได้แตกรายการ)
+ * · R28: รายการที่ BOQ แยกค่าวัสดุ/ค่าแรง มีสองช่อง — ช่องค่าแรงที่ยังไม่เคยกรอก = เท่าค่าวัสดุ (ตัวจางในช่องบอกค่าที่ใช้)
  */
 
 const pctText = (x: number) => String(Math.round(x * 10000) / 100)
@@ -57,8 +58,62 @@ function PctInput({
   )
 }
 
+/** % ช่องหลัก (ค่าวัสดุ / ทั้งรายการ) ณ สัปดาห์ k — กรอกสัปดาห์นี้ หรือยกมา */
+const mainAt = (p: PlanProgress, key: string, k: number) => p.items[key]?.[k] ?? inherited(p.items[key], k)
+/** % ค่าแรง ณ สัปดาห์ k · `own` = ไม่นับช่องของสัปดาห์นี้ (ใช้เป็นตัวจางในช่อง) */
+function labAt(p: PlanProgress, key: string, k: number, own = true): number {
+  const l = p.lab?.[key]
+  if (own && l?.[k] != null) return l[k] as number
+  for (let i = k - 1; i >= 0; i -= 1) if (l?.[i] != null) return l[i] as number
+  return mainAt(p, key, k)
+}
+/** % ของทั้งรายการ ถ่วงมูลค่าวัสดุ/แรง (สูตรเดียวกับ `itemSeries`) */
+function itemPct(p: PlanProgress, it: BoqItem, key: string, k: number) {
+  const m = mainAt(p, key, k)
+  if (!isSplitItem(it)) return m
+  const mat = it.mat as number
+  const lab = it.lab as number
+  return (mat * m + lab * labAt(p, key, k)) / (mat + lab)
+}
+
+/** ช่องกรอกของรายการหนึ่ง — แยกค่าวัสดุ/ค่าแรง = สองช่อง · ไม่แยก = ช่องเดียว */
+function ItemInputs({
+  it, name, k, keyId, progress, onItem, onLab,
+}: {
+  it: BoqItem; name: string; k: number; keyId: string; progress: PlanProgress
+  onItem: (key: string, v: number | null) => void
+  onLab: (key: string, v: number | null) => void
+}) {
+  const main = (
+    <PctInput
+      label={`% แล้วเสร็จ${isSplitItem(it) ? 'ค่าวัสดุ' : ''} ${name}`}
+      value={progress.items[keyId]?.[k] ?? null}
+      placeholder={pctText(inherited(progress.items[keyId], k))}
+      onCommit={(v) => onItem(keyId, v)}
+    />
+  )
+  if (!isSplitItem(it)) return main
+  return (
+    <div className="flex shrink-0 items-end gap-1.5">
+      <label className="block">
+        <span className="block text-center text-xs text-muted-token">วัสดุ</span>
+        {main}
+      </label>
+      <label className="block">
+        <span className="block text-center text-xs text-muted-token">ค่าแรง</span>
+        <PctInput
+          label={`% แล้วเสร็จค่าแรง ${name}`}
+          value={progress.lab?.[keyId]?.[k] ?? null}
+          placeholder={pctText(labAt(progress, keyId, k, false))}
+          onCommit={(v) => onLab(keyId, v)}
+        />
+      </label>
+    </div>
+  )
+}
+
 export function ProgressEntry({
-  categories, progress, k, weekLabel, onItem, onTask,
+  categories, progress, k, weekLabel, onItem, onLab, onTask,
 }: {
   categories: BoqCategory[]
   progress: PlanProgress
@@ -67,6 +122,9 @@ export function ProgressEntry({
   /** ป้ายสัปดาห์ เช่น "W5 · 15 ก.ค. 69 – 21 ก.ค. 69" */
   weekLabel: string
   onItem: (key: string, v: number | null) => void
+  /** % ค่าแรงของรายการที่แยกค่าวัสดุ/ค่าแรง (R28) */
+  onLab: (key: string, v: number | null) => void
+  /** "ทั้งงาน" — ใส่ทั้งช่องหลักและช่องค่าแรงของทุกรายการ */
   onTask: (keys: string[], v: number | null) => void
 }) {
   // เลขข้อเหมือนในไฟล์ Excel — หมวด/งานที่ปิดไว้ไม่กินเลข
@@ -87,7 +145,7 @@ export function ProgressEntry({
         const no = numbers[ci].cat
         const on = c.tasks.flatMap((t, ti) => (t.on ? t.items.map((it, ii) => ({ it, key: itemKey(ci, ti, ii) })) : []))
         const catAmt = on.reduce((s, x) => s + x.it.amount, 0) || 1
-        const catPct = on.reduce((s, x) => s + x.it.amount * (progress.items[x.key]?.[k] ?? inherited(progress.items[x.key], k)), 0) / catAmt
+        const catPct = on.reduce((s, x) => s + x.it.amount * itemPct(progress, x.it, x.key, k), 0) / catAmt
         return (
           <details key={ci} open={categories.length === 1} className="panel group">
             <summary className="flex cursor-pointer list-none items-center gap-2 bg-surface-2 px-4 py-2.5 font-semibold text-ink">
@@ -101,7 +159,7 @@ export function ProgressEntry({
                 const j = numbers[ci].tasks[ti]
                 const keys = t.items.map((_, ii) => itemKey(ci, ti, ii))
                 const now = keys.map((key) => progress.items[key]?.[k] ?? null)
-                const eff = keys.map((key, i) => now[i] ?? inherited(progress.items[key], k))
+                const eff = keys.map((key, i) => itemPct(progress, t.items[i], key, k))
                 const amt = t.items.reduce((s, it) => s + it.amount, 0) || 1
                 const taskPct = t.items.reduce((s, it, i) => s + it.amount * eff[i], 0) / amt
                 const done = eff.every((x) => x >= 1)
@@ -119,12 +177,7 @@ export function ProgressEntry({
                         </div>
                       </div>
                       {single ? (
-                        <PctInput
-                          label={`% แล้วเสร็จ ${t.name}`}
-                          value={now[0]}
-                          placeholder={pctText(inherited(progress.items[keys[0]], k))}
-                          onCommit={(v) => onItem(keys[0], v)}
-                        />
+                        <ItemInputs it={t.items[0]} name={t.name} k={k} keyId={keys[0]} progress={progress} onItem={onItem} onLab={onLab} />
                       ) : (
                         <div className="flex shrink-0 items-center gap-1.5">
                           <span className="text-xs text-muted-token">ทั้งงาน</span>
@@ -140,19 +193,15 @@ export function ProgressEntry({
                     {!single && (
                       <ul className="mt-2 space-y-1.5 border-l-2 border-line pl-3">
                         {t.items.map((it, ii) => (
-                          <li key={ii} className="flex items-center gap-3">
-                            <div className="min-w-0 flex-1 text-sm text-ink-2">
+                          <li key={ii} className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
+                            <div className="min-w-[10rem] flex-1 text-sm text-ink-2">
                               <span className="break-words">{it.name || '(ไม่มีชื่อรายการ)'}</span>
                               <span className="block text-xs text-muted-token">
                                 {it.qty != null && `${it.qty.toLocaleString('th-TH')} ${it.unit} · `}{fmtMoney(it.amount)} บาท
+                                {isSplitItem(it) && ` (วัสดุ ${fmtMoney(it.mat as number)} · แรง ${fmtMoney(it.lab as number)})`}
                               </span>
                             </div>
-                            <PctInput
-                              label={`% แล้วเสร็จ ${it.name}`}
-                              value={now[ii]}
-                              placeholder={pctText(inherited(progress.items[keys[ii]], k))}
-                              onCommit={(v) => onItem(keys[ii], v)}
-                            />
+                            <ItemInputs it={it} name={it.name} k={k} keyId={keys[ii]} progress={progress} onItem={onItem} onLab={onLab} />
                           </li>
                         ))}
                       </ul>

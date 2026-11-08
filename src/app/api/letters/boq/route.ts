@@ -12,6 +12,7 @@ export const runtime = 'nodejs'
  * · เรียกจากปุ่ม "เลือกจาก BOQ" ในหน้าหนังสือแบบ "งานเพิ่ม / งานลด" · เจ้าของเท่านั้น (เหมือนเมนูแผนงาน)
  * · ไม่ส่ง `planId` = รายชื่อแผนงานทั้งหมด (ไม่มีรายการ · แผนของโครงการนี้อยู่บนสุด)
  * · ส่ง `planId` = หมวด → งาน → รายการของแผนนั้น + Factor F
+ * · ส่ง `planId` + `progress=1` = แผนทั้งฉบับพร้อมผลงาน ให้หนังสือส่งมอบงานสร้างตาราง "ปริมาณงานที่แล้วเสร็จ" (R28)
  */
 export async function GET(req: NextRequest) {
   const denied = await denyUnlessOwner()
@@ -39,6 +40,15 @@ export async function GET(req: NextRequest) {
   if (error) return dbFail('อ่านแผนงานไม่ได้', error, 'LOAD_FAILED')
   const plan = data ? planFromRow(data as Record<string, unknown>) : null
   if (!plan) return NextResponse.json({ error: 'PLAN_NOT_FOUND' }, { status: 404 })
+
+  if (req.nextUrl.searchParams.get('progress') === '1') {
+    return NextResponse.json({
+      plan: {
+        id: plan.id, name: plan.name, categories: plan.categories, progress: plan.progress, start: plan.start, days: plan.days,
+        project: { name: plan.project.name, owner: plan.project.owner, loc1: plan.project.loc1, loc2: plan.project.loc2, total: plan.project.total },
+      },
+    })
+  }
 
   return NextResponse.json({
     factor: plan.factor,

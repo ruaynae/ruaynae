@@ -23,6 +23,50 @@ export type BoqItem = {
   code: string; name: string; qty: number | null; unit: string; amount: number
   /** หัวข้อย่อยเหนือรายการในแบบรายละเอียด เช่น "Built In ตู้เตี้ยเก็บเอกสาร : B-01" (ไม่มี = ไม่มีหัวข้อ) */
   head?: string
+  /** ค่าวัสดุ / ค่าแรง (รวมทั้งแถว) จาก ปร.4 — R28 · มีทั้งคู่และรวมกันเท่า `amount` เสมอ · ไม่มี = BOQ ไม่ได้แยก (แผนเก่า) */
+  mat?: number
+  lab?: number
+}
+
+/** แถว ปร.4 ที่แยกค่าวัสดุ/ค่าแรง: "รวม" ของวัสดุอยู่ 3 ช่องก่อนยอดรวม · ค่าแรง 1 ช่องก่อน · รวมกันไม่ลงตัวกับยอด = ไม่แยก */
+function splitOf(g: Grid, r: number, amt: number, a: number): { mat?: number; lab?: number } {
+  if (amt < 3) return {}
+  const m = num(g.v(r, amt - 3))
+  const l = num(g.v(r, amt - 1))
+  if (m == null && l == null) return {}
+  const mat = m ?? 0
+  const lab = l ?? 0
+  return mat >= 0 && lab >= 0 && Math.abs(mat + lab - a) <= Math.max(0.01, a * 1e-6) ? { mat, lab } : {}
+}
+
+/** รายการที่ต้องกรอก % ค่าวัสดุกับค่าแรงแยกกัน (มีทั้งสองก้อน) — ก้อนเดียว = กรอกช่องเดียวเหมือนเดิม */
+export const isSplitItem = (it: BoqItem) => (it.mat ?? 0) > 0 && (it.lab ?? 0) > 0
+
+/** % สะสม ณ แต่ละสัปดาห์ — ช่องว่าง = เท่าสัปดาห์ก่อน · `fallback` = ค่าก่อนเคยกรอก (ไม่ส่ง = 0) */
+function carry(vals: readonly (number | null)[] | undefined, weeks: number, fallback?: readonly number[]) {
+  const out: number[] = []
+  let prev: number | null = null
+  for (let k = 0; k < weeks; k += 1) {
+    const v = vals?.[k]
+    if (v != null) prev = Math.min(1, Math.max(0, v))
+    out.push(prev ?? fallback?.[k] ?? 0)
+  }
+  return out
+}
+
+/**
+ * ผลงานของรายการหนึ่งรายสัปดาห์ (R28) — `m` = % ช่องหลัก (ค่าวัสดุ หรือทั้งรายการถ้าไม่แยก) · `l` = % ค่าแรง
+ * · ค่าแรงที่ยังไม่เคยกรอก = เท่าช่องหลักของสัปดาห์นั้น (แผนเก่า/คนที่ไม่แยก ได้ผลเท่าเดิมทุกบาท)
+ * · `eff` = % ของทั้งรายการ ถ่วงด้วยมูลค่าวัสดุ/แรง
+ */
+export function itemSeries(it: BoqItem, mVals: readonly (number | null)[] | undefined, lVals: readonly (number | null)[] | undefined, weeks: number) {
+  const m = carry(mVals, weeks)
+  if (!isSplitItem(it)) return { m, l: m, eff: m }
+  const l = carry(lVals, weeks, m)
+  const mat = it.mat as number
+  const lab = it.lab as number
+  const tot = mat + lab
+  return { m, l, eff: m.map((x, k) => (mat * x + lab * l[k]) / tot) }
 }
 
 /** แถวหัวข้อย่อย = มีชื่อ ไม่มีจำนวน/ยอดเงิน ไม่ใช่แถวรวม และไม่ใช่บรรทัดอธิบายที่ขึ้นต้นด้วยขีด */
@@ -249,7 +293,7 @@ function detailItems(g: Grid, amt: number, ch: Child, after: number): BoqItem[] 
     const a = num(g.v(k, amt))
     if (subHead(rawName, qty, a)) { head = rawName; continue }
     if (!name || qty == null || a == null || a <= 0 || /^รวม/.test(name)) continue
-    items.push({ code: isCode(cc) ? cc : '', name, qty, unit: g.w(k, 3), amount: a, ...(head ? { head } : {}) })
+    items.push({ code: isCode(cc) ? cc : '', name, qty, unit: g.w(k, 3), amount: a, ...(head ? { head } : {}), ...splitOf(g, k, amt, a) })
   }
   const sum = items.reduce((s, x) => s + x.amount, 0)
   return Math.abs(sum - ch.amount) <= Math.max(1, ch.amount * 0.005) ? items : []
@@ -359,7 +403,7 @@ function sectionTasks(g: Grid, amt: number, from: number, to: number, fallback: 
       cur = { name: fallback, items: [] }
       out.push(cur)
     }
-    cur.items.push({ code: isCode(code) ? code : '', name: stripDash(name), qty, unit: g.w(r, 3), amount: a, ...(head ? { head } : {}) })
+    cur.items.push({ code: isCode(code) ? code : '', name: stripDash(name), qty, unit: g.w(r, 3), amount: a, ...(head ? { head } : {}), ...splitOf(g, r, amt, a) })
   }
   return out.filter((t) => t.items.length)
 }
@@ -652,7 +696,7 @@ export function distribute(categories: BoqCategory[], days: number, kind?: AltKi
 // · แต่ละสัปดาห์ที่กรอก = หนึ่งจุดใน `installments` (วันที่ = วันสุดท้ายของสัปดาห์) · น้ำหนัก = ค่างานต้นทุนของรายการ
 // · ผลประเมิน ว.124 เติมทีหลังด้วย `withW124()` (ไฟล์นี้ไม่ import ค่าจากไฟล์อื่น)
 
-type StoredProgress = { items: Record<string, (number | null)[]> }
+type StoredProgress = { items: Record<string, (number | null)[]>; lab?: Record<string, (number | null)[]> }
 
 export function planReport(
   p: { name: string; categories: BoqCategory[]; start: string; days: number; w124: boolean; progress: StoredProgress },
@@ -679,18 +723,11 @@ export function planReport(
       if (!t.on) return
       j += 1
       const items = t.items.map((it, ii) => {
-        const vals = p.progress.items[`${ci}.${ti}.${ii}`] ?? []
-        const eff: number[] = []
-        let prev = 0
-        for (let k = 0; k < weeks; k += 1) {
-          const v = vals[k]
-          if (v != null) {
-            prev = Math.min(1, Math.max(0, v))
-            lastWeek = Math.max(lastWeek, k + 1)
-          }
-          eff.push(prev)
-        }
-        return { amount: it.amount, eff }
+        const key = `${ci}.${ti}.${ii}`
+        const vals = p.progress.items[key]
+        const lab = p.progress.lab?.[key]
+        for (const a of [vals, lab]) a?.forEach((v, k) => { if (v != null && k < weeks) lastWeek = Math.max(lastWeek, k + 1) })
+        return { amount: it.amount, eff: itemSeries(it, vals, lab, weeks).eff }
       })
       rows.push({ code: `${catNo}.${j}`, name: t.name, category: c.name, amount: items.reduce((s, x) => s + x.amount, 0), offset: t.offset, dur: t.dur, items })
     })

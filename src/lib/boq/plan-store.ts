@@ -16,8 +16,13 @@ export type PlanProject = {
 export type PlanProgress = {
   /** รูปแบบรายสัปดาห์ (26 ต.ค. 2569) — ไม่มีธงนี้ = แบบงวดเดิม `{ dates, items }` ที่ `parseProgress` แปลงให้ */
   weekly: true
-  /** % สะสม ณ สิ้นสัปดาห์ ยาวเท่าจำนวนสัปดาห์ของสัญญา (0 = W1) */
+  /** % สะสม ณ สิ้นสัปดาห์ ยาวเท่าจำนวนสัปดาห์ของสัญญา (0 = W1) — รายการที่แยกค่าวัสดุ/ค่าแรง = % ค่าวัสดุ */
   items: Record<string, (number | null)[]>
+  /**
+   * % ค่าแรง (R28) เฉพาะรายการที่แยกค่าวัสดุ/ค่าแรง — คีย์/กติกาเดียวกับ `items`
+   * · ไม่มี/ยังไม่เคยกรอก = เท่า % ค่าวัสดุของสัปดาห์นั้น (`itemSeries` ใน core.ts)
+   */
+  lab?: Record<string, (number | null)[]>
 }
 export type SavedPlanInput = {
   name: string
@@ -60,7 +65,12 @@ function parseItem(v: unknown): BoqItem | null {
   const qty = v.qty == null ? null : finite(v.qty) ? v.qty : NaN
   if (Number.isNaN(qty)) return null
   const head = str(v.head, 300)
-  return { code: str(v.code, 40), name: str(v.name), qty, unit: str(v.unit, 40), amount: v.amount, ...(head ? { head } : {}) }
+  // ค่าวัสดุ/ค่าแรง (R28): ต้องมีทั้งคู่และรวมเท่ายอดของรายการ — ไม่ลงตัว = ทิ้ง (ไม่ใช่ error · แผนเก่าไม่มีสองช่องนี้)
+  const split = finite(v.mat) && finite(v.lab) && v.mat >= 0 && v.lab >= 0 && Math.abs(v.mat + v.lab - v.amount) <= Math.max(0.01, v.amount * 1e-6)
+  return {
+    code: str(v.code, 40), name: str(v.name), qty, unit: str(v.unit, 40), amount: v.amount, ...(head ? { head } : {}),
+    ...(split ? { mat: v.mat as number, lab: v.lab as number } : {}),
+  }
 }
 
 function parseTask(v: unknown, days: number): BoqTask | null {
@@ -170,19 +180,26 @@ export function parseProgress(
     const d = datesIn[k]
     return weekIndex(plan.start, isIsoDate(d) ? d : todayIso, weeks)
   }
-  const items: Record<string, (number | null)[]> = {}
-  for (const [key, arr] of Object.entries(raw)) {
-    if (!keys.has(key) || !Array.isArray(arr)) continue
-    const vals: (number | null)[] = new Array(weeks).fill(null)
-    for (let k = 0; k < (legacy ? Math.min(arr.length, 24) : weeks); k += 1) {
-      const x = arr[k]
-      if (x == null) continue
-      if (!finite(x) || x < 0 || x > 1) return fail('PROGRESS_VALUE_INVALID')
-      vals[slot(k)] = Math.round(x * 10000) / 10000
+  const series = (src: Record<string, unknown>, isLegacy: boolean): Record<string, (number | null)[]> | null => {
+    const out: Record<string, (number | null)[]> = {}
+    for (const [key, arr] of Object.entries(src)) {
+      if (!keys.has(key) || !Array.isArray(arr)) continue
+      const vals: (number | null)[] = new Array(weeks).fill(null)
+      for (let k = 0; k < (isLegacy ? Math.min(arr.length, 24) : weeks); k += 1) {
+        const x = arr[k]
+        if (x == null) continue
+        if (!finite(x) || x < 0 || x > 1) return null
+        vals[isLegacy ? slot(k) : k] = Math.round(x * 10000) / 10000
+      }
+      if (vals.some((x) => x != null)) out[key] = vals
     }
-    if (vals.some((x) => x != null)) items[key] = vals
+    return out
   }
-  return { ok: true, value: { weekly: true, items } }
+  const items = series(raw, legacy)
+  // % ค่าแรงมีแต่ในรูปแบบรายสัปดาห์ (R28 มาทีหลัง R20l)
+  const lab = series(!legacy && isObj(v.lab) ? v.lab : {}, false)
+  if (!items || !lab) return fail('PROGRESS_VALUE_INVALID')
+  return { ok: true, value: { weekly: true, items, ...(Object.keys(lab).length ? { lab } : {}) } }
 }
 
 /** แถวจากฐานข้อมูล → แผนงาน (jsonb ผ่านตัวตรวจอีกรอบ — ข้อมูลเก่าที่รูปร่างเพี้ยนต้องไม่ทำหน้าพัง) */
@@ -209,10 +226,66 @@ export const planRow = (p: SavedPlanInput) => ({
   start_date: p.start, days: p.days, periods: p.periods, w124: p.w124, source_file: p.sourceFile,
 })
 
+/** นับรายการที่ยังไม่มีค่าวัสดุ/ค่าแรงแยก (แผนที่บันทึกก่อน R28) */
+export function splitCount(categories: BoqCategory[]) {
+  let total = 0
+  let split = 0
+  categories.forEach((c) => c.tasks.forEach((t) => t.items.forEach((it) => {
+    total += 1
+    if (it.mat != null && it.lab != null) split += 1
+  })))
+  return { total, split }
+}
+
+const nameKey = (s: string) => s.replace(/\s+/g, '').replace(/^[-–•]+/, '')
+const sameAmount = (a: number, b: number) => Math.abs(a - b) <= Math.max(0.01, Math.abs(a) * 1e-6)
+
+/**
+ * เติมค่าวัสดุ/ค่าแรงให้แผนที่บันทึกไว้แล้ว จาก BOQ ที่อ่านใหม่ (R28) — ไม่แตะลำดับ/ยอด/ผลงาน (คีย์ผลงานยังเป็นรายการเดิม)
+ * · จับคู่ตามลำดับ: ชื่อ + ยอดเงินตรงกัน ถัดจากคู่ก่อนหน้า → ทั้งไฟล์ → ยอดเงินอย่างเดียวถ้ามีคู่เดียว
+ * · รายการที่หาคู่ไม่ได้ปล่อยไว้แบบไม่แยก (ไม่เดา)
+ */
+export function fillSplit(target: BoqCategory[], source: BoqCategory[]) {
+  const pool = source.flatMap((c) => c.tasks.flatMap((t) => t.items))
+    .filter((it) => it.mat != null && it.lab != null)
+    .map((it) => ({ it, name: nameKey(it.name), used: false }))
+  let at = 0
+  let filled = 0
+  const take = (i: number) => {
+    pool[i].used = true
+    at = i + 1
+    filled += 1
+    return pool[i].it
+  }
+  const find = (it: BoqItem) => {
+    const n = nameKey(it.name)
+    const ok = (x: (typeof pool)[number]) => !x.used && x.name === n && sameAmount(x.it.amount, it.amount)
+    for (let i = at; i < pool.length; i += 1) if (ok(pool[i])) return take(i)
+    for (let i = 0; i < at; i += 1) if (ok(pool[i])) return take(i)
+    const byAmount = pool.map((x, i) => (!x.used && sameAmount(x.it.amount, it.amount) ? i : -1)).filter((i) => i >= 0)
+    return byAmount.length === 1 ? take(byAmount[0]) : null
+  }
+  const categories = target.map((c) => ({
+    ...c,
+    tasks: c.tasks.map((t) => ({
+      ...t,
+      items: t.items.map((it) => {
+        if (it.mat != null && it.lab != null) return it
+        const hit = find(it)
+        if (!hit) return it
+        // สัดส่วนจาก BOQ ใหม่ คูณยอดของแผน — ยอดรวมของรายการไม่เปลี่ยนแม้ต่างกันเศษสตางค์
+        const mat = hit.amount ? (it.amount * (hit.mat as number)) / hit.amount : 0
+        return { ...it, mat, lab: Math.max(0, it.amount - mat) }
+      }),
+    })),
+  }))
+  return { categories, filled }
+}
+
 /** สัปดาห์ล่าสุดที่กรอกผลงานอย่างน้อยหนึ่งช่อง (1 = W1) · 0 = ยังไม่กรอก */
 export function lastFilledWeek(p: PlanProgress) {
   let last = 0
-  Object.values(p.items).forEach((a) => a.forEach((x, k) => { if (x != null) last = Math.max(last, k + 1) }))
+  ;[...Object.values(p.items), ...Object.values(p.lab ?? {})].forEach((a) => a.forEach((x, k) => { if (x != null) last = Math.max(last, k + 1) }))
   return last
 }
 

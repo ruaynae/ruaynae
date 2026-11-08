@@ -5,6 +5,8 @@ import { ChangeOrderPaper } from '@/components/letters/change-order-paper'
 import { MaterialApprovalPaper } from '@/components/letters/material-approval-paper'
 import { MaterialListPaper } from '@/components/letters/material-list-paper'
 import { hasMaItems, type MaterialApproval } from '@/lib/material-approval'
+import { ProgressWorkPaper } from '@/components/letters/progress-work-paper'
+import { hasPwItems, type ProgressWork } from '@/lib/progress-work'
 
 /**
  * กระดาษหนังสือบริษัท A4 (R19) — ผังเดียวกับไฟล์ Word ที่ `letter-docx.ts` สร้าง
@@ -62,6 +64,7 @@ export function LetterPaper({
   changeOrder = null,
   materialApproval = null,
   materialList = null,
+  progressWork = null,
 }: {
   letter: LetterPaperData
   logoUrl: string | null
@@ -80,6 +83,8 @@ export function LetterPaper({
   materialApproval?: MaterialApproval | null
   /** รายการขออนุมัติใช้วัสดุแบบ "แนบรายการ" — แผ่นแนวตั้งต่อจากหนังสือ ก่อนรูปภาพ · ต้นฉบับเท่านั้น */
   materialList?: MaterialApproval | null
+  /** ปริมาณงานที่แล้วเสร็จ (R28 · หนังสือส่งมอบงาน) — แผ่นแนวนอนต่อจากหนังสือ ก่อนรูปภาพ · ต้นฉบับเท่านั้น */
+  progressWork?: ProgressWork | null
 }) {
   const lh = letter.letterhead
   const rows = [
@@ -154,6 +159,7 @@ export function LetterPaper({
       {changeOrder && hasItems(changeOrder) && <ChangeOrderPaper co={changeOrder} />}
       {materialApproval && hasMaItems(materialApproval) && <MaterialApprovalPaper ma={materialApproval} letter={letter} />}
       {materialList && hasMaItems(materialList) && <MaterialListPaper ma={materialList} />}
+      {hasPwItems(progressWork) && <ProgressWorkPaper pw={progressWork} company={lh.companyName} />}
 
       {photos.length > 0 && photoLayout === 'p' && (
         // 1 รูปต่อ 1 หน้ากระดาษ (แค็ตตาล็อก · R27) — หัวข้อขึ้นต่อหน้า (heading ของรูป · หน้าแรกถอยไปใช้หัวข้อรวม) · ไม่พิมพ์คำอธิบายใต้รูป (ตรงกับไฟล์ Word)

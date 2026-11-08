@@ -1,6 +1,6 @@
 import type { CellValue, PaperSize, Workbook, Worksheet } from 'exceljs'
 import { bahtText } from '@/lib/baht-text'
-import type { BoqCategory, Distribution } from './core'
+import { itemSeries, type BoqCategory, type Distribution } from './core'
 import { C, SHEET, addDays, col, f, kit, ref, type Style } from './xlsx-kit'
 import { W124, W124_LABEL, w124Offset } from './w124'
 
@@ -566,7 +566,7 @@ export function fillProgress(
   wb: Workbook,
   layout: ProgressLayout,
   categories: BoqCategory[],
-  progress: { items: Record<string, (number | null)[]> },
+  progress: { items: Record<string, (number | null)[]>; lab?: Record<string, (number | null)[]> },
 ) {
   categories.forEach((cat, ci) => {
     const lc = layout.cats.find((x) => x.cat === cat)
@@ -576,13 +576,18 @@ export function fillProgress(
     cat.tasks.forEach((t, ti) => {
       if (!t.on) return
       j += 1
-      t.items.forEach((_, ii) => {
-        const vals = progress.items[`${ci}.${ti}.${ii}`]
+      t.items.forEach((it, ii) => {
+        const key = `${ci}.${ti}.${ii}`
+        const vals = progress.items[key]
+        const lab = progress.lab?.[key]
         const row = lc.items[j]?.[ii]
-        if (!vals || row == null) return
-        vals.slice(0, layout.weeks).forEach((v, k) => {
-          if (v != null) ws.getCell(`${col(P0 + k)}${row}`).value = v
-        })
+        if ((!vals && !lab) || row == null) return
+        // ไฟล์มีช่องเดียวต่อรายการ — รายการที่กรอก % ค่าวัสดุ/ค่าแรงแยก (R28) ลง % ถ่วงมูลค่าของทั้งรายการ
+        const eff = lab ? itemSeries(it, vals, lab, layout.weeks).eff : null
+        for (let k = 0; k < layout.weeks; k += 1) {
+          if (vals?.[k] == null && lab?.[k] == null) continue
+          ws.getCell(`${col(P0 + k)}${row}`).value = eff ? Math.round(eff[k] * 10000) / 10000 : vals?.[k] ?? null
+        }
       })
     })
   })

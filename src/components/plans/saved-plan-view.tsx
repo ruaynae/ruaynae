@@ -1,14 +1,14 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import * as Dialog from '@radix-ui/react-dialog'
-import { Download, Eraser, Loader2, Pencil, RotateCcw, Save, Trash2 } from 'lucide-react'
+import { Download, Eraser, FileSpreadsheet, Loader2, Pencil, RotateCcw, Save, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { planReport } from '@/lib/boq/core'
 import { withW124 } from '@/lib/boq/w124'
-import { lastFilledWeek, planMessage, planWeeks, type PlanProgress, type SavedPlan } from '@/lib/boq/plan-store'
+import { fillSplit, lastFilledWeek, planMessage, planWeeks, splitCount, type PlanProgress, type SavedPlan } from '@/lib/boq/plan-store'
 import { fmtDate, todayInBangkok } from '@/lib/format'
 import { PaperSelect, type Paper } from './paper-select'
 import { ProgressEntry } from './progress-entry'
@@ -49,8 +49,11 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
   })
   const weekStart = (i: number) => new Date(t0 + i * 7 * DAY).toISOString().slice(0, 10)
   const weekEnd = (i: number) => new Date(t0 + (Math.min(plan.days, 7 * (i + 1)) - 1) * DAY).toISOString().slice(0, 10)
-  const filled = (i: number) => Object.values(draft.items).some((a) => a[i] != null)
-  const [busy, setBusy] = useState<null | 'save' | 'site' | 'export' | 'delete'>(null)
+  const allSeries = (p: PlanProgress) => [...Object.values(p.items), ...Object.values(p.lab ?? {})]
+  const filled = (i: number) => allSeries(draft).some((a) => a[i] != null)
+  const [busy, setBusy] = useState<null | 'save' | 'site' | 'export' | 'delete' | 'split'>(null)
+  const splitInput = useRef<HTMLInputElement>(null)
+  const split = splitCount(plan.categories)
   const [delOpen, setDelOpen] = useState(false)
   const [clearAllOpen, setClearAllOpen] = useState(false)
   const [paper, setPaper] = useState<Paper>('A3')
@@ -72,16 +75,36 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
       for (const key of keys) items[key] = pad(items[key]).map((x, i) => (i === k ? v : x))
       return { ...d, items }
     })
+  /** % ค่าแรง (R28) — ช่องค่าแรงที่ว่างทั้งแถว = ไม่เก็บคีย์ (เท่าค่าวัสดุ) */
+  const setLab = (keys: string[], v: number | null) =>
+    setDraft((d) => {
+      const lab = { ...(d.lab ?? {}) }
+      for (const key of keys) {
+        const next = pad(lab[key]).map((x, i) => (i === k ? v : x))
+        if (next.some((x) => x != null)) lab[key] = next
+        else delete lab[key]
+      }
+      return Object.keys(lab).length ? { ...d, lab } : { weekly: true as const, items: d.items }
+    })
+  /** "ทั้งงาน" — ช่องหลักและช่องค่าแรงพร้อมกัน */
+  const setTask = (keys: string[], v: number | null) => {
+    setItems(keys, v)
+    setLab(keys, v)
+  }
 
   /** ล้าง % ที่กรอกของสัปดาห์เดียว (`week`) หรือทุกสัปดาห์ (ไม่ส่ง) — แก้แค่บนจอ ต้องกดบันทึกผลงานต่อ */
   function clearWeeks(week?: number) {
     setDraft((d) => {
-      const items: PlanProgress['items'] = {}
-      if (week != null) for (const [key, a] of Object.entries(d.items)) items[key] = pad(a).map((x, i) => (i === week ? null : x))
-      return { ...d, items }
+      const wipe = (src: Record<string, (number | null)[]>) => {
+        const out: Record<string, (number | null)[]> = {}
+        if (week != null) for (const [key, a] of Object.entries(src)) out[key] = pad(a).map((x, i) => (i === week ? null : x))
+        return out
+      }
+      const lab = wipe(d.lab ?? {})
+      return { weekly: true, items: wipe(d.items), ...(Object.keys(lab).length ? { lab } : {}) }
     })
   }
-  const anyFilled = Object.values(draft.items).some((a) => a.some((x) => x != null))
+  const anyFilled = allSeries(draft).some((a) => a.some((x) => x != null))
 
   function failed(code: string) {
     toast.error(planMessage(code))
@@ -144,6 +167,37 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
     }
   }
 
+  /** R28: เติมค่าวัสดุ/ค่าแรงให้แผนเดิมจาก BOQ ไฟล์เดิม — ผลงานที่กรอกไว้ไม่หาย */
+  async function onSplitFile(file: File | undefined) {
+    if (!file) return
+    if (dirty) return void toast.warning('บันทึกผลงานที่กรอกค้างไว้ก่อน แล้วค่อยเติมค่าวัสดุ/ค่าแรง')
+    setBusy('split')
+    try {
+      const buf = await file.arrayBuffer()
+      const { readBoqFile } = await import('@/lib/boq/workbook')
+      const model = await readBoqFile(buf)
+      const { categories, filled } = fillSplit(plan.categories, model.categories)
+      if (!filled) return void toast.error('ไม่พบรายการที่ตรงกับแผนนี้ในไฟล์ — ใช้ไฟล์ BOQ ตามสัญญาฉบับเดียวกับที่สร้างแผน')
+      const r = await patch(plan.id, {
+        expectedUpdatedAt: updatedAt,
+        plan: {
+          name: plan.name, project: plan.project, factor: plan.factor, vat: plan.vat, categories,
+          start: plan.start, days: plan.days, periods: plan.periods, w124: plan.w124, sourceFile: plan.sourceFile,
+        },
+      })
+      if (!r.ok) return failed(r.error)
+      setUpdatedAt(r.updatedAt)
+      const left = splitCount(categories)
+      toast.success(`เติมค่าวัสดุ/ค่าแรงแล้ว ${left.split} จาก ${left.total} รายการ`)
+      router.refresh()
+    } catch {
+      toast.error('อ่านไฟล์ BOQ ไม่ได้ — ต้องเป็นไฟล์ .xlsx หรือ .xls')
+    } finally {
+      setBusy(null)
+      if (splitInput.current) splitInput.current.value = ''
+    }
+  }
+
   async function onDelete() {
     setBusy('delete')
     try {
@@ -198,6 +252,20 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
         </button>
       </div>
 
+      {split.split < split.total && (
+        <section className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-surface-2 p-4 text-sm">
+          <p className="min-w-0 flex-1 text-ink-2">
+            {split.split ? `แยกค่าวัสดุ/ค่าแรงแล้ว ${split.split} จาก ${split.total} รายการ` : 'แผนนี้ยังไม่ได้แยกค่าวัสดุ/ค่าแรง'}
+            {' '}— เลือกไฟล์ BOQ ตามสัญญาฉบับเดิม ระบบจะเติมให้ (ผลงานที่กรอกไว้ไม่หาย) แล้วกรอก % ค่าวัสดุกับค่าแรงแยกกันได้
+          </p>
+          <input ref={splitInput} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => void onSplitFile(e.target.files?.[0])} />
+          <button type="button" className="btn-secondary" disabled={busy === 'split'} onClick={() => splitInput.current?.click()}>
+            {busy === 'split' ? <Loader2 className="size-4 animate-spin" /> : <FileSpreadsheet className="size-4" />}
+            เติมค่าวัสดุ/ค่าแรงจาก BOQ
+          </button>
+        </section>
+      )}
+
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-ink">กรอกผลงานรายสัปดาห์</h2>
         <div role="tablist" className="no-scrollbar flex gap-1.5 overflow-x-auto pb-1">
@@ -242,7 +310,8 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
           k={k}
           weekLabel={`W${k + 1} · ${fmtDate(weekStart(k))} – ${fmtDate(weekEnd(k))}`}
           onItem={(key, v) => setItems([key], v)}
-          onTask={setItems}
+          onLab={(key, v) => setLab([key], v)}
+          onTask={setTask}
         />
         <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 lg:bottom-4 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface p-3 shadow-e2">
           <span className="min-w-0 flex-1 text-sm text-muted-token">
