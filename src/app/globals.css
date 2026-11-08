@@ -716,8 +716,13 @@
   .ds-sheet .ds-opt { display: flex; gap: 10pt; margin: 0 0 12pt 14pt; }
   .ds-sheet .ds-box { flex: none; width: 16pt; height: 16pt; margin-top: 3pt; border: 1pt solid #000; text-align: center; line-height: 14pt; font-size: 13pt; font-weight: 700; }
   .ds-sheet .ds-line { height: 18pt; border-bottom: 1pt dotted #000; margin: 0; }
-  .ds-sheet .ds-sign { text-align: center; margin-top: 18pt !important; }
-  .ds-sheet .ds-sign + .ds-sign { margin-top: 2pt !important; }
+  .ds-sheet .ds-sig { display: flex; justify-content: center; align-items: flex-end; margin-top: 22pt; }
+  .ds-sheet .ds-sig + .ds-sig { margin-top: 2pt; }
+  .ds-sheet .ds-sig-k { flex: none; width: 34pt; }
+  .ds-sheet .ds-sig-mid { flex: none; width: 190pt; }
+  .ds-sheet .ds-sig-role { flex: none; width: 190pt; padding-left: 6pt; }
+  .ds-sheet .ds-sig-dots { border-bottom: 1pt dotted #000; height: 14pt; }
+  .ds-sheet .ds-sig-name { display: flex; justify-content: space-between; }
   /* แผนบำรุงรักษาครุภัณฑ์ (R33) */
   .ma-sheet.mp-sheet { font-size: 14pt; }
   .mp-sheet .mp-sub { font-weight: 700; margin: 4pt 0 6pt; }

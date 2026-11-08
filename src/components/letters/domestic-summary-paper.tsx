@@ -61,8 +61,17 @@ function Conclusion({ ok }: { ok: boolean }) {
           <p className="ds-line" />
         </div>
       </div>
-      <p className="ds-sign">ลงชื่อ .......................................... (ประธานกรรมการตรวจรับพัสดุ)</p>
-      <p className="ds-sign">(..........................................)</p>
+      {/* ชื่อในวงเล็บต้องอยู่ใต้เส้นลงชื่อพอดี (กึ่งกลางของเส้น ไม่ใช่กึ่งกลางทั้งบรรทัด) — ใช้คอลัมน์ความกว้างเท่ากันทั้งสองบรรทัด */}
+      <div className="ds-sig">
+        <span className="ds-sig-k">ลงชื่อ</span>
+        <span className="ds-sig-mid ds-sig-dots" />
+        <span className="ds-sig-role">(ประธานกรรมการตรวจรับพัสดุ)</span>
+      </div>
+      <div className="ds-sig">
+        <span className="ds-sig-k" aria-hidden="true" />
+        <span className="ds-sig-mid ds-sig-name"><span>(</span><span>)</span></span>
+        <span className="ds-sig-role" aria-hidden="true" />
+      </div>
     </section>
   )
 }
