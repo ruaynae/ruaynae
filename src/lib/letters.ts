@@ -211,6 +211,12 @@ export function generateFromTemplate(
     vals.amountText = String(fields.amount ?? '').trim() !== '' && Number.isFinite(n) ? bahtText(n) : ''
     vals.amount = letterMoney(fields.amount ?? '')
   }
+  if (t.id === 'delivery') {
+    // ส่งมอบหลายงวดพร้อมกัน: "1 – 4" · ช่อง "ถึงงวดที่" ว่าง/ไม่มากกว่างวดแรก = งวดเดียว
+    const from = Number(String(fields.n ?? '').trim())
+    const to = Number(String(fields.to ?? '').trim())
+    vals.nn = Number.isInteger(from) && Number.isInteger(to) && from >= 1 && to > from ? `${from} – ${to}` : String(fields.n ?? '')
+  }
   const fill = (s: string) =>
     fillCompany(s, companyName).replace(/\{(\w+)\}/g, (_, k: string) => {
       const v = vals[k]
@@ -248,7 +254,9 @@ function nextCounter(entries: readonly RegisterEntry[], seriesId: string, re: Re
   for (const e of entries) {
     if (e.seriesId !== seriesId) continue
     const m = re.exec(e.subject)
-    if (m && Number(m[1]) > max) max = Number(m[1])
+    // ช่วง "งวดที่ 1 – 4" → เลขท้าย (กลุ่มที่ 2) คืองวดที่ส่งไปแล้วล่าสุด
+    const last = Number(m?.[2] ?? m?.[1])
+    if (m && last > max) max = last
   }
   return max + 1
 }
@@ -261,7 +269,7 @@ export function autoFieldValue(
   dateIso: string,
 ): string {
   if (kind === 'materialNext') return String(nextCounter(entries, seriesId, /ขออนุมัติใช้วัสดุ ครั้งที่\s*(\d+)/))
-  if (kind === 'deliveryNext') return String(nextCounter(entries, seriesId, /ส่งมอบงานงวดที่\s*(\d+)/))
+  if (kind === 'deliveryNext') return String(nextCounter(entries, seriesId, /ส่งมอบงานงวดที่\s*(\d+)(?:\s*[–—-]\s*(\d+))?/))
   const p = parseIso(dateIso) ?? { y: new Date().getFullYear(), m: new Date().getMonth() + 1, d: 1 }
   const m = p.m === 1 ? 12 : p.m - 1
   const y = p.m === 1 ? p.y - 1 : p.y
@@ -271,7 +279,7 @@ export function autoFieldValue(
 /** ทำซ้ำหนังสือเก่าเป็นฉบับใหม่ — ขยับ "ครั้งที่/งวดที่/ประจำเดือน" ให้เป็นค่าถัดไป */
 export function bumpCounters(text: string, kind: LetterAuto, value: string): string {
   if (kind === 'materialNext') return text.replace(/ครั้งที่\s*\d+/g, `ครั้งที่ ${value}`)
-  if (kind === 'deliveryNext') return text.replace(/งวดที่\s*\d+/g, `งวดที่ ${value}`)
+  if (kind === 'deliveryNext') return text.replace(/งวดที่\s*\d+(?:\s*[–—-]\s*\d+)?/g, `งวดที่ ${value}`)
   const re = new RegExp(`ประจำเดือน\\s*(${MONTHS_TH.join('|')})\\s*\\d{4}`, 'g')
   return text.replace(re, `ประจำเดือน${value}`)
 }
