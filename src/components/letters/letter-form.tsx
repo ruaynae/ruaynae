@@ -1,5 +1,7 @@
 'use client'
 
+import { DomesticSummarySection } from '@/components/letters/domestic-summary-section'
+import type { DomesticSummary } from '@/lib/domestic-summary'
 import { EquipmentSummarySection } from '@/components/letters/equipment-summary-section'
 import { compactEquipSummary, emptyEquipSummary, type EquipSummary } from '@/lib/equipment-summary'
 import * as Dialog from '@radix-ui/react-dialog'
@@ -78,6 +80,8 @@ export type FormLetter = {
   maintPlan?: MaintPlan | null
   /** สรุปรายการครุภัณฑ์ (R34 · แบบ "สรุปรายการครุภัณฑ์") */
   equipSummary?: EquipSummary | null
+  /** สรุปการใช้พัสดุในประเทศ (R35 · แบบ "สรุปการใช้พัสดุในประเทศ") */
+  domesticSummary?: DomesticSummary | null
 }
 
 type Draft = {
@@ -166,6 +170,7 @@ export function LetterForm({
   const [pw, setPwState] = useState<ProgressWork | null>(initial?.progressWork ?? null)
   const [sc, setScState] = useState<SCurveAttach | null>(initial?.sCurve ?? null)
   const [mp, setMp] = useState<MaintPlan | null>(initial?.maintPlan ?? null)
+  const [ds, setDs] = useState<DomesticSummary | null>(initial?.domesticSummary ?? null)
   const [eq, setEq] = useState<EquipSummary | null>(initial?.equipSummary ?? null)
 
   const [d, setD] = useState<Draft>(() => {
@@ -321,6 +326,7 @@ export function LetterForm({
   /* ── แผนบำรุงรักษาครุภัณฑ์ (R33) — เดือนเริ่มแนะนำ = เดือนถัดจากวันที่หนังสือ ── */
   const isMaint = template?.id === 'maintplan'
   const isEquip = template?.id === 'equipsummary'
+  const isDomSum = template?.id === 'domesticsummary'
   const eqValue = eq ?? emptyEquipSummary()
   const mpNextMonth = (() => {
     const m = /^(\d{4})-(\d{2})/.exec(d.date)
@@ -417,6 +423,7 @@ export function LetterForm({
       progressWork: isDelivery ? pw : null,
       sCurve: isDelivery ? sc : null,
       maintPlan: isMaint ? mpValue : null,
+      domesticSummary: isDomSum ? ds : null,
       equipSummary: isEquip ? compactEquipSummary(eqValue) : null,
     }
     try {
@@ -682,6 +689,7 @@ export function LetterForm({
           )}
 
           {isDelivery && <ProgressWorkSection value={pw} onChange={setPw} siteId={cur?.siteId ?? null} defaultDate={d.date} />}
+          {isDomSum && <DomesticSummarySection value={ds} onChange={setDs} siteId={cur?.siteId ?? null} />}
           {isEquip && <EquipmentSummarySection value={eqValue} onChange={setEq} siteId={cur?.siteId ?? null} />}
           {isMaint && <MaintenancePlanSection value={mpValue} onChange={setMp} siteId={cur?.siteId ?? null} defaultStart={mpNextMonth} />}
           {isDelivery && <SCurveSection value={sc} onChange={setSc} siteId={cur?.siteId ?? null} defaultDate={d.date} />}
@@ -877,6 +885,7 @@ export function LetterForm({
             sCurve={isDelivery ? sc : null}
             maintPlan={isMaint ? mpValue : null}
             equipSummary={isEquip ? eqValue : null}
+            domesticSummary={isDomSum ? ds : null}
           />
         </div>
       </div>

@@ -1,3 +1,5 @@
+import { DomesticSummaryPaper } from '@/components/letters/domestic-summary-paper'
+import { hasDomesticSummary, type DomesticSummary } from '@/lib/domestic-summary'
 import { EquipmentSummaryPaper } from '@/components/letters/equipment-summary-paper'
 import { hasEqItems, type EquipSummary } from '@/lib/equipment-summary'
 import { MaintenancePlanPaper } from '@/components/letters/maintenance-plan-paper'
@@ -74,6 +76,7 @@ export function LetterPaper({
   sCurve = null,
   maintPlan = null,
   equipSummary = null,
+  domesticSummary = null,
 }: {
   letter: LetterPaperData
   logoUrl: string | null
@@ -99,6 +102,8 @@ export function LetterPaper({
   maintPlan?: MaintPlan | null
   /** สรุปรายการครุภัณฑ์ (R34) — แผ่นแนวตั้งต่อจากหนังสือ ก่อนรูปภาพ · ต้นฉบับเท่านั้น */
   equipSummary?: EquipSummary | null
+  /** สรุปการใช้พัสดุในประเทศ (R35) — แผ่นแนวตั้งต่อจากหนังสือ ก่อนรูปภาพ · ต้นฉบับเท่านั้น */
+  domesticSummary?: DomesticSummary | null
 }) {
   const lh = letter.letterhead
   const rows = [
@@ -174,6 +179,7 @@ export function LetterPaper({
       {materialApproval && hasMaItems(materialApproval) && <MaterialApprovalPaper ma={materialApproval} letter={letter} />}
       {materialList && hasMaItems(materialList) && <MaterialListPaper ma={materialList} />}
       {hasPwItems(progressWork) && <ProgressWorkPaper pw={progressWork} company={lh.companyName} />}
+      {hasDomesticSummary(domesticSummary) && <DomesticSummaryPaper ds={domesticSummary} />}
       {equipSummary && hasEqItems(equipSummary) && <EquipmentSummaryPaper eq={equipSummary} />}
       {maintPlan && hasMpItems(maintPlan) && <MaintenancePlanPaper plan={maintPlan} />}
       {hasSCurve(sCurve) && <SCurvePaper s={sCurve} company={lh.companyName} />}

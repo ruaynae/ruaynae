@@ -692,6 +692,21 @@
   .letter-sheet .eq-table .eq-b { font-weight: 700; }
   .letter-sheet .eq-table .eq-photo { padding: 3pt; text-align: center; vertical-align: middle; }
   .letter-sheet .eq-table .eq-photo img { display: block; margin: 0 auto; max-width: 100%; max-height: 34mm; object-fit: contain; }
+  /* สรุปการใช้พัสดุในประเทศ (R35) — แผ่นแนวตั้ง */
+  .letter-sheet.ds-sheet { font-size: 14pt; line-height: 1.35; }
+  .ds-sheet p { margin: 0; }
+  .ds-sheet .ds-head { text-align: center; font-weight: 700; }
+  .ds-sheet .ds-title { margin-bottom: 10pt; font-size: 16pt; }
+  .ds-sheet .ds-b { font-weight: 700; }
+  .ds-sheet .ds-gap { margin-top: 8pt; }
+  .ds-sheet .ds-block { margin-bottom: 16pt; break-inside: avoid; }
+  .ds-sheet .ds-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 4pt; }
+  .ds-sheet .ds-table th, .ds-sheet .ds-table td { border: 0.75pt solid #000; padding: 2pt 5pt; }
+  .ds-sheet .ds-table th { text-align: center; font-weight: 700; }
+  .ds-sheet .ds-n { text-align: right; font-variant-numeric: tabular-nums; }
+  .ds-sheet .ds-c { text-align: center; font-variant-numeric: tabular-nums; }
+  .ds-sheet .ds-sum td { font-weight: 700; }
+  .ds-sheet .ds-note { margin-top: 3pt; }
   /* แผนบำรุงรักษาครุภัณฑ์ (R33) */
   .ma-sheet.mp-sheet { font-size: 14pt; }
   .mp-sheet .mp-sub { font-weight: 700; margin: 4pt 0 6pt; }

@@ -1,3 +1,4 @@
+import { hasDomesticSummary, parseDomesticSummary, type DomesticSummary } from '@/lib/domestic-summary'
 import { compactEquipSummary, parseEquipSummary, type EquipSummary } from '@/lib/equipment-summary'
 import { hasMpItems, parseMaintPlan, type MaintPlan } from '@/lib/maintenance-plan'
 import 'server-only'
@@ -69,6 +70,8 @@ export type LetterInput = {
   maintPlan: MaintPlan | null
   /** สรุปรายการครุภัณฑ์ (R34) — `letters.fields.equipSummary` (jsonb เดิม) */
   equipSummary: EquipSummary | null
+  /** สรุปการใช้พัสดุในประเทศ (R35) — `letters.fields.domesticSummary` (jsonb เดิม) */
+  domesticSummary: DomesticSummary | null
 }
 
 export type ParsedLetter = { ok: true; value: LetterInput } | { ok: false; error: string }
@@ -146,6 +149,7 @@ export function parseLetterInput(body: Record<string, unknown>): ParsedLetter {
       progressWork: templateId === 'delivery' ? progressWorkOf(body.progressWork) : null,
       sCurve: templateId === 'delivery' ? sCurveOf(body.sCurve) : null,
       maintPlan: templateId === 'maintplan' ? maintPlanOf(body.maintPlan) : null,
+      domesticSummary: templateId === 'domesticsummary' ? domesticSummaryOf(body.domesticSummary) : null,
       equipSummary: templateId === 'equipsummary' ? compactEquipSummary(parseEquipSummary(body.equipSummary)) : null,
     },
   }
@@ -155,6 +159,12 @@ export function parseLetterInput(body: Record<string, unknown>): ParsedLetter {
 function progressWorkOf(v: unknown): ProgressWork | null {
   const pw = parseProgressWork(v)
   return hasPwItems(pw) ? pw : null
+}
+
+/** สรุปพัสดุในประเทศเก็บเฉพาะหนังสือแบบ "สรุปการใช้พัสดุในประเทศ" ที่ผ่านตัวตรวจ */
+function domesticSummaryOf(v: unknown): DomesticSummary | null {
+  const s = parseDomesticSummary(v)
+  return hasDomesticSummary(s) ? s : null
 }
 
 /** แผนบำรุงรักษาเก็บเฉพาะหนังสือแบบ "แผนบำรุงรักษา" ที่มีรายการและเดือนจริง */
@@ -180,7 +190,7 @@ function changeOrderOf(v: unknown, templateId: string | null): ChangeOrder | nul
  * ค่าช่องด่วน + ตารางงานเพิ่ม-ลด ลง jsonb `letters.fields` ก้อนเดียว
  * · คีย์ `changeOrder` ที่ client ส่งมาในช่องด่วนถูกทิ้งเสมอ — ตารางมาจาก `v.changeOrder` ที่ผ่านตัวตรวจแล้วเท่านั้น
  */
-const JSON_KEYS = new Set(['changeOrder', 'materialApproval', 'progressWork', 'sCurve', 'maintPlan', 'equipSummary'])
+const JSON_KEYS = new Set(['changeOrder', 'materialApproval', 'progressWork', 'sCurve', 'maintPlan', 'equipSummary', 'domesticSummary'])
 
 function letterFieldsJson(v: LetterInput): Json {
   const out: Record<string, Json> = {}
@@ -190,6 +200,7 @@ function letterFieldsJson(v: LetterInput): Json {
   if (v.progressWork) out.progressWork = v.progressWork as unknown as Json
   if (v.sCurve) out.sCurve = v.sCurve as unknown as Json
   if (v.maintPlan) out.maintPlan = v.maintPlan as unknown as Json
+  if (v.domesticSummary) out.domesticSummary = v.domesticSummary as unknown as Json
   if (v.equipSummary) out.equipSummary = v.equipSummary as unknown as Json
   return out
 }

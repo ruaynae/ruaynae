@@ -1,3 +1,4 @@
+import { parseDomesticSummary } from '@/lib/domestic-summary'
 import { parseEquipSummary } from '@/lib/equipment-summary'
 import { parseMaintPlan } from '@/lib/maintenance-plan'
 import 'server-only'
@@ -120,7 +121,7 @@ export function toFormLetter(r: LetterRowData): FormLetter {
   const fields: Record<string, string> = {}
   if (r.fields && typeof r.fields === 'object' && !Array.isArray(r.fields)) {
     for (const [k, v] of Object.entries(r.fields as Record<string, unknown>)) {
-      if (k !== 'changeOrder' && k !== 'materialApproval' && k !== 'progressWork' && k !== 'sCurve' && k !== 'maintPlan' && k !== 'equipSummary') fields[k] = String(v ?? '')
+      if (k !== 'changeOrder' && k !== 'materialApproval' && k !== 'progressWork' && k !== 'sCurve' && k !== 'maintPlan' && k !== 'equipSummary' && k !== 'domesticSummary') fields[k] = String(v ?? '')
     }
   }
   const co = r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).changeOrder : null
@@ -147,6 +148,7 @@ export function toFormLetter(r: LetterRowData): FormLetter {
     materialApproval: parseMaterialApproval(ma),
     progressWork: parseProgressWork(pw),
     sCurve: parseSCurveAttach(sc),
+    domesticSummary: parseDomesticSummary(r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).domesticSummary : null),
     equipSummary: parseEquipSummary(r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).equipSummary : null),
     maintPlan: parseMaintPlan(r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).maintPlan : null),
   }
