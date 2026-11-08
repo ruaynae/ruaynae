@@ -206,3 +206,23 @@ test('S-Curve แนบหนังสือ (R30): ภาพนิ่ง ณ �
   assert.equal(parseSCurveAttach({ ...s, planCum: [0.1, 2, 0.3, 0.4] }), null)
   assert.equal(parseSCurveAttach({ ...s, actualCum: [0.1] }), null)
 })
+
+test('applySchedule (R31): จับคู่ชื่อ · แถว Actual = แผนตามสัญญา · Plan = แผนดำเนินการ · วันตรงจากแถว Plan', async () => {
+  const { applySchedule, readSchedule } = await import('../../src/lib/boq/schedule-import.ts')
+  const { similarity } = await import('../../src/lib/boq/core.ts')
+  const p = parsePlanInput({ ...plan(), days: 120, start: '2026-07-13' }).value
+  const rows = [
+    { name: 'งานพื้น', planDates: { start: '2026-07-27', end: '2026-08-16' }, planWeeks: [2, 4], actualWeeks: [4, 6] },
+    { name: 'งานที่ไม่มีในแผนเลยจริง ๆ', planDates: null, planWeeks: [0, 0], actualWeeks: null },
+  ]
+  const r = applySchedule(p.categories, rows, { start: '2026-07-13', days: 120, contractFrom: 'Actual', withOps: true, similarity })
+  assert.equal(r.matched.length, 1)
+  assert.deepEqual(r.unmatched, ['งานที่ไม่มีในแผนเลยจริง ๆ'])
+  const t = r.categories[0].tasks[0]
+  assert.deepEqual({ offset: t.offset, dur: t.dur }, { offset: 28, dur: 21 }) // สัปดาห์ W5–W7 (แถว Actual)
+  assert.deepEqual(t.ops, { offset: 14, dur: 21 }) // วันตรงจากแถว Plan: 27 ก.ค. – 16 ส.ค.
+  // ของเดิมไม่ถูกแก้ (immutable)
+  assert.equal(p.categories[0].tasks[0].offset, 0)
+  // ตัวอ่านไฟล์: ไม่มีหัว W1 = null
+  assert.equal(readSchedule({ name: 'x', rows: 2, cols: 2, v: () => null, w: () => '' }), null)
+})

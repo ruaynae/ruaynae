@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import * as Dialog from '@radix-ui/react-dialog'
 import { ArrowRightLeft, CalendarClock, Download, Eraser, FileSpreadsheet, LineChart, Loader2, Pencil, RotateCcw, Save, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { planReport } from '@/lib/boq/core'
+import { planReport, type BoqCategory } from '@/lib/boq/core'
 import { withW124 } from '@/lib/boq/w124'
 import {
   fillSplit, lastFilledWeek, planMessage, planWeeks, rebaseSchedule, spanDaysIso, splitCount, type PlanProgress, type SavedPlan,
@@ -14,6 +14,7 @@ import {
 import { fmtDate, todayInBangkok } from '@/lib/format'
 import { PaperSelect, type Paper } from './paper-select'
 import { CurveImportDialog } from './curve-import-dialog'
+import { ScheduleImportDialog } from './schedule-import-dialog'
 import { ProgressEntry } from './progress-entry'
 import { ProgressReportView } from './progress-report'
 
@@ -54,13 +55,14 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
   const weekStart = (i: number) => new Date(t0 + i * 7 * DAY).toISOString().slice(0, 10)
   const weekEnd = (i: number) => new Date(t0 + (Math.min(plan.days, 7 * (i + 1)) - 1) * DAY).toISOString().slice(0, 10)
   const filled = (i: number) => Object.values(draft.items).some((a) => a[i] != null)
-  const [busy, setBusy] = useState<null | 'save' | 'site' | 'export' | 'delete' | 'split' | 'dates'>(null)
+  const [busy, setBusy] = useState<null | 'save' | 'site' | 'export' | 'delete' | 'split' | 'dates' | 'schedule'>(null)
   const [datesOpen, setDatesOpen] = useState(false)
   const splitInput = useRef<HTMLInputElement>(null)
   const split = splitCount(plan.categories)
   const [delOpen, setDelOpen] = useState(false)
   const [clearAllOpen, setClearAllOpen] = useState(false)
   const [curveOpen, setCurveOpen] = useState(false)
+  const [schedOpen, setSchedOpen] = useState(false)
   const [paper, setPaper] = useState<Paper>('A3')
   const dirty = draft !== savedProgress
 
@@ -208,6 +210,28 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
     }
   }
 
+  /** R31: ปรับวันของงานตามไฟล์แผนงาน (Excel) — เขียนทั้งแผนทีเดียว · ผลงาน % ไม่แตะ (เฉพาะแผนที่ยังไม่มีผลงานเปลี่ยนวันเริ่ม/ระยะเวลาได้) */
+  async function onApplySchedule(categories: BoqCategory[], start: string, days: number) {
+    if (dirty) return void toast.warning('บันทึกผลงานที่กรอกค้างไว้ก่อน แล้วค่อยปรับวันของงาน')
+    setBusy('schedule')
+    try {
+      const r = await patch(plan.id, {
+        expectedUpdatedAt: updatedAt,
+        plan: {
+          name: plan.name, project: plan.project, factor: plan.factor, vat: plan.vat, categories,
+          start, days, periods: plan.periods, w124: plan.w124, sourceFile: plan.sourceFile,
+        },
+      })
+      if (!r.ok) return failed(r.error)
+      setUpdatedAt(r.updatedAt)
+      setSchedOpen(false)
+      toast.success('ปรับวันของงานตามไฟล์แล้ว')
+      router.refresh()
+    } finally {
+      setBusy(null)
+    }
+  }
+
   /** R28b: วันของแผนไม่ตรงกับวันสัญญาของโครงการที่ผูกไว้ */
   const site = sites.find((x) => x.id === siteId)
   const siteDays = site?.start && site.end ? spanDaysIso(site.start, site.end) : null
@@ -301,10 +325,23 @@ export function SavedPlanView({ plan, sites }: { plan: SavedPlan; sites: Site[] 
         >
           <Pencil className="size-4" />แก้แผนงาน
         </button>
+        <button type="button" className="btn-secondary" onClick={() => setSchedOpen(true)}>
+          <CalendarClock className="size-4" />ปรับวันตามไฟล์แผนงาน
+        </button>
         <button type="button" className="btn-secondary text-urgent" onClick={() => setDelOpen(true)}>
           <Trash2 className="size-4" />ลบแผนงาน
         </button>
       </div>
+
+      {schedOpen && (
+        <ScheduleImportDialog
+          onClose={() => setSchedOpen(false)}
+          plan={plan}
+          hasProgress={Object.values(savedProgress.items).some((a) => a.some((x) => x != null))}
+          busy={busy === 'schedule'}
+          onApply={(c, s, d) => void onApplySchedule(c, s, d)}
+        />
+      )}
 
       {split.split < split.total && (
         <section className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-surface-2 p-4 text-sm">
