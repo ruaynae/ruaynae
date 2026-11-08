@@ -1,3 +1,4 @@
+import { hasMpItems, parseMaintPlan, type MaintPlan } from '@/lib/maintenance-plan'
 import 'server-only'
 
 import { hasSCurve, parseSCurveAttach, type SCurveAttach } from '@/lib/s-curve-attach'
@@ -63,6 +64,8 @@ export type LetterInput = {
   progressWork: ProgressWork | null
   /** S-Curve แนบหนังสือส่งมอบงาน (R30) — `letters.fields.sCurve` (jsonb เดิม) */
   sCurve: SCurveAttach | null
+  /** แผนบำรุงรักษาครุภัณฑ์ (R33) — `letters.fields.maintPlan` (jsonb เดิม) */
+  maintPlan: MaintPlan | null
 }
 
 export type ParsedLetter = { ok: true; value: LetterInput } | { ok: false; error: string }
@@ -139,6 +142,7 @@ export function parseLetterInput(body: Record<string, unknown>): ParsedLetter {
       materialApproval: templateId === 'material' ? compactMaterialApproval(parseMaterialApproval(body.materialApproval)) : null,
       progressWork: templateId === 'delivery' ? progressWorkOf(body.progressWork) : null,
       sCurve: templateId === 'delivery' ? sCurveOf(body.sCurve) : null,
+      maintPlan: templateId === 'maintplan' ? maintPlanOf(body.maintPlan) : null,
     },
   }
 }
@@ -147,6 +151,12 @@ export function parseLetterInput(body: Record<string, unknown>): ParsedLetter {
 function progressWorkOf(v: unknown): ProgressWork | null {
   const pw = parseProgressWork(v)
   return hasPwItems(pw) ? pw : null
+}
+
+/** แผนบำรุงรักษาเก็บเฉพาะหนังสือแบบ "แผนบำรุงรักษา" ที่มีรายการและเดือนจริง */
+function maintPlanOf(v: unknown): MaintPlan | null {
+  const m = parseMaintPlan(v)
+  return hasMpItems(m) ? m : null
 }
 
 /** S-Curve เก็บเฉพาะหนังสือส่งมอบงานที่ผ่านตัวตรวจ */
@@ -166,7 +176,7 @@ function changeOrderOf(v: unknown, templateId: string | null): ChangeOrder | nul
  * ค่าช่องด่วน + ตารางงานเพิ่ม-ลด ลง jsonb `letters.fields` ก้อนเดียว
  * · คีย์ `changeOrder` ที่ client ส่งมาในช่องด่วนถูกทิ้งเสมอ — ตารางมาจาก `v.changeOrder` ที่ผ่านตัวตรวจแล้วเท่านั้น
  */
-const JSON_KEYS = new Set(['changeOrder', 'materialApproval', 'progressWork', 'sCurve'])
+const JSON_KEYS = new Set(['changeOrder', 'materialApproval', 'progressWork', 'sCurve', 'maintPlan'])
 
 function letterFieldsJson(v: LetterInput): Json {
   const out: Record<string, Json> = {}
@@ -175,6 +185,7 @@ function letterFieldsJson(v: LetterInput): Json {
   if (v.materialApproval) out.materialApproval = v.materialApproval as unknown as Json
   if (v.progressWork) out.progressWork = v.progressWork as unknown as Json
   if (v.sCurve) out.sCurve = v.sCurve as unknown as Json
+  if (v.maintPlan) out.maintPlan = v.maintPlan as unknown as Json
   return out
 }
 

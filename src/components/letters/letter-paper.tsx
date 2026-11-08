@@ -1,3 +1,5 @@
+import { MaintenancePlanPaper } from '@/components/letters/maintenance-plan-paper'
+import { hasMpItems, type MaintPlan } from '@/lib/maintenance-plan'
 import { SCurvePaper } from '@/components/letters/s-curve-paper'
 import { hasSCurve, type SCurveAttach } from '@/lib/s-curve-attach'
 import type { CSSProperties } from 'react'
@@ -68,6 +70,7 @@ export function LetterPaper({
   materialList = null,
   progressWork = null,
   sCurve = null,
+  maintPlan = null,
 }: {
   letter: LetterPaperData
   logoUrl: string | null
@@ -89,6 +92,8 @@ export function LetterPaper({
   /** ปริมาณงานที่แล้วเสร็จ (R28 · หนังสือส่งมอบงาน) — แผ่นแนวนอนต่อจากหนังสือ ก่อนรูปภาพ · ต้นฉบับเท่านั้น */
   progressWork?: ProgressWork | null
   sCurve?: SCurveAttach | null
+  /** แผนบำรุงรักษาครุภัณฑ์ (R33) — แผ่นแนวนอนต่อจากหนังสือ ก่อนรูปภาพ · ต้นฉบับเท่านั้น */
+  maintPlan?: MaintPlan | null
 }) {
   const lh = letter.letterhead
   const rows = [
@@ -164,6 +169,7 @@ export function LetterPaper({
       {materialApproval && hasMaItems(materialApproval) && <MaterialApprovalPaper ma={materialApproval} letter={letter} />}
       {materialList && hasMaItems(materialList) && <MaterialListPaper ma={materialList} />}
       {hasPwItems(progressWork) && <ProgressWorkPaper pw={progressWork} company={lh.companyName} />}
+      {maintPlan && hasMpItems(maintPlan) && <MaintenancePlanPaper plan={maintPlan} />}
       {hasSCurve(sCurve) && <SCurvePaper s={sCurve} company={lh.companyName} />}
 
       {photos.length > 0 && photoLayout === 'p' && (

@@ -22,6 +22,8 @@ import { MA_LIMITS, contractFromRefs, emptyMaterialApproval, maItems, maStyleOf,
 import { MaterialLibraryPicker, type PickedMaterial } from '@/components/letters/material-library-picker'
 import { ProgressWorkSection } from '@/components/letters/progress-work-section'
 import { PW_ATTACHMENT, type ProgressWork } from '@/lib/progress-work'
+import { MaintenancePlanSection } from '@/components/letters/maintenance-plan-section'
+import { emptyMaintPlan, type MaintPlan } from '@/lib/maintenance-plan'
 import { SCurveSection } from '@/components/letters/s-curve-section'
 import { SC_ATTACHMENT, type SCurveAttach } from '@/lib/s-curve-attach'
 import { LETTER_PHOTO_MAX, appendCatalogPhotos, catalogToRow, mergeCatalogRows } from '@/lib/material-library'
@@ -70,6 +72,8 @@ export type FormLetter = {
   progressWork?: ProgressWork | null
   /** S-Curve แนบหนังสือ (R30 · แบบ "ส่งมอบงานงวด") */
   sCurve?: SCurveAttach | null
+  /** แผนบำรุงรักษาครุภัณฑ์ (R33 · แบบ "แผนบำรุงรักษา") */
+  maintPlan?: MaintPlan | null
 }
 
 type Draft = {
@@ -157,6 +161,7 @@ export function LetterForm({
   const [ma, setMaState] = useState<MaterialApproval | null>(initial?.materialApproval ?? null)
   const [pw, setPwState] = useState<ProgressWork | null>(initial?.progressWork ?? null)
   const [sc, setScState] = useState<SCurveAttach | null>(initial?.sCurve ?? null)
+  const [mp, setMp] = useState<MaintPlan | null>(initial?.maintPlan ?? null)
 
   const [d, setD] = useState<Draft>(() => {
     if (initial) {
@@ -308,6 +313,15 @@ export function LetterForm({
 
   /* ── ปริมาณงานที่แล้วเสร็จ (R28) — ติ๊กแนบ = เติมบรรทัด "สิ่งที่ส่งมาด้วย" · ไม่แนบ = ถอดบรรทัดนั้นออก ── */
   const isDelivery = template?.id === 'delivery'
+  /* ── แผนบำรุงรักษาครุภัณฑ์ (R33) — เดือนเริ่มแนะนำ = เดือนถัดจากวันที่หนังสือ ── */
+  const isMaint = template?.id === 'maintplan'
+  const mpNextMonth = (() => {
+    const m = /^(\d{4})-(\d{2})/.exec(d.date)
+    if (!m) return ''
+    const t = Number(m[1]) * 12 + Number(m[2])
+    return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}`
+  })()
+  const mpValue = mp ?? emptyMaintPlan(coProject().project, coProject().location, mpNextMonth)
   /** บรรทัด "สิ่งที่ส่งมาด้วย" ของตารางปริมาณงาน / S-Curve (R30) — ติ๊ก = เติม · เอาออก = ถอด */
   const setAttachLine = (line: string, on: boolean) =>
     setD((p) => {
@@ -395,6 +409,7 @@ export function LetterForm({
       materialApproval: isMaterial ? ma : null,
       progressWork: isDelivery ? pw : null,
       sCurve: isDelivery ? sc : null,
+      maintPlan: isMaint ? mpValue : null,
     }
     try {
       const r = await fetch(savedId ? `/api/letters/${savedId}` : '/api/letters', {
@@ -659,6 +674,7 @@ export function LetterForm({
           )}
 
           {isDelivery && <ProgressWorkSection value={pw} onChange={setPw} siteId={cur?.siteId ?? null} defaultDate={d.date} />}
+          {isMaint && <MaintenancePlanSection value={mpValue} onChange={setMp} siteId={cur?.siteId ?? null} defaultStart={mpNextMonth} />}
           {isDelivery && <SCurveSection value={sc} onChange={setSc} siteId={cur?.siteId ?? null} defaultDate={d.date} />}
 
           <section className="card-surface space-y-3.5 p-4">
@@ -850,6 +866,7 @@ export function LetterForm({
             materialList={isMaterial && maStyle === 'list' ? maValue : null}
             progressWork={isDelivery ? pw : null}
             sCurve={isDelivery ? sc : null}
+            maintPlan={isMaint ? mpValue : null}
           />
         </div>
       </div>
