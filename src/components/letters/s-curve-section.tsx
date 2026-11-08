@@ -42,6 +42,7 @@ export function SCurveSection({
       planId: src.id, planName: src.name, project: src.project.name || src.name, week,
       asOf: value?.asOf ?? defaultDate,
     })
+    if (value?.paper === 'A3') s.paper = 'A3'
     onChange(s)
     setPicking(false)
     toast.success(`แนบ S-Curve ณ W${week} แล้ว (ยังไม่บันทึก)`)
@@ -99,6 +100,22 @@ export function SCurveSection({
               onChange={(e) => e.target.value && onChange({ ...value, asOf: e.target.value })}
             />
           </label>
+          <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <legend className="label-base">ขนาดแผ่นตอนพิมพ์</legend>
+            {(['A4', 'A3'] as const).map((p) => (
+              <label key={p} className="flex cursor-pointer items-center gap-1.5 text-sm text-ink">
+                <input
+                  type="radio"
+                  name="sc-paper"
+                  className="accent-[var(--brand)]"
+                  checked={(value.paper ?? 'A4') === p}
+                  onChange={() => onChange({ ...value, paper: p === 'A3' ? 'A3' : undefined })}
+                />
+                {p === 'A4' ? 'A4 (หมุนลงกระดาษแนวตั้ง)' : 'A3 แนวนอน (หน้าของตัวเอง)'}
+              </label>
+            ))}
+          </fieldset>
+          <p className="text-xs text-muted-token">A3 = หน้ากระดาษ A3 แยกในไฟล์ PDF (บันทึกเป็น PDF แล้วพิมพ์ที่ร้าน) · เครื่องพิมพ์ A4 จะย่อหน้านี้ให้พอดีกระดาษ</p>
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" className="btn-secondary" onClick={() => setPicking(true)}>
               <RefreshCw className="size-4" /> ดึงใหม่ / เปลี่ยนสัปดาห์
