@@ -5,6 +5,7 @@ import { CalendarRange, Factory, FolderOpen, LineChart } from 'lucide-react'
 import { PlanBuilder } from './plan-builder'
 import { ProgressTracker } from './progress-tracker'
 import { DomesticBuilder } from './domestic-builder'
+import { PlanImportButton } from './plan-import-button'
 
 /**
  * สามงานของเมนูแผนงาน: แผนที่บันทึกไว้ (เปิดไปกรอกผลงานรายงวด) · สร้างแผนจาก BOQ (ครั้งเดียวตอนเริ่มโครงการ)
@@ -43,7 +44,7 @@ export function PlansTabs({ initial, saved, domesticSaved }: {
           </button>
         ))}
       </div>
-      <div hidden={tab !== 'saved'}>{saved}</div>
+      <div hidden={tab !== 'saved'} className="space-y-3"><PlanImportButton />{saved}</div>
       <div hidden={tab !== 'build'}><PlanBuilder /></div>
       <div hidden={tab !== 'track'}><ProgressTracker /></div>
       <div hidden={tab !== 'domestic'} className="space-y-4">{domesticSaved}<DomesticBuilder /></div>
