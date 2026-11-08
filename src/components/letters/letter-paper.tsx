@@ -77,6 +77,7 @@ export function LetterPaper({
   maintPlan = null,
   equipSummary = null,
   domesticSummary = null,
+  photoProject = '',
 }: {
   letter: LetterPaperData
   logoUrl: string | null
@@ -104,6 +105,8 @@ export function LetterPaper({
   equipSummary?: EquipSummary | null
   /** สรุปการใช้พัสดุในประเทศ (R35) — แผ่นแนวตั้งต่อจากหนังสือ ก่อนรูปภาพ · ต้นฉบับเท่านั้น */
   domesticSummary?: DomesticSummary | null
+  /** ชื่อโครงการบนหัวใบทดสอบ (แบบ 6 รูปต่อหน้าที่รูปมีหัวข้อ) */
+  photoProject?: string
 }) {
   const lh = letter.letterhead
   const rows = [
@@ -199,16 +202,19 @@ export function LetterPaper({
       {photos.length > 0 && photoLayout !== 'p' && (() => {
         // แบ่งเป็นหน้า ๆ — ทุกหน้ากระดาษมีขอบของตัวเอง (เดิมรูปที่ล้นไปหน้าถัดไปชิดขอบบน) · หัวข้อรวมขึ้นเฉพาะหน้าแรก
         // หน้าเอกสาร (PDF · asPage) = 1 หน้าต่อ 1 แผ่นเต็มหน้า · รูปถ่ายที่ติดกันจัดตามการจัดวางที่เลือก
-        type Group = { page: PaperPhoto } | { photos: PaperPhoto[] }
+        // ใบทดสอบ (แบบ 6 รูปต่อหน้า): รูปที่มี `heading` = เริ่มการทดสอบใหม่ (ขึ้นหน้าใหม่) · รูปถัดไปที่ไม่มีหัวข้อต่อกลุ่มเดิม
+        // เกิน 6 รูปขึ้นหน้าถัดไปของการทดสอบเดิม — ทุกหน้ามีหัว โครงการ / ผู้รับเหมา / เอกสาร
+        type Group = { page: PaperPhoto } | { photos: PaperPhoto[]; test: string }
         const groups: Group[] = []
+        let test = ''
         for (const p of photos) {
-          if (p.asPage) groups.push({ page: p })
-          else {
-            const last = groups[groups.length - 1]
-            const per = PHOTOS_PER_PAGE[photoLayout]
-            if (last && 'photos' in last && last.photos.length < per) last.photos.push(p)
-            else groups.push({ photos: [p] })
-          }
+          if (p.asPage) { groups.push({ page: p }); test = ''; continue }
+          const head = photoLayout === '6' ? (p.heading?.trim() ?? '') : ''
+          if (head) test = head
+          const last = groups[groups.length - 1]
+          const per = PHOTOS_PER_PAGE[photoLayout]
+          if (!head && last && 'photos' in last && last.photos.length < per) last.photos.push(p)
+          else groups.push({ photos: [p], test })
         }
         const single = photos.length === 1 && photoLayout === '1'
         const cell = (p: PaperPhoto | undefined, c: number) => (
@@ -222,7 +228,14 @@ export function LetterPaper({
           </td>
         )
         return groups.map((g, k) => {
-          const title = k === 0 && photoTitle.trim() ? <p className="lt-photo-title">{photoTitle.trim()}</p> : null
+          const testTitle = 'photos' in g ? g.test : ''
+          const title = testTitle ? (
+            <div className="lt-testhead">
+              <p><b>โครงการ :</b> {photoProject.trim() || BLANK}</p>
+              <p><b>ผู้รับเหมา :</b> {lh.companyName || BLANK}</p>
+              <p><b>เอกสาร :</b> {testTitle}</p>
+            </div>
+          ) : k === 0 && photoTitle.trim() ? <p className="lt-photo-title">{photoTitle.trim()}</p> : null
           if ('page' in g) {
             return (
               <article key={k} className="paper letter-sheet lt-fullpage">

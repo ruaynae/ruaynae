@@ -204,11 +204,11 @@ export function LetterPhotos({
                   หน้าเอกสาร (เต็มหน้า)
                 </label>
               )}
-              {layout === 'p' && (
+              {(layout === 'p' || layout === '6') && (
                 <input
                   value={p.heading ?? ''}
                   onChange={(e) => onChange(photos.map((x, j) => (j === i ? { ...x, heading: e.target.value } : x)))}
-                  placeholder={i === 0 && title.trim() ? 'หัวข้อหน้านี้ (ว่าง = ใช้หัวข้อรวม)' : 'หัวข้อหน้านี้ เช่น ลามิเนต Formica D8202'}
+                  placeholder={layout === '6' ? 'เริ่มการทดสอบใหม่ เช่น ทดสอบงานติดตั้งเต้ารับ (ว่าง = ต่อจากรูปก่อนหน้า)' : i === 0 && title.trim() ? 'หัวข้อหน้านี้ (ว่าง = ใช้หัวข้อรวม)' : 'หัวข้อหน้านี้ เช่น ลามิเนต Formica D8202'}
                   aria-label={`หัวข้อบนหน้าที่ ${i + 1}`}
                   className="w-full border-t border-line bg-surface px-2 py-1.5 text-sm font-semibold text-ink focus:outline-none"
                 />
@@ -231,6 +231,9 @@ export function LetterPhotos({
             </li>
           ))}
         </ul>
+      )}
+      {layout === '6' && photos.length > 0 && (
+        <p className="text-xs text-muted-token">ใบทดสอบ: ใส่ชื่อการทดสอบที่รูปแรกของแต่ละเรื่อง — ขึ้นหน้าใหม่พร้อมหัว โครงการ / ผู้รับเหมา / เอกสาร · รูปถัดไปที่เว้นว่างต่อเรื่องเดิม (หน้าละ 6 รูป) · ไฟล์ Word ไม่มีหัวใบทดสอบ ใช้ปุ่มพิมพ์ / PDF</p>
       )}
       {layout === 'p' && photos.length > 0 && (
         <p className="text-xs text-muted-token">แบบ 1 รูปต่อ 1 หน้า: ช่องหัวข้อหน้านี้ใต้แต่ละรูปคือหัวข้อของหน้านั้น · เว้นว่างไว้ = หน้าแรกใช้หัวข้อรวม หน้าอื่นไม่มีหัวข้อ</p>

@@ -886,6 +886,7 @@ export function LetterForm({
             maintPlan={isMaint ? mpValue : null}
             equipSummary={isEquip ? eqValue : null}
             domesticSummary={isDomSum ? ds : null}
+            photoProject={coProject().project}
           />
         </div>
       </div>
