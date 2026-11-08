@@ -18,7 +18,7 @@ type Search = { series?: string; q?: string; after?: string }
 
 /**
  * ทะเบียนหนังสือส่ง (R19) — ใหม่สุดก่อน · แยกตามชุดเลข (โครงการ) · ค้นจากเรื่อง
- * keyset ด้วย (letter_date desc, seq desc, id desc) — วันเดียวกันเรียงตามเลขหนังสือ · offset ลึก ๆ ช้าและแถวซ้ำได้ (§7)
+ * keyset: เลือกชุดเลข = (year_ce desc, seq desc, id desc) เรียงตามเลขที่รัน · ทุกชุด = (letter_date desc, seq desc, id desc) · offset ลึก ๆ ช้าและแถวซ้ำได้ (§7)
  */
 export default async function LettersPage({ searchParams }: { searchParams: Promise<Search> }) {
   const sp = await searchParams
@@ -34,15 +34,23 @@ export default async function LettersPage({ searchParams }: { searchParams: Prom
   if (seriesId) list = list.eq('series_id', seriesId)
   // 🔴 escape แล้วค่อยยัดเข้า ilike — คอมมาในช่องค้นหาจะกลายเป็นเงื่อนไขที่สอง (§7)
   for (const t of terms) list = list.ilike('subject', `%${t}%`)
+  // 🔴 เลือกชุดเลขแล้ว = เรียงตามเลขที่รัน (ปี → เลข) ไม่ใช่วันที่ลงในหนังสือ — วันที่แก้ย้อนได้ (เช่น 041 ลงวันที่ 8 แต่ออกหลัง 040)
+  //    "ทุกชุด" = ใหม่สุดก่อนตามวันที่ (เลขของคนละชุดเทียบกันไม่ได้)
+  const byNumber = Boolean(seriesId)
   if (sp.after) {
     const [d, n, id] = sp.after.split('|')
-    if (/^\d{4}-\d{2}-\d{2}$/.test(d ?? '') && /^\d{1,9}$/.test(n ?? '') && isUuid(id)) {
+    if (byNumber) {
+      if (/^\d{4}$/.test(d ?? '') && /^\d{1,9}$/.test(n ?? '') && isUuid(id)) {
+        list = list.or(`year_ce.lt.${d},and(year_ce.eq.${d},seq.lt.${n}),and(year_ce.eq.${d},seq.eq.${n},id.lt.${id})`)
+      }
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(d ?? '') && /^\d{1,9}$/.test(n ?? '') && isUuid(id)) {
       list = list.or(`letter_date.lt.${d},and(letter_date.eq.${d},seq.lt.${n}),and(letter_date.eq.${d},seq.eq.${n},id.lt.${id})`)
     }
   }
 
   const [listRes, seriesRes] = await Promise.all([
-    list.order('letter_date', { ascending: false }).order('seq', { ascending: false }).order('id', { ascending: false }).range(0, PAGE_SIZE),
+    (byNumber ? list.order('year_ce', { ascending: false }) : list.order('letter_date', { ascending: false }))
+      .order('seq', { ascending: false }).order('id', { ascending: false }).range(0, PAGE_SIZE),
     sb.from('letter_series').select('id, label, prefix, is_active').order('label', { ascending: true }).range(0, 199),
   ])
 
@@ -178,7 +186,7 @@ export default async function LettersPage({ searchParams }: { searchParams: Prom
 
       {hasMore && last && (
         <div className="mt-3 text-center">
-          <Link href={href({ after: `${last.letter_date}|${last.seq}|${last.id}` })} className="btn-secondary">
+          <Link href={href({ after: `${byNumber ? last.year_ce : last.letter_date}|${last.seq}|${last.id}` })} className="btn-secondary">
             โหลดเพิ่ม
           </Link>
         </div>
