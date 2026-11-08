@@ -67,8 +67,9 @@ function header(g: Grid): { row: number; price: number } | null {
     let price = -1
     for (let c = 0; c < Math.min(g.cols, 14); c += 1) {
       const t = g.w(r, c)
-      if (t === 'รายการ') hasList = true
-      if (price < 0 && /^(ราคา)?ค่า(วัสดุ|ครุภัณฑ์)/.test(t)) price = c
+      // ไฟล์ส่วนใหญ่ใช้ "รายการ" · BOQ แบบใหม่บางไฟล์ใช้ "กิจกรรมการดำเนินงาน" (8 พ.ย. 2569 — ไฟล์โรงพยาบาลแมว)
+      if (t === 'รายการ' || t === 'กิจกรรมการดำเนินงาน') hasList = true
+      if (price < 0 && /^(ราคา)?ค่า(วัสดุ|ครุภัณฑ์)|^ราคาวัสดุ/.test(t)) price = c
     }
     if (hasList && price > 0) return { row: r, price }
   }
