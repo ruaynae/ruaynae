@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import { ProjectSummaryPaper } from '@/components/letters/project-summary-paper'
 import type { ProjectSummary } from '@/lib/project-summary'
 import { DomesticSummaryPaper } from '@/components/letters/domestic-summary-paper'
@@ -30,7 +31,14 @@ import { hasPwItems, type ProgressWork } from '@/lib/progress-work'
 const pageHeading = (p: { heading?: string }, i: number, groupTitle: string) =>
   p.heading?.trim() || (i === 0 ? groupTitle.trim() : '')
 
-export type PaperPhoto = { url: string; caption: string; heading?: string; stamped?: boolean; asPage?: boolean }
+export type PaperPhoto = { url: string; caption: string; heading?: string; stamped?: boolean; asPage?: boolean; /** หน้าคั่นก่อนรูปนี้ (หน้าเปล่าพิมพ์ข้อความกลางหน้า) */ divider?: string }
+
+/** หน้าคั่นแนบท้ายหนังสือ — หน้าเปล่า ข้อความกลางหน้า (เช่น "รูปภาพระหว่างก่อสร้าง") */
+const DividerPage = ({ text }: { text: string }) => (
+  <article className="paper letter-sheet lt-divider">
+    <p>{text}</p>
+  </article>
+)
 
 /** รูปแนบ + ตราประทับซ้อนมุมขวาล่าง — multiply: พื้นขาวของตราที่สแกนมาไม่บังหน้าแค็ตตาล็อก (ตำแหน่ง/ขนาดตรงกับไฟล์ Word) */
 function StampedImg({ p, stampUrl, style }: { p: PaperPhoto; stampUrl: string | null; style?: CSSProperties }) {
@@ -196,12 +204,15 @@ export function LetterPaper({
       {photos.length > 0 && photoLayout === 'p' && (
         // 1 รูปต่อ 1 หน้ากระดาษ (แค็ตตาล็อก · R27) — หัวข้อขึ้นต่อหน้า (heading ของรูป · หน้าแรกถอยไปใช้หัวข้อรวม) · ไม่พิมพ์คำอธิบายใต้รูป (ตรงกับไฟล์ Word)
         photos.map((p, i) => (
-          <article key={i} className="paper letter-sheet lt-fullpage">
-            {pageHeading(p, i, photoTitle) && <p className="lt-photo-title">{pageHeading(p, i, photoTitle)}</p>}
-            <p className="lt-photo">
-              <StampedImg p={p} stampUrl={stampUrl} />
-            </p>
-          </article>
+          <Fragment key={i}>
+            {p.divider && <DividerPage text={p.divider} />}
+            <article className="paper letter-sheet lt-fullpage">
+              {pageHeading(p, i, photoTitle) && <p className="lt-photo-title">{pageHeading(p, i, photoTitle)}</p>}
+              <p className="lt-photo">
+                <StampedImg p={p} stampUrl={stampUrl} />
+              </p>
+            </article>
+          </Fragment>
         ))
       )}
 
@@ -210,17 +221,18 @@ export function LetterPaper({
         // หน้าเอกสาร (PDF · asPage) = 1 หน้าต่อ 1 แผ่นเต็มหน้า · รูปถ่ายที่ติดกันจัดตามการจัดวางที่เลือก
         // ใบทดสอบ (แบบ 6 รูปต่อหน้า): รูปที่มี `heading` = เริ่มการทดสอบใหม่ (ขึ้นหน้าใหม่) · รูปถัดไปที่ไม่มีหัวข้อต่อกลุ่มเดิม
         // เกิน 6 รูปขึ้นหน้าถัดไปของการทดสอบเดิม — ทุกหน้ามีหัว โครงการ / ผู้รับเหมา / เอกสาร
-        type Group = { page: PaperPhoto } | { photos: PaperPhoto[]; test: string }
+        // `divider` = หน้าคั่นก่อนรูปนี้ (หน้าเปล่าพิมพ์ข้อความกลางหน้า) — รูปนั้นขึ้นหน้าใหม่เสมอ
+        type Group = { page: PaperPhoto; divider?: string } | { photos: PaperPhoto[]; test: string; divider?: string }
         const groups: Group[] = []
         let test = ''
         for (const p of photos) {
-          if (p.asPage) { groups.push({ page: p }); test = ''; continue }
+          if (p.asPage) { groups.push({ page: p, divider: p.divider }); test = ''; continue }
           const head = photoLayout === '6' ? (p.heading?.trim() ?? '') : ''
           if (head) test = head
           const last = groups[groups.length - 1]
           const per = PHOTOS_PER_PAGE[photoLayout]
-          if (!head && last && 'photos' in last && last.photos.length < per) last.photos.push(p)
-          else groups.push({ photos: [p], test })
+          if (!head && !p.divider && last && 'photos' in last && last.photos.length < per) last.photos.push(p)
+          else groups.push({ photos: [p], test, divider: p.divider })
         }
         const single = photos.length === 1 && photoLayout === '1'
         const cell = (p: PaperPhoto | undefined, c: number) => (
@@ -233,7 +245,7 @@ export function LetterPaper({
             )}
           </td>
         )
-        return groups.map((g, k) => {
+        const renderGroup = (g: Group, k: number) => {
           const testTitle = 'photos' in g ? g.test : ''
           const title = testTitle ? (
             <div className="lt-testhead">
@@ -274,7 +286,13 @@ export function LetterPaper({
               )}
             </article>
           )
-        })
+        }
+        return groups.map((g, k) => (
+          <Fragment key={k}>
+            {g.divider && <DividerPage text={g.divider} />}
+            {renderGroup(g, k)}
+          </Fragment>
+        ))
       })()}
     </>
   )

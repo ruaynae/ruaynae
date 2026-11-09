@@ -1,5 +1,6 @@
 'use client'
 
+import { applyDividers, dividersFromPhotos, type Dividers } from '@/lib/photo-dividers'
 import { ProjectSummarySection } from '@/components/letters/project-summary-section'
 import { PS_ATTACHMENT, defaultBudget, emptyProjectSummary, type ProjectSummary } from '@/lib/project-summary'
 import { weekEndIso } from '@/lib/progress-work'
@@ -87,6 +88,8 @@ export type FormLetter = {
   domesticSummary?: DomesticSummary | null
   /** รายละเอียดโครงการ + สรุปความก้าวหน้า (R37 · แบบ "ส่งมอบงานงวด") */
   projectSummary?: ProjectSummary | null
+  /** หน้าคั่นก่อนรูปแนบ (ลำดับรูป → ข้อความ) */
+  photoDividers?: Dividers | null
 }
 
 type Draft = {
@@ -164,7 +167,7 @@ export function LetterForm({
   /** พิมพ์/ดาวน์โหลด 2 ฉบับ — ต้นฉบับยื่นหน่วยงาน · สำเนาให้เจ้าหน้าที่เซ็นรับแล้วเก็บกลับมา (เจ้าของขอ 22 ต.ค. 2569) */
   const [copies, setCopies] = useState<1 | 2>(2)
   const [askDelete, setAskDelete] = useState(false)
-  const [photos, setPhotos] = useState<LetterPhoto[]>(initialPhotos?.photos ?? [])
+  const [photos, setPhotos] = useState<LetterPhoto[]>(applyDividers<LetterPhoto>(initialPhotos?.photos ?? [], initial?.photoDividers))
   const [photoTitle, setPhotoTitle] = useState(initialPhotos?.title ?? '')
   const [photoLayout, setPhotoLayout] = useState<PhotoLayout>(initialPhotos?.layout ?? '1')
   /** หนังสือนี้มีรูปเก็บอยู่ในระบบ — ลบรูปหมดแล้วบันทึก ต้องส่งรายการว่างไปลบด้วย */
@@ -457,6 +460,7 @@ export function LetterForm({
       maintPlan: isMaint ? mpValue : null,
       domesticSummary: isDomSum ? ds : null,
       projectSummary: isDelivery ? ps : null,
+      photoDividers: dividersFromPhotos(photos),
       equipSummary: isEquip ? compactEquipSummary(eqValue) : null,
     }
     try {
@@ -889,7 +893,12 @@ export function LetterForm({
             <div className="mt-3">
               <LetterPhotos
                 photos={photos}
-                onChange={setPhotos}
+                onChange={(next) => {
+                  // หนังสือส่งมอบงาน: รูปชุดแรกที่แนบ = รูปหน้างาน → ใส่หน้าคั่น "รูปภาพระหว่างก่อสร้าง" ให้ (ลบ/แก้ได้)
+                  if (isDelivery && photos.length === 0 && next.length > 0 && !next.some((p) => p.divider)) {
+                    setPhotos([{ ...next[0], divider: 'รูปภาพระหว่างก่อสร้าง' }, ...next.slice(1)])
+                  } else setPhotos(next)
+                }}
                 title={photoTitle}
                 onTitle={setPhotoTitle}
                 layout={photoLayout}
@@ -908,7 +917,7 @@ export function LetterForm({
             copies={copies}
             letter={paper}
             logoUrl={logoUrl}
-            photos={photos.map((p) => ({ url: p.url, caption: p.caption, heading: p.heading, stamped: p.stamped, asPage: p.asPage }))}
+            photos={photos.map((p) => ({ url: p.url, caption: p.caption, heading: p.heading, stamped: p.stamped, asPage: p.asPage, divider: p.divider }))}
             photoTitle={photoTitle}
             photoLayout={photoLayout}
             stampUrl={stampUrl}

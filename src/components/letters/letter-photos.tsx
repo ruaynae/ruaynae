@@ -1,5 +1,6 @@
 'use client'
 
+import { DIVIDER_MAX, DIVIDER_SUGGESTIONS } from '@/lib/photo-dividers'
 import { ArrowUp, FileText, ImagePlus, Loader2, Stamp, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
@@ -7,7 +8,7 @@ import { LETTER_LIMITS, photoLayoutOf, type PhotoLayout } from '@/lib/letters'
 import { openPdf, pdfErrorText } from '@/lib/pdf-pages'
 
 /** `file` = เพิ่งเลือก (ยังไม่อัป) · `key` = อยู่ใน R2 แล้ว (เก็บกับหนังสือ) · `url` = blob หรือลิงก์ presigned */
-export type LetterPhoto = { file?: File; key?: string; url: string; caption: string; /** หัวข้อบนหน้านี้ (เฉพาะแบบ 1 รูปต่อ 1 หน้า) */ heading?: string; /** ประทับตราบริษัทมุมขวาล่าง (R27) */ stamped?: boolean; /** หน้าเอกสาร (จาก PDF) — แสดงเต็มหน้ากระดาษ 1 หน้าต่อ 1 แผ่น ไม่ปนในตารางรูป */ asPage?: boolean }
+export type LetterPhoto = { file?: File; key?: string; url: string; caption: string; /** หัวข้อบนหน้านี้ (เฉพาะแบบ 1 รูปต่อ 1 หน้า) */ heading?: string; /** ประทับตราบริษัทมุมขวาล่าง (R27) */ stamped?: boolean; /** หน้าเอกสาร (จาก PDF) — แสดงเต็มหน้ากระดาษ 1 หน้าต่อ 1 แผ่น ไม่ปนในตารางรูป */ asPage?: boolean; /** หน้าคั่นก่อนรูปนี้ (หน้าเปล่าพิมพ์ข้อความกลางหน้า) · ว่าง = ไม่มี */ divider?: string }
 
 /**
  * รูปแนบท้ายหนังสือ (ไม่บังคับ · D9) — เช่นเส้นทางเข้า-ออก แบบป้าย ภาพผลงานงวด
@@ -214,6 +215,15 @@ export function LetterPhotos({
                 />
               )}
               <input
+                value={p.divider ?? ''}
+                onChange={(e) => onChange(photos.map((x, j) => (j === i ? { ...x, divider: e.target.value } : x)))}
+                placeholder="หน้าคั่นก่อนรูปนี้ เช่น รูปภาพระหว่างก่อสร้าง (ว่าง = ไม่มี)"
+                aria-label={`หน้าคั่นก่อนรูปที่ ${i + 1}`}
+                list="lp-divider-list"
+                maxLength={DIVIDER_MAX}
+                className="w-full border-t border-line bg-surface px-2 py-1.5 text-sm text-ink focus:outline-none"
+              />
+              <input
                 value={p.caption}
                 onChange={(e) => onChange(photos.map((x, j) => (j === i ? { ...x, caption: e.target.value } : x)))}
                 placeholder="คำอธิบายใต้รูป"
@@ -238,6 +248,10 @@ export function LetterPhotos({
       {layout === 'p' && photos.length > 0 && (
         <p className="text-xs text-muted-token">แบบ 1 รูปต่อ 1 หน้า: ช่องหัวข้อหน้านี้ใต้แต่ละรูปคือหัวข้อของหน้านั้น · เว้นว่างไว้ = หน้าแรกใช้หัวข้อรวม หน้าอื่นไม่มีหัวข้อ</p>
       )}
+      <datalist id="lp-divider-list">{DIVIDER_SUGGESTIONS.map((s) => <option key={s} value={s} />)}</datalist>
+      <p className="text-xs text-muted-token">
+        หน้าคั่น = หน้าเปล่าพิมพ์ข้อความกลางหน้า ขึ้นก่อนรูปที่ใส่ไว้ (เช่น ก่อนรูปหน้างาน หรือก่อนผลทดสอบ) · ไฟล์ Word ไม่มีหน้าคั่น ใช้ปุ่มพิมพ์ / PDF
+      </p>
       <p className="text-xs text-muted-token">
         รูปและหน้า PDF จะอยู่ท้ายหนังสือ (PDF แปลงเป็นรูปทีละหน้า · แต่ละหน้า PDF ขึ้นเต็มกระดาษ 1 แผ่น ส่วนรูปถ่ายจัดตามการจัดวางที่เลือก) ในไฟล์ Word และตอนพิมพ์ · เก็บไว้กับหนังสือในทะเบียนเมื่อกดบันทึก/ดาวน์โหลด/พิมพ์
       </p>
