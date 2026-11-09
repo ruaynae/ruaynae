@@ -234,3 +234,27 @@ test('parsePastedSchedule (R31): แท็บ/ขีดตั้ง · ข้า
   assert.deepEqual(rows[0].planDates, { start: '2026-07-13', end: '2026-08-01' })
   assert.equal(rows[1].name, 'งานพื้น ชั้น 1')
 })
+
+test('เส้นผลงานจริงถ่วงมูลค่าตามสัญญา (หลายตัวคูณ): ปลายเส้น = % ในตารางแนบหนังสือ (94.53 ไม่ใช่ 93.73)', async () => {
+  const { fitCurve } = await import('../../src/lib/boq/curve-fit.ts')
+  const base = plan()
+  base.categories.push({ name: 'หมวดครุภัณฑ์', source: 'ปร.5(ข) → x', mult: 1.07, group: '', tasks: [
+    { name: 'งานครุภัณฑ์', amount: 300000, source: '', offset: 0, dur: 14, on: true, items: [item('ตู้', 300000, 0)] },
+  ] })
+  const multTotal = 600000 * 1.3 + 300000 * 1.07
+  base.project.total = multTotal
+  const p = parsePlanInput({ ...base, days: 28 }).value
+  const progress = { weekly: true, items: { '0.0.0': [1], '0.0.1': [1], '0.0.2': [0.2], '1.0.0': [1] } }
+  const rep = planReport({ ...p, progress }, '2027-01-10')
+  const pw = buildProgressWork({ id: 'p', name: p.name, project: p.project, categories: p.categories, start: p.start, days: p.days, progress }, 1)
+  const table = ratio(pwTotal(pw).value, pw.contract)
+  assert.ok(Math.abs(rep.installments[0].actual - table) < 1e-12)
+  assert.ok(Math.abs(rep.actualValueNow - table) < 1e-12)
+  // ทุกรายการเสร็จ 100% = ปลายเส้น 100%
+  const full = planReport({ ...p, progress: { weekly: true, items: { '0.0.0': [1], '0.0.1': [1], '0.0.2': [1], '1.0.0': [1] } } }, '2027-01-10')
+  assert.ok(Math.abs(full.installments[0].actual - 1) < 1e-12)
+  // นำเข้าเส้นรวมแล้วอ่านกลับได้ยอดเท่าเดิม
+  const fit = fitCurve(p, [0.5])
+  const back = planReport({ ...p, progress: { weekly: true, items: fit.items } }, '2027-01-10')
+  assert.ok(Math.abs(back.installments[0].actual - 0.5) < 5e-5)
+})

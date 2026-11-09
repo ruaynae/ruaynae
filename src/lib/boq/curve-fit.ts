@@ -34,7 +34,7 @@ function activeItems(categories: BoqCategory[]): Row[] {
   const rows: Row[] = []
   categories.forEach((c, ci) => c.tasks.forEach((t, ti) => {
     if (!t.on) return
-    t.items.forEach((it, ii) => rows.push({ key: `${ci}.${ti}.${ii}`, amount: it.amount, offset: t.offset, dur: Math.max(1, t.dur) }))
+    t.items.forEach((it, ii) => rows.push({ key: `${ci}.${ti}.${ii}`, amount: it.amount * c.mult, offset: t.offset, dur: Math.max(1, t.dur) }))
   }))
   return rows
 }

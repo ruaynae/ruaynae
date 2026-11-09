@@ -719,7 +719,14 @@ export function planReport(
     if (t >= d0) return Math.min(1, ((t - d0) / DAY + 1) / r.dur)
     return 0
   }
-  const actualAt = (k: number) => rows.reduce((s, r) => s + r.items.reduce((q, it) => q + it.amount * it.eff[k], 0), 0) / total
+  // 🔴 ผลงานจริงถ่วงด้วยมูลค่าตามสัญญา (ค่างานต้นทุน × Factor F/VAT ÷ ราคาสัญญา) — ตัวเลขเดียวกับตารางปริมาณงานที่แล้วเสร็จที่ตั้งเบิกเงิน
+  // (คำสั่งเจ้าของ 9 พ.ย. 2569: กราฟ 93.73% ≠ ตาราง 94.53% → ใช้ 94.53%) · เส้นแผนยังถ่วงตามค่างานต้นทุนเหมือนไฟล์ Excel/PDF ของห้าง
+  // ไม่มีราคาสัญญา = ใช้ยอดรวมตัวคูณของแผน
+  const multTotal = rows.reduce((s, r) => s + r.amount * r.mult, 0)
+  const contract = p.project?.total && p.project.total > 0 ? p.project.total : multTotal
+  const valueAt = (k: number) => rows.reduce((s, r) => s + r.mult * r.items.reduce((q, it) => q + it.amount * it.eff[k], 0), 0)
+  // เส้นกราฟ ÷ ยอดรวมตัวคูณของแผน (ถึง 100% เมื่อทำครบเสมอ) · ตัวเลขตามราคาสัญญา (`actualValueNow`) ÷ ราคาสัญญา — เท่ากันเมื่อราคาสัญญา = ยอดรวมตัวคูณ (BOQ ปกติ)
+  const actualAt = (k: number) => (multTotal > 0 ? valueAt(k) / multTotal : 0)
   const installments = Array.from({ length: lastWeek }, (_, k) => ({
     no: k + 1, date: iso(weekEnd(k)), week: k + 1, plan: dist.cum[k], actual: actualAt(k),
   }))
@@ -727,11 +734,7 @@ export function planReport(
   for (const x of installments) actualCum[x.week - 1] = x.actual
   const lastDate = lastWeek ? weekEnd(lastWeek - 1) : null
   // ผลงานรวมตัวคูณ ÷ ราคาสัญญา (สูตรเดียวกับ `pwTotal`/`ratio` ของตารางแนบหนังสือ) · ไม่มีราคาสัญญา = ใช้ยอดรวมตัวคูณของแผน
-  const multTotal = rows.reduce((s, r) => s + r.amount * r.mult, 0)
-  const contract = p.project?.total && p.project.total > 0 ? p.project.total : multTotal
-  const actualValueNow = lastWeek && contract > 0
-    ? rows.reduce((s, r) => s + r.mult * r.items.reduce((q, it) => q + it.amount * it.eff[lastWeek - 1], 0), 0) / contract
-    : undefined
+  const actualValueNow = lastWeek && contract > 0 ? valueAt(lastWeek - 1) / contract : undefined
   const alts = altKindsOf(p.categories)
   return {
     projectName: p.name,
