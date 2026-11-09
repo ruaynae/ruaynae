@@ -1,3 +1,4 @@
+import { parseProjectSummary, type ProjectSummary } from '@/lib/project-summary'
 import { hasDomesticSummary, parseDomesticSummary, type DomesticSummary } from '@/lib/domestic-summary'
 import { compactEquipSummary, parseEquipSummary, type EquipSummary } from '@/lib/equipment-summary'
 import { hasMpItems, parseMaintPlan, type MaintPlan } from '@/lib/maintenance-plan'
@@ -72,6 +73,8 @@ export type LetterInput = {
   equipSummary: EquipSummary | null
   /** สรุปการใช้พัสดุในประเทศ (R35) — `letters.fields.domesticSummary` (jsonb เดิม) */
   domesticSummary: DomesticSummary | null
+  /** ใบรายละเอียดโครงการ + สรุปความก้าวหน้า (R37 · หนังสือส่งมอบงาน) — `letters.fields.projectSummary` */
+  projectSummary: ProjectSummary | null
 }
 
 export type ParsedLetter = { ok: true; value: LetterInput } | { ok: false; error: string }
@@ -149,6 +152,7 @@ export function parseLetterInput(body: Record<string, unknown>): ParsedLetter {
       progressWork: templateId === 'delivery' ? progressWorkOf(body.progressWork) : null,
       sCurve: templateId === 'delivery' ? sCurveOf(body.sCurve) : null,
       maintPlan: templateId === 'maintplan' ? maintPlanOf(body.maintPlan) : null,
+      projectSummary: templateId === 'delivery' ? parseProjectSummary(body.projectSummary) : null,
       domesticSummary: templateId === 'domesticsummary' ? domesticSummaryOf(body.domesticSummary) : null,
       equipSummary: templateId === 'equipsummary' ? compactEquipSummary(parseEquipSummary(body.equipSummary)) : null,
     },
@@ -190,7 +194,7 @@ function changeOrderOf(v: unknown, templateId: string | null): ChangeOrder | nul
  * ค่าช่องด่วน + ตารางงานเพิ่ม-ลด ลง jsonb `letters.fields` ก้อนเดียว
  * · คีย์ `changeOrder` ที่ client ส่งมาในช่องด่วนถูกทิ้งเสมอ — ตารางมาจาก `v.changeOrder` ที่ผ่านตัวตรวจแล้วเท่านั้น
  */
-const JSON_KEYS = new Set(['changeOrder', 'materialApproval', 'progressWork', 'sCurve', 'maintPlan', 'equipSummary', 'domesticSummary'])
+const JSON_KEYS = new Set(['changeOrder', 'materialApproval', 'progressWork', 'sCurve', 'maintPlan', 'equipSummary', 'domesticSummary', 'projectSummary'])
 
 function letterFieldsJson(v: LetterInput): Json {
   const out: Record<string, Json> = {}
@@ -200,6 +204,7 @@ function letterFieldsJson(v: LetterInput): Json {
   if (v.progressWork) out.progressWork = v.progressWork as unknown as Json
   if (v.sCurve) out.sCurve = v.sCurve as unknown as Json
   if (v.maintPlan) out.maintPlan = v.maintPlan as unknown as Json
+  if (v.projectSummary) out.projectSummary = v.projectSummary as unknown as Json
   if (v.domesticSummary) out.domesticSummary = v.domesticSummary as unknown as Json
   if (v.equipSummary) out.equipSummary = v.equipSummary as unknown as Json
   return out

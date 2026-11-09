@@ -18,6 +18,10 @@ export type SiteContract = {
   active: boolean
   contractNo: string | null
   contractDate: string | null
+  /** วันเริ่ม/สิ้นสุดโครงการ + ราคาตามสัญญา — เติมใบรายละเอียดโครงการ (R37) */
+  startDate: string | null
+  endDate: string | null
+  contractAmount: number | null
 }
 
 /** บรรทัดอ้างถึงแบบที่ห้างเขียนเอง: "สัญญาจ้างเลขที่ 04/2570 ลงวันที่ 12 ตุลาคม 2569" */

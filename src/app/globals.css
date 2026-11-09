@@ -692,6 +692,22 @@
   .letter-sheet .eq-table .eq-b { font-weight: 700; }
   .letter-sheet .eq-table .eq-photo { padding: 3pt; text-align: center; vertical-align: middle; }
   .letter-sheet .eq-table .eq-photo img { display: block; margin: 0 auto; max-width: 100%; max-height: 34mm; object-fit: contain; }
+  /* รายละเอียดโครงการ + สรุปความก้าวหน้า (R37) — แผ่นแนวตั้ง 2 ใบ */
+  .letter-sheet.ps-sheet { font-size: 14pt; line-height: 1.4; }
+  .ps-sheet p { margin: 0; }
+  .ps-sheet .ps-bar { text-align: center; font-weight: 700; font-size: 16pt; background: #b8cce4; padding: 6pt 0; margin: 0 auto 12pt !important; width: 62%; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .ps-sheet .ps-center { text-align: center; margin-bottom: 8pt !important; }
+  .ps-sheet .ps-b { font-weight: 700; }
+  .ps-sheet .ps-c { text-align: center; }
+  .ps-sheet .ps-n { text-align: right; font-variant-numeric: tabular-nums; }
+  .ps-sheet .ps-kv { width: 100%; border-collapse: collapse; margin-top: 10pt; }
+  .ps-sheet .ps-kv td { padding: 4pt 6pt; border-bottom: 0.5pt solid #cbd5e1; vertical-align: top; }
+  .ps-sheet .ps-kv .ps-k { width: 24%; font-weight: 700; white-space: nowrap; }
+  .ps-sheet .ps-kv .ps-k2 { font-weight: 700; white-space: nowrap; width: 18%; }
+  .ps-sheet .ps-grid { width: 100%; border-collapse: collapse; margin-bottom: 14pt; }
+  .ps-sheet .ps-grid th, .ps-sheet .ps-grid td { border: 0.75pt solid #000; padding: 2pt 5pt; }
+  .ps-sheet .ps-grid th { background: #ffccff; text-align: center; font-weight: 700; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .ps-sheet .ps-total td { font-weight: 700; }
   /* ใบทดสอบ: หัวโครงการ/ผู้รับเหมา/เอกสาร ก่อนตารางรูป 6 รูป */
   .letter-sheet .lt-testhead { margin: 0 0 12pt; }
   .letter-sheet .lt-testhead p { margin: 0 0 4pt; }

@@ -1,3 +1,5 @@
+import { ProjectSummaryPaper } from '@/components/letters/project-summary-paper'
+import type { ProjectSummary } from '@/lib/project-summary'
 import { DomesticSummaryPaper } from '@/components/letters/domestic-summary-paper'
 import { hasDomesticSummary, type DomesticSummary } from '@/lib/domestic-summary'
 import { EquipmentSummaryPaper } from '@/components/letters/equipment-summary-paper'
@@ -78,6 +80,7 @@ export function LetterPaper({
   equipSummary = null,
   domesticSummary = null,
   photoProject = '',
+  projectSummary = null,
 }: {
   letter: LetterPaperData
   logoUrl: string | null
@@ -107,6 +110,8 @@ export function LetterPaper({
   domesticSummary?: DomesticSummary | null
   /** ชื่อโครงการบนหัวใบทดสอบ (แบบ 6 รูปต่อหน้าที่รูปมีหัวข้อ) */
   photoProject?: string
+  /** รายละเอียดโครงการ + สรุปความก้าวหน้า (R37) — แผ่นแนวตั้ง 2 ใบ ต่อจากใบปะหน้า ก่อนตารางปริมาณงาน · ต้นฉบับเท่านั้น */
+  projectSummary?: ProjectSummary | null
 }) {
   const lh = letter.letterhead
   const rows = [
@@ -178,6 +183,7 @@ export function LetterPaper({
         )}
       </article>
 
+      {projectSummary && <ProjectSummaryPaper info={projectSummary} pw={hasPwItems(progressWork) ? progressWork : null} asOf={progressWork?.asOf ?? ''} />}
       {changeOrder && hasItems(changeOrder) && <ChangeOrderPaper co={changeOrder} />}
       {materialApproval && hasMaItems(materialApproval) && <MaterialApprovalPaper ma={materialApproval} letter={letter} />}
       {materialList && hasMaItems(materialList) && <MaterialListPaper ma={materialList} />}

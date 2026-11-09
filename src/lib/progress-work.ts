@@ -25,7 +25,8 @@ export type PwItem = {
   pl: number
 }
 export type PwTask = { name: string; items: PwItem[] }
-export type PwCat = { name: string; mult: number; tasks: PwTask[] }
+/** `equip` = หมวดที่มาจากแบบ ปร.5(ข) (ครุภัณฑ์จัดซื้อ · คูณ VAT) — ใช้แยกกลุ่มในใบสรุปความก้าวหน้า (R37) · snapshot เก่าไม่มี = งานปรับปรุงอาคาร */
+export type PwCat = { name: string; mult: number; equip?: boolean; tasks: PwTask[] }
 export type ProgressWork = {
   v: 1
   planId: string
@@ -105,7 +106,7 @@ export function buildProgressWork(src: PwSource, week: number): ProgressWork {
         }),
       })
     })
-    if (tasks.length) cats.push({ name: c.name, mult: c.mult, tasks })
+    if (tasks.length) cats.push({ name: c.name, mult: c.mult, ...(/ปร\.?\s*5\s*\(ข\)/.test(c.source ?? '') ? { equip: true } : {}), tasks })
   })
   const contract = src.project.total
     ?? cats.reduce((s, c) => s + c.tasks.reduce((q, t) => q + t.items.reduce((w, it) => w + it.mat + it.lab, 0), 0) * c.mult, 0)
@@ -254,7 +255,7 @@ export function parseProgressWork(v: unknown): ProgressWork | null {
       }
       tasks.push({ name: str(t.name), items })
     }
-    cats.push({ name: str(c.name), mult: c.mult, tasks })
+    cats.push({ name: str(c.name), mult: c.mult, ...(c.equip === true ? { equip: true } : {}), tasks })
   }
   return {
     v: 1,

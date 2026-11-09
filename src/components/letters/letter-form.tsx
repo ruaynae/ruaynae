@@ -1,5 +1,8 @@
 'use client'
 
+import { ProjectSummarySection } from '@/components/letters/project-summary-section'
+import { PS_ATTACHMENT, defaultBudget, emptyProjectSummary, type ProjectSummary } from '@/lib/project-summary'
+import { weekEndIso } from '@/lib/progress-work'
 import { DomesticSummarySection } from '@/components/letters/domestic-summary-section'
 import type { DomesticSummary } from '@/lib/domestic-summary'
 import { EquipmentSummarySection } from '@/components/letters/equipment-summary-section'
@@ -82,6 +85,8 @@ export type FormLetter = {
   equipSummary?: EquipSummary | null
   /** สรุปการใช้พัสดุในประเทศ (R35 · แบบ "สรุปการใช้พัสดุในประเทศ") */
   domesticSummary?: DomesticSummary | null
+  /** รายละเอียดโครงการ + สรุปความก้าวหน้า (R37 · แบบ "ส่งมอบงานงวด") */
+  projectSummary?: ProjectSummary | null
 }
 
 type Draft = {
@@ -170,6 +175,7 @@ export function LetterForm({
   const [pw, setPwState] = useState<ProgressWork | null>(initial?.progressWork ?? null)
   const [sc, setScState] = useState<SCurveAttach | null>(initial?.sCurve ?? null)
   const [mp, setMp] = useState<MaintPlan | null>(initial?.maintPlan ?? null)
+  const [ps, setPsState] = useState<ProjectSummary | null>(initial?.projectSummary ?? null)
   const [ds, setDs] = useState<DomesticSummary | null>(initial?.domesticSummary ?? null)
   const [eq, setEq] = useState<EquipSummary | null>(initial?.equipSummary ?? null)
 
@@ -345,6 +351,32 @@ export function LetterForm({
     setPwState(next)
     setAttachLine(PW_ATTACHMENT, next != null)
   }
+  function setPs(next: ProjectSummary | null) {
+    setPsState(next)
+    setAttachLine(PS_ATTACHMENT, next != null)
+  }
+  /** ค่าตั้งต้นใบรายละเอียดโครงการ: โครงการของชุดเลข (ชื่อเต็ม สัญญา วันเริ่ม/สิ้นสุด ราคา) + แผนงานที่ดึงผลงานไว้ + หัวกระดาษ */
+  function psPrefill(): ProjectSummary {
+    const c = seriesProject(cur, contracts)
+    const base = emptyProjectSummary()
+    const contract = c?.contractAmount ?? (pw && pw.contract > 0 ? pw.contract : null)
+    const end = c?.endDate ?? (pw ? weekEndIso(pw.planStart, pw.planDays, Math.ceil(pw.planDays / 7)) : '')
+    return {
+      ...base,
+      project: (c ? c.fullName || c.name : '') || pw?.project || '',
+      owner: c?.owner || pw?.owner || '',
+      location: c?.address || pw?.location || '',
+      contractNo: c?.contractNo ?? '',
+      contractDate: c?.contractDate ?? '',
+      start: c?.startDate ?? pw?.planStart ?? '',
+      end,
+      installments: Number(d.fields.to || d.fields.n) > 0 ? Number(d.fields.to || d.fields.n) : null,
+      contract,
+      contractor: company,
+      rep: letterhead.signerName || '',
+      budget: defaultBudget(end, contract),
+    }
+  }
   function setSc(next: SCurveAttach | null) {
     setScState(next)
     setAttachLine(SC_ATTACHMENT, next != null)
@@ -424,6 +456,7 @@ export function LetterForm({
       sCurve: isDelivery ? sc : null,
       maintPlan: isMaint ? mpValue : null,
       domesticSummary: isDomSum ? ds : null,
+      projectSummary: isDelivery ? ps : null,
       equipSummary: isEquip ? compactEquipSummary(eqValue) : null,
     }
     try {
@@ -692,6 +725,7 @@ export function LetterForm({
           {isDomSum && <DomesticSummarySection value={ds} onChange={setDs} siteId={cur?.siteId ?? null} />}
           {isEquip && <EquipmentSummarySection value={eqValue} onChange={setEq} siteId={cur?.siteId ?? null} />}
           {isMaint && <MaintenancePlanSection value={mpValue} onChange={setMp} siteId={cur?.siteId ?? null} defaultStart={mpNextMonth} />}
+          {isDelivery && <ProjectSummarySection value={ps} onChange={setPs} prefill={psPrefill} hasProgress={pw != null} />}
           {isDelivery && <SCurveSection value={sc} onChange={setSc} siteId={cur?.siteId ?? null} defaultDate={d.date} />}
 
           <section className="card-surface space-y-3.5 p-4">
@@ -886,6 +920,7 @@ export function LetterForm({
             maintPlan={isMaint ? mpValue : null}
             equipSummary={isEquip ? eqValue : null}
             domesticSummary={isDomSum ? ds : null}
+            projectSummary={isDelivery ? ps : null}
             photoProject={coProject().project}
           />
         </div>

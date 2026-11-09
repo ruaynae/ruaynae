@@ -1,3 +1,4 @@
+import { parseProjectSummary } from '@/lib/project-summary'
 import { parseDomesticSummary } from '@/lib/domestic-summary'
 import { parseEquipSummary } from '@/lib/equipment-summary'
 import { parseMaintPlan } from '@/lib/maintenance-plan'
@@ -39,10 +40,10 @@ export async function loadLetterFormContext() {
     currentLetterhead(),
     getBranding(),
     // "อ้างถึงสัญญาของโครงการ" — เลขที่/วันที่สัญญาอยู่ที่ `site_finance` (เจ้าของเท่านั้น เหมือนเมนูนี้)
-    sb.from('sites').select('id, name, status, address, client_name').order('name', { ascending: true }).range(0, 499),
+    sb.from('sites').select('id, name, status, address, client_name, start_date, end_date').order('name', { ascending: true }).range(0, 499),
     // ชื่อเต็มอ่านแยก — ยังไม่รัน migration `20261022120000` ฟอร์มหนังสือต้องไม่พัง (ใช้ชื่อย่อแทน)
     sb.from('sites').select('id, full_name').order('id').range(0, 499),
-    sb.from('site_finance').select('site_id, contract_no, contract_date').order('site_id').range(0, 499),
+    sb.from('site_finance').select('site_id, contract_no, contract_date, contract_amount').order('site_id').range(0, 499),
     // ตราประทับบริษัท (คลังวัสดุ · R27) — ยังไม่รัน migration = ไม่มี ไม่ใช่หน้าพัง
     loadStamp(sb),
   ])
@@ -60,6 +61,9 @@ export async function loadLetterFormContext() {
     active: s.status !== 'done' && s.status !== 'cancelled',
     contractNo: finance.get(s.id)?.contract_no?.trim() || null,
     contractDate: finance.get(s.id)?.contract_date ?? null,
+    startDate: s.start_date ?? null,
+    endDate: s.end_date ?? null,
+    contractAmount: finance.get(s.id)?.contract_amount != null && Number(finance.get(s.id)?.contract_amount) > 0 ? Number(finance.get(s.id)?.contract_amount) : null,
   }))
   if (seriesRes.error) console.error('[letters] อ่านชุดเลขไม่ได้', seriesRes.error.message)
   if (entriesRes.error) console.error('[letters] อ่านทะเบียนไม่ได้', entriesRes.error.message)
@@ -121,7 +125,7 @@ export function toFormLetter(r: LetterRowData): FormLetter {
   const fields: Record<string, string> = {}
   if (r.fields && typeof r.fields === 'object' && !Array.isArray(r.fields)) {
     for (const [k, v] of Object.entries(r.fields as Record<string, unknown>)) {
-      if (k !== 'changeOrder' && k !== 'materialApproval' && k !== 'progressWork' && k !== 'sCurve' && k !== 'maintPlan' && k !== 'equipSummary' && k !== 'domesticSummary') fields[k] = String(v ?? '')
+      if (k !== 'changeOrder' && k !== 'materialApproval' && k !== 'progressWork' && k !== 'sCurve' && k !== 'maintPlan' && k !== 'equipSummary' && k !== 'domesticSummary' && k !== 'projectSummary') fields[k] = String(v ?? '')
     }
   }
   const co = r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).changeOrder : null
@@ -150,6 +154,7 @@ export function toFormLetter(r: LetterRowData): FormLetter {
     sCurve: parseSCurveAttach(sc),
     domesticSummary: parseDomesticSummary(r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).domesticSummary : null),
     equipSummary: parseEquipSummary(r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).equipSummary : null),
+    projectSummary: parseProjectSummary(r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).projectSummary : null),
     maintPlan: parseMaintPlan(r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).maintPlan : null),
   }
 }
