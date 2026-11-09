@@ -1,7 +1,8 @@
 'use client'
 
 import * as Dialog from '@radix-ui/react-dialog'
-import { CalendarPlus, Loader2, Pencil, Trash2, UserPlus } from 'lucide-react'
+import { CalendarPlus, FileText, Loader2, Pencil, Trash2, UserPlus } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
@@ -185,6 +186,10 @@ export function SiteDetailActions({
 
   return (
     <>
+      <Link href={`/sites/${site.id}/statement`} className="btn-secondary">
+        <FileText className="size-4" />
+        รายงานรายรับ-รายจ่าย (PDF)
+      </Link>
       <button onClick={() => setEditing(true)} disabled={busy} className="btn-secondary">
         <Pencil className="size-4" />
         แก้ไข
