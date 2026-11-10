@@ -227,6 +227,11 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
   const canRecord = ['planning', 'active', 'paused', 'done'].includes(site.status)
   const canAttend = ['planning', 'active'].includes(site.status)
   const progress = timeProgress(site.start_date, site.end_date, today)
+  // วันส่งมอบจริงเลยวันสิ้นสุดสัญญากี่วัน (≤ 0 = ตรงเวลา) — ใช้กับโครงการที่ปิดแล้ว
+  const handoverLate =
+    bond?.handover_date && site.end_date
+      ? Math.round((Date.parse(`${bond.handover_date}T00:00:00Z`) - Date.parse(`${site.end_date}T00:00:00Z`)) / 864e5)
+      : 0
   const plannedTotal = (milestones ?? []).reduce((sum, m) => sum + Number(m.planned_amount), 0)
   const bars = moneyBars(money)
   const txnRows = txnResult.data ?? []
@@ -326,11 +331,18 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
           {progress.kind === 'ok' && (
             <span className="text-sm tnum text-muted-token">
               {progress.elapsedDays} / {progress.totalDays} วัน ·{' '}
-              <span className={progress.daysLeft < 0 ? 'font-semibold text-urgent' : ''}>
-                {progress.daysLeft < 0
-                  ? `เลยกำหนดมาแล้ว ${Math.abs(progress.daysLeft)} วัน`
-                  : `เหลืออีก ${progress.daysLeft} วัน`}
-              </span>
+              {site.status === 'done' ? (
+                // ส่งมอบแล้ว: เทียบวันส่งมอบจริง (ถ้ากรอกไว้) กับวันสิ้นสุดสัญญา — ไม่ใช่เทียบกับวันนี้
+                <span className={handoverLate > 0 ? 'font-semibold text-urgent' : 'font-semibold text-status-done'}>
+                  {!bond?.handover_date ? 'ส่งมอบแล้ว' : handoverLate > 0 ? `ส่งมอบช้ากว่ากำหนด ${handoverLate} วัน` : 'ส่งมอบตรงเวลา'}
+                </span>
+              ) : (
+                <span className={progress.daysLeft < 0 ? 'font-semibold text-urgent' : ''}>
+                  {progress.daysLeft < 0
+                    ? `เลยกำหนดมาแล้ว ${Math.abs(progress.daysLeft)} วัน`
+                    : `เหลืออีก ${progress.daysLeft} วัน`}
+                </span>
+              )}
             </span>
           )}
         </div>

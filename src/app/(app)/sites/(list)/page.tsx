@@ -182,7 +182,7 @@ export default async function SitesPage({
                       วัน
                     </span>
                   )}
-                  <TimeLeft startDate={s.start_date} endDate={s.end_date} today={today} />
+                  <TimeLeft startDate={s.start_date} endDate={s.end_date} today={today} status={s.status} />
                   {/* หัวหน้าโครงการไม่เห็นช่องนี้เลย — และไม่ใช่แค่ซ่อนบนหน้าจอ
                       ฐานข้อมูลไม่ยอมให้เขาอ่านตาราง site_finance ตั้งแต่แรก */}
                   {isOwner && (
@@ -215,11 +215,16 @@ function TimeLeft({
   startDate,
   endDate,
   today,
+  status,
 }: {
   startDate: string | null
   endDate: string | null
   today: string
+  status: string
 }) {
+  // ส่งมอบ/ปิดโครงการแล้ว = ไม่นับเวลาถอยหลังอีก (เดิมขึ้น "เลยมา n วัน" สีแดงทั้งที่ส่งงานแล้ว · เจ้าของแจ้ง 10 พ.ย. 2569)
+  if (status === 'done') return <span className="shrink-0 text-xs text-muted-token">ส่งงานแล้ว</span>
+  if (status === 'cancelled') return null
   const p = timeProgress(startDate, endDate, today)
   if (p.kind !== 'ok') return null
   const late = p.daysLeft < 0
