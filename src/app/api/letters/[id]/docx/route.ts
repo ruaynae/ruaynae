@@ -15,7 +15,7 @@ import {
 } from '@/lib/letters'
 
 export const runtime = 'nodejs'
-/** แค็ตตาล็อกเยอะ (R27 · สูงสุด 102 หน้า) แปลงรูปนานกว่าเดิม */
+/** แค็ตตาล็อกเยอะ (R27 · สูงสุด 200 หน้า) แปลงรูปนานกว่าเดิม */
 export const maxDuration = 60
 
 /**
