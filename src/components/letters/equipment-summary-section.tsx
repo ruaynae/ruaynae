@@ -3,7 +3,7 @@
 import { FileSearch, ImagePlus, Loader2, Plus, Trash2 } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { EQ_LIMITS, EQ_PHOTO_MAX_CHARS, EQ_PHOTO_PX, emptyEquipItem, type EquipItem, type EquipSummary } from '@/lib/equipment-summary'
+import { EQ_LIMITS, EQ_PHOTO_MAX_CHARS, EQ_TOTAL_MAX_CHARS, eqPhotoChars, EQ_PHOTO_PX, emptyEquipItem, type EquipItem, type EquipSummary } from '@/lib/equipment-summary'
 import { BoqNamePicker } from '@/components/letters/boq-name-picker'
 
 const readAsDataUrl = (f: Blob) =>
@@ -45,6 +45,7 @@ export function EquipmentSummarySection({
         if (url.length <= EQ_PHOTO_MAX_CHARS) break
       }
       if (url.length > EQ_PHOTO_MAX_CHARS) return toast.error('รูปนี้ใหญ่เกินไป ลองรูปอื่น')
+      if (eqPhotoChars(value) - value.items[i].photo.length + url.length > EQ_TOTAL_MAX_CHARS) return toast.error('รูปทั้งหมดในหนังสือนี้ใหญ่รวมกันเกินไป — เอารูปบางรูปออกก่อน')
       patch(i, { photo: url })
     } catch {
       toast.error('เปิดไฟล์รูปนี้ไม่ได้ ลองเลือกรูปอื่น')

@@ -1,3 +1,5 @@
+import { ReturnMaterialsPaper } from '@/components/letters/return-materials-paper'
+import { hasRmItems, type ReturnMaterials } from '@/lib/return-materials'
 import { Fragment } from 'react'
 import { ProjectSummaryPaper } from '@/components/letters/project-summary-paper'
 import type { ProjectSummary } from '@/lib/project-summary'
@@ -89,6 +91,7 @@ export function LetterPaper({
   domesticSummary = null,
   photoProject = '',
   projectSummary = null,
+  returnMaterials = null,
 }: {
   letter: LetterPaperData
   logoUrl: string | null
@@ -120,6 +123,8 @@ export function LetterPaper({
   photoProject?: string
   /** รายละเอียดโครงการ + สรุปความก้าวหน้า (R37) — แผ่นแนวตั้ง 2 ใบ ต่อจากใบปะหน้า ก่อนตารางปริมาณงาน · ต้นฉบับเท่านั้น */
   projectSummary?: ProjectSummary | null
+  /** ตารางวัสดุที่ส่งคืน — แผ่นแนวตั้งต่อจากหนังสือ ก่อนรูปภาพ · ต้นฉบับเท่านั้น */
+  returnMaterials?: ReturnMaterials | null
 }) {
   const lh = letter.letterhead
   const rows = [
@@ -196,6 +201,7 @@ export function LetterPaper({
       {materialApproval && hasMaItems(materialApproval) && <MaterialApprovalPaper ma={materialApproval} letter={letter} />}
       {materialList && hasMaItems(materialList) && <MaterialListPaper ma={materialList} />}
       {hasPwItems(progressWork) && <ProgressWorkPaper pw={progressWork} company={lh.companyName} />}
+      {returnMaterials && hasRmItems(returnMaterials) && <ReturnMaterialsPaper rm={returnMaterials} />}
       {hasDomesticSummary(domesticSummary) && <DomesticSummaryPaper ds={domesticSummary} />}
       {equipSummary && hasEqItems(equipSummary) && <EquipmentSummaryPaper eq={equipSummary} />}
       {maintPlan && hasMpItems(maintPlan) && <MaintenancePlanPaper plan={maintPlan} />}

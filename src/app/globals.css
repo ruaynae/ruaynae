@@ -682,6 +682,18 @@
   .pw-sheet .pw-catTotal td { font-weight: 700; background: #e0ecff; }
   .pw-sheet .pw-grand td { font-weight: 700; background: #fde68a; }
   .pw-sheet .pw-foot { margin-top: 4pt; font-size: 15pt; }
+  /* ตารางวัสดุที่ส่งคืน (10 พ.ย. 2569) — แผ่นแนวตั้ง ไหลข้ามหน้าเอง */
+  .letter-sheet .rm-title { margin: 0 0 8pt; text-align: center; font-weight: 700; }
+  .letter-sheet .rm-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13pt; line-height: 1.3; }
+  .letter-sheet .rm-table th, .letter-sheet .rm-table td { border: 0.75pt solid #000; padding: 3pt 5pt; vertical-align: middle; overflow-wrap: anywhere; }
+  .letter-sheet .rm-table th { font-weight: 700; text-align: center; background: #e5e7eb; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .letter-sheet .rm-table tbody { break-inside: avoid; }
+  .letter-sheet .rm-table .rm-c { text-align: center; }
+  .letter-sheet .rm-table .rm-photos { padding: 3pt; }
+  .letter-sheet .rm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3pt; }
+  .letter-sheet .rm-grid.rm-one { grid-template-columns: 1fr; }
+  .letter-sheet .rm-grid img { display: block; width: 100%; height: 30mm; object-fit: contain; }
+  .letter-sheet .rm-grid.rm-one img { height: 36mm; }
   /* สรุปรายการครุภัณฑ์ (R34) — แผ่นแนวตั้ง ไหลข้ามหน้าเอง */
   .letter-sheet .eq-title { margin: 0 0 8pt; text-align: center; font-weight: 700; text-decoration: underline; }
   .letter-sheet .eq-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13pt; line-height: 1.3; }

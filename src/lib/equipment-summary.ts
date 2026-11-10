@@ -17,6 +17,9 @@ export const EQ_LIMITS = { rows: 100, text: 200 } as const
 export const EQ_PHOTO_PX = 560
 export const EQ_PHOTO_QUALITY = 0.72
 export const EQ_PHOTO_MAX_CHARS = 100_000
+/** รูปรวมทั้งหนังสือ — คำขอบันทึกทั้งก้อนต้องไม่ชนเพดาน body ของ Vercel (~4.5 MB) */
+export const EQ_TOTAL_MAX_CHARS = 2_800_000
+export const eqPhotoChars = (s: EquipSummary | null | undefined) => (s ? s.items.reduce((a, it) => a + it.photo.length, 0) : 0)
 export const EQ_UNSPECIFIED = '-'
 
 export type EquipItem = {
@@ -52,7 +55,8 @@ export function parseEquipSummary(v: unknown): EquipSummary | null {
     const o = isObj(x) ? x : {}
     return { name: str(o.name), brand: str(o.brand), seller: str(o.seller), warranty: str(o.warranty), photo: isJpegDataUrl(o.photo) ? o.photo : '' }
   })
-  return { v: 1, items }
+  const out: EquipSummary = { v: 1, items }
+  return eqPhotoChars(out) > EQ_TOTAL_MAX_CHARS ? null : out
 }
 
 /** เก็บเฉพาะแถวที่มีชื่อ */

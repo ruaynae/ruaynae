@@ -1,5 +1,7 @@
 'use client'
 
+import { ReturnMaterialsSection } from '@/components/letters/return-materials-section'
+import { compactReturnMaterials, emptyReturnMaterials, type ReturnMaterials } from '@/lib/return-materials'
 import { applyDividers, dividersFromPhotos, type Dividers } from '@/lib/photo-dividers'
 import { ProjectSummarySection } from '@/components/letters/project-summary-section'
 import { PS_ATTACHMENT, defaultBudget, emptyProjectSummary, type ProjectSummary } from '@/lib/project-summary'
@@ -90,6 +92,8 @@ export type FormLetter = {
   projectSummary?: ProjectSummary | null
   /** หน้าคั่นก่อนรูปแนบ (ลำดับรูป → ข้อความ) */
   photoDividers?: Dividers | null
+  /** ตารางวัสดุที่ส่งคืน (แบบ "ส่งคืนวัสดุจากการรื้อถอน") */
+  returnMaterials?: ReturnMaterials | null
 }
 
 type Draft = {
@@ -180,6 +184,7 @@ export function LetterForm({
   const [mp, setMp] = useState<MaintPlan | null>(initial?.maintPlan ?? null)
   const [ps, setPsState] = useState<ProjectSummary | null>(initial?.projectSummary ?? null)
   const [ds, setDs] = useState<DomesticSummary | null>(initial?.domesticSummary ?? null)
+  const [rm, setRm] = useState<ReturnMaterials | null>(initial?.returnMaterials ?? null)
   const [eq, setEq] = useState<EquipSummary | null>(initial?.equipSummary ?? null)
 
   const [d, setD] = useState<Draft>(() => {
@@ -335,6 +340,8 @@ export function LetterForm({
   /* ── แผนบำรุงรักษาครุภัณฑ์ (R33) — เดือนเริ่มแนะนำ = เดือนถัดจากวันที่หนังสือ ── */
   const isMaint = template?.id === 'maintplan'
   const isEquip = template?.id === 'equipsummary'
+  const isReturn = template?.id === 'return'
+  const rmValue = rm ?? emptyReturnMaterials()
   const isDomSum = template?.id === 'domesticsummary'
   const eqValue = eq ?? emptyEquipSummary()
   const mpNextMonth = (() => {
@@ -461,6 +468,7 @@ export function LetterForm({
       domesticSummary: isDomSum ? ds : null,
       projectSummary: isDelivery ? ps : null,
       photoDividers: dividersFromPhotos(photos),
+      returnMaterials: isReturn ? compactReturnMaterials(rmValue) : null,
       equipSummary: isEquip ? compactEquipSummary(eqValue) : null,
     }
     try {
@@ -727,6 +735,7 @@ export function LetterForm({
 
           {isDelivery && <ProgressWorkSection value={pw} onChange={setPw} siteId={cur?.siteId ?? null} defaultDate={d.date} />}
           {isDomSum && <DomesticSummarySection value={ds} onChange={setDs} siteId={cur?.siteId ?? null} />}
+          {isReturn && <ReturnMaterialsSection value={rmValue} onChange={setRm} />}
           {isEquip && <EquipmentSummarySection value={eqValue} onChange={setEq} siteId={cur?.siteId ?? null} />}
           {isMaint && <MaintenancePlanSection value={mpValue} onChange={setMp} siteId={cur?.siteId ?? null} defaultStart={mpNextMonth} />}
           {isDelivery && <ProjectSummarySection value={ps} onChange={setPs} prefill={psPrefill} hasProgress={pw != null} />}
@@ -931,6 +940,7 @@ export function LetterForm({
             domesticSummary={isDomSum ? ds : null}
             projectSummary={isDelivery ? ps : null}
             photoProject={coProject().project}
+            returnMaterials={isReturn ? rmValue : null}
           />
         </div>
       </div>

@@ -1,3 +1,4 @@
+import { parseReturnMaterials } from '@/lib/return-materials'
 import { parseDividers } from '@/lib/photo-dividers'
 import { parseProjectSummary } from '@/lib/project-summary'
 import { parseDomesticSummary } from '@/lib/domestic-summary'
@@ -126,7 +127,7 @@ export function toFormLetter(r: LetterRowData): FormLetter {
   const fields: Record<string, string> = {}
   if (r.fields && typeof r.fields === 'object' && !Array.isArray(r.fields)) {
     for (const [k, v] of Object.entries(r.fields as Record<string, unknown>)) {
-      if (k !== 'changeOrder' && k !== 'materialApproval' && k !== 'progressWork' && k !== 'sCurve' && k !== 'maintPlan' && k !== 'equipSummary' && k !== 'domesticSummary' && k !== 'projectSummary' && k !== 'photoDividers') fields[k] = String(v ?? '')
+      if (k !== 'changeOrder' && k !== 'materialApproval' && k !== 'progressWork' && k !== 'sCurve' && k !== 'maintPlan' && k !== 'equipSummary' && k !== 'domesticSummary' && k !== 'projectSummary' && k !== 'photoDividers' && k !== 'returnMaterials') fields[k] = String(v ?? '')
     }
   }
   const co = r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).changeOrder : null
@@ -155,6 +156,7 @@ export function toFormLetter(r: LetterRowData): FormLetter {
     sCurve: parseSCurveAttach(sc),
     domesticSummary: parseDomesticSummary(r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).domesticSummary : null),
     equipSummary: parseEquipSummary(r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).equipSummary : null),
+    returnMaterials: parseReturnMaterials(r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).returnMaterials : null),
     photoDividers: parseDividers(r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).photoDividers : null),
     projectSummary: parseProjectSummary(r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).projectSummary : null),
     maintPlan: parseMaintPlan(r.fields && typeof r.fields === 'object' ? (r.fields as Record<string, unknown>).maintPlan : null),

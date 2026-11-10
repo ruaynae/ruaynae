@@ -1,3 +1,4 @@
+import { compactReturnMaterials, parseReturnMaterials, type ReturnMaterials } from '@/lib/return-materials'
 import { parseDividers, type Dividers } from '@/lib/photo-dividers'
 import { parseProjectSummary, type ProjectSummary } from '@/lib/project-summary'
 import { hasDomesticSummary, parseDomesticSummary, type DomesticSummary } from '@/lib/domestic-summary'
@@ -78,6 +79,8 @@ export type LetterInput = {
   projectSummary: ProjectSummary | null
   /** หน้าคั่นก่อนรูปแนบ (ลำดับรูป → ข้อความ) — `letters.fields.photoDividers` (jsonb เดิม) */
   photoDividers: Dividers | null
+  /** ตารางวัสดุที่ส่งคืน (แบบ "ส่งคืนวัสดุจากการรื้อถอน") — `letters.fields.returnMaterials` (jsonb เดิม) */
+  returnMaterials: ReturnMaterials | null
 }
 
 export type ParsedLetter = { ok: true; value: LetterInput } | { ok: false; error: string }
@@ -156,6 +159,7 @@ export function parseLetterInput(body: Record<string, unknown>): ParsedLetter {
       sCurve: templateId === 'delivery' ? sCurveOf(body.sCurve) : null,
       maintPlan: templateId === 'maintplan' ? maintPlanOf(body.maintPlan) : null,
       photoDividers: dividersOrNull(body.photoDividers),
+      returnMaterials: templateId === 'return' ? compactReturnMaterials(parseReturnMaterials(body.returnMaterials)) : null,
       projectSummary: templateId === 'delivery' ? parseProjectSummary(body.projectSummary) : null,
       domesticSummary: templateId === 'domesticsummary' ? domesticSummaryOf(body.domesticSummary) : null,
       equipSummary: templateId === 'equipsummary' ? compactEquipSummary(parseEquipSummary(body.equipSummary)) : null,
@@ -204,7 +208,7 @@ function changeOrderOf(v: unknown, templateId: string | null): ChangeOrder | nul
  * ค่าช่องด่วน + ตารางงานเพิ่ม-ลด ลง jsonb `letters.fields` ก้อนเดียว
  * · คีย์ `changeOrder` ที่ client ส่งมาในช่องด่วนถูกทิ้งเสมอ — ตารางมาจาก `v.changeOrder` ที่ผ่านตัวตรวจแล้วเท่านั้น
  */
-const JSON_KEYS = new Set(['changeOrder', 'materialApproval', 'progressWork', 'sCurve', 'maintPlan', 'equipSummary', 'domesticSummary', 'projectSummary', 'photoDividers'])
+const JSON_KEYS = new Set(['changeOrder', 'materialApproval', 'progressWork', 'sCurve', 'maintPlan', 'equipSummary', 'domesticSummary', 'projectSummary', 'photoDividers', 'returnMaterials'])
 
 function letterFieldsJson(v: LetterInput): Json {
   const out: Record<string, Json> = {}
@@ -214,6 +218,7 @@ function letterFieldsJson(v: LetterInput): Json {
   if (v.progressWork) out.progressWork = v.progressWork as unknown as Json
   if (v.sCurve) out.sCurve = v.sCurve as unknown as Json
   if (v.maintPlan) out.maintPlan = v.maintPlan as unknown as Json
+  if (v.returnMaterials) out.returnMaterials = v.returnMaterials as unknown as Json
   if (v.photoDividers) out.photoDividers = v.photoDividers as unknown as Json
   if (v.projectSummary) out.projectSummary = v.projectSummary as unknown as Json
   if (v.domesticSummary) out.domesticSummary = v.domesticSummary as unknown as Json
