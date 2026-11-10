@@ -21,6 +21,13 @@ export const EQ_PHOTO_MAX_CHARS = 100_000
 export const EQ_TOTAL_MAX_CHARS = 2_800_000
 export const eqPhotoChars = (s: EquipSummary | null | undefined) => (s ? s.items.reduce((a, it) => a + it.photo.length, 0) : 0)
 export const EQ_UNSPECIFIED = '-'
+/** รายการต่อแผ่น — ทุกรายการสูงเท่ากัน (4 บรรทัด + รูป ~34 มม.) แบ่งแผ่นเองให้ทุกแผ่นมีขอบบนของกระดาษ (หน้าที่ล้นต่อเองไม่มีขอบบน) */
+export const EQ_ITEMS_PER_PAGE = 6
+export function eqPages(n: number, per = EQ_ITEMS_PER_PAGE): [number, number][] {
+  const out: [number, number][] = []
+  for (let i = 0; i < n; i += per) out.push([i, Math.min(i + per, n)])
+  return out.length ? out : [[0, 0]]
+}
 
 export type EquipItem = {
   name: string

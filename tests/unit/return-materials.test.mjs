@@ -20,3 +20,15 @@ test('ตัวตรวจ: โครงสร้างผิด = null · ร�
   const many = Array.from({ length: 30 }, () => ({ name: 'x', photos: [big, big, big, big] }))
   assert.equal(parseReturnMaterials({ v: 1, items: many }), null)
 })
+
+test('แบ่งแผ่นตามความสูงรูป: รายการเยอะรูปขึ้นแผ่นใหม่ · ทุกรายการอยู่ในแผ่นใดแผ่นหนึ่งพอดี', async () => {
+  const { rmPages } = await import('../../src/lib/return-materials.ts')
+  const it = (n) => ({ name: 'x', qty: '', unit: '', photos: Array.from({ length: n }, () => 'p') })
+  const items = [it(4), it(4), it(4), it(4), it(4), it(0), it(1)]
+  const pages = rmPages(items)
+  assert.ok(pages.length >= 2)
+  assert.equal(pages[0][0], 0)
+  assert.equal(pages[pages.length - 1][1], items.length)
+  pages.forEach((p, i) => i && assert.equal(p[0], pages[i - 1][1]))
+  assert.deepEqual(rmPages([]), [[0, 0]])
+})

@@ -24,6 +24,25 @@ export type ReturnItem = {
 }
 export type ReturnMaterials = { v: 1; items: ReturnItem[] }
 
+/**
+ * แบ่งแผ่นตามความสูงโดยประมาณ (มม.) — แต่ละแผ่นมีขอบบนของกระดาษเอง (หน้าที่ล้นต่อเองไม่มีขอบบน)
+ * รายการหนึ่ง = แถวตัวหนังสือ ~14 มม. หรือสูงตามรูป (1 รูป ~39 มม. · 2+ รูป แถวละ ~33 มม.) · งบต่อแผ่น (หลังหัวตาราง) ~ 232 มม.
+ */
+export const RM_PAGE_BUDGET_MM = 232
+export const rmItemHeightMm = (it: ReturnItem) => (it.photos.length === 0 ? 14 : it.photos.length === 1 ? 42 : Math.ceil(it.photos.length / 2) * 33 + 8)
+export function rmPages(items: readonly ReturnItem[], budget = RM_PAGE_BUDGET_MM): [number, number][] {
+  const out: [number, number][] = []
+  let start = 0
+  let used = 0
+  items.forEach((it, i) => {
+    const h = rmItemHeightMm(it)
+    if (i > start && used + h > budget) { out.push([start, i]); start = i; used = 0 }
+    used += h
+  })
+  if (items.length) out.push([start, items.length])
+  return out.length ? out : [[0, 0]]
+}
+
 export const emptyReturnItem = (): ReturnItem => ({ name: '', qty: '', unit: '', photos: [] })
 export const emptyReturnMaterials = (): ReturnMaterials => ({ v: 1, items: [] })
 
