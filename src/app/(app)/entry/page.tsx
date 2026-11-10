@@ -30,7 +30,7 @@ export default async function EntryPage({ searchParams }: { searchParams: Promis
       sb
         .from('sites')
         .select('id, name')
-        .in('status', ['planning', 'active', 'paused'])
+        .in('status', ['planning', 'active', 'paused', 'done'])
         .order('name', { ascending: true })
         .range(0, PAGE_SIZE - 1),
       sb

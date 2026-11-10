@@ -148,7 +148,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
     sb
       .from('sites')
       .select('id, name')
-      .in('status', ['planning', 'active', 'paused'])
+      .in('status', ['planning', 'active', 'paused', 'done'])
       .order('name', { ascending: true })
       .range(0, PAGE_SIZE - 1)
       .then(({ data, error: e }) => {
@@ -223,7 +223,8 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
     : null
   const bondState = bond ? bondStatusOf(bond, today) : null
   // สถานะที่ปลายทางของปุ่มลัดยอมรับโครงการนี้ — ต้องตรงกับกล่องเลือกโครงการของสองหน้านั้น
-  const canRecord = ['planning', 'active', 'paused'].includes(site.status)
+  // ปิดโครงการ (done) แล้วยังบันทึกรายรับ-รายจ่ายได้ — ยังมีรายจ่ายค้างจ่ายและรายรับที่ต้องรอรับ (คำสั่งเจ้าของ 10 พ.ย. 2569) · ยกเลิก (cancelled) ไม่ได้
+  const canRecord = ['planning', 'active', 'paused', 'done'].includes(site.status)
   const canAttend = ['planning', 'active'].includes(site.status)
   const progress = timeProgress(site.start_date, site.end_date, today)
   const plannedTotal = (milestones ?? []).reduce((sum, m) => sum + Number(m.planned_amount), 0)
