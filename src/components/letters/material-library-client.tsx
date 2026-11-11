@@ -1,7 +1,7 @@
 'use client'
 
 import * as Dialog from '@radix-ui/react-dialog'
-import { ArrowDown, ArrowUp, Eye, EyeOff, FolderPlus, ImagePlus, Loader2, Package, Pencil, Plus, Stamp, Trash2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Eye, EyeOff, FolderPen, FolderPlus, FolderX, ImagePlus, Loader2, Package, Pencil, Plus, Stamp, Trash2, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -49,6 +49,9 @@ export function MaterialLibraryClient({ items, missing, stampUrl }: { items: Lib
   const [extraCats, setExtraCats] = useState<string[]>([])
   const [catDialog, setCatDialog] = useState(false)
   const [newCat, setNewCat] = useState('')
+  const [catAction, setCatAction] = useState<null | 'rename' | 'delete'>(null)
+  const [renameTo, setRenameTo] = useState('')
+  const [catBusy, setCatBusy] = useState(false)
 
   const categories = useMemo(() => Array.from(new Set(items.map((i) => i.category).filter(Boolean))).sort(), [items])
   // ตัวเลือกหมวดบนตัวกรอง = หมวดที่มีวัสดุ + หมวดที่เพิ่มเอง + หมวดมาตรฐาน (ว่างก็เลือกดูได้)
@@ -75,6 +78,43 @@ export function MaterialLibraryClient({ items, missing, stampUrl }: { items: Lib
     setDraft({ ...emptyDraft(), category: cat })
     setPages([])
     setOpen(true)
+  }
+
+  const catCount = cat ? items.filter((i) => i.category === cat).length : 0
+  const isDefaultCat = (CATALOG_CATEGORIES as readonly string[]).includes(cat)
+
+  /** เปลี่ยนชื่อ/ลบหมวดที่กรองอยู่ — มีวัสดุ = แก้ที่ฐานข้อมูลทุกตัวในหมวด · ไม่มีวัสดุ = เอาออกจากรายการที่เพิ่มเอง (หมวดมาตรฐานลบไม่ได้) */
+  async function applyCategory() {
+    const to = catAction === 'rename' ? renameTo.replace(/\s+/g, ' ').trim() : ''
+    if (catAction === 'rename') {
+      if (!to) return toast.error('ใส่ชื่อหมวดใหม่ก่อน')
+      if (to.length > CATALOG_LIMITS.category) return toast.error(`ชื่อหมวดยาวเกินไป (ไม่เกิน ${CATALOG_LIMITS.category} ตัวอักษร)`)
+      if (to === cat) return setCatAction(null)
+    }
+    setCatBusy(true)
+    try {
+      if (catCount > 0) {
+        const r = await api('/api/material-library/categories', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ from: cat, to }),
+        })
+        if (!r.ok) return toast.error(catalogMessage(r.j.error))
+      } else if (catAction === 'delete' && isDefaultCat && !extraCats.includes(cat)) {
+        return toast.error('หมวดมาตรฐานลบออกจากรายการไม่ได้ — ปล่อยว่างไว้ได้ ไม่กระทบอะไร')
+      }
+      setExtraCats((x) => (catAction === 'rename' ? [...new Set(x.map((c) => (c === cat ? to : c)))] : x.filter((c) => c !== cat)))
+      toast.success(
+        catAction === 'rename' ? `เปลี่ยนชื่อหมวดเป็น "${to}" แล้ว${catCount ? ` (${catCount} วัสดุ)` : ''}` : `ลบหมวด "${cat}" แล้ว${catCount ? ` — วัสดุ ${catCount} รายการยังอยู่ แค่ไม่มีหมวด` : ''}`,
+      )
+      setCat(catAction === 'rename' ? to : '')
+      setCatAction(null)
+      router.refresh()
+    } catch {
+      toast.error('เปลี่ยนหมวดไม่สำเร็จ ตรวจการเชื่อมต่อแล้วลองใหม่')
+    } finally {
+      setCatBusy(false)
+    }
   }
 
   function addCategory() {
@@ -278,6 +318,16 @@ export function MaterialLibraryClient({ items, missing, stampUrl }: { items: Lib
         <button type="button" className="btn-secondary" onClick={() => setCatDialog(true)}>
           <FolderPlus className="size-4" /> เพิ่มหมวด
         </button>
+        {cat && (
+          <>
+            <button type="button" className="btn-secondary" onClick={() => { setRenameTo(cat); setCatAction('rename') }}>
+              <FolderPen className="size-4" /> เปลี่ยนชื่อหมวด
+            </button>
+            <button type="button" className="btn-ghost text-urgent" onClick={() => setCatAction('delete')}>
+              <FolderX className="size-4" /> ลบหมวด
+            </button>
+          </>
+        )}
         {hiddenCount > 0 && (
           <label className="flex items-center gap-1.5 pb-2.5 text-sm text-ink-2">
             <input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} />
@@ -329,6 +379,37 @@ export function MaterialLibraryClient({ items, missing, stampUrl }: { items: Lib
           ))}
         </ul>
       )}
+
+      <Dialog.Root open={catAction !== null} onOpenChange={(v) => { if (!catBusy && !v) setCatAction(null) }}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40 animate-fade-in" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line bg-surface p-5 shadow-e3 animate-pop-in">
+            <Dialog.Title className="text-lg font-bold text-ink">{catAction === 'rename' ? 'เปลี่ยนชื่อหมวด' : 'ลบหมวด'} &ldquo;{cat}&rdquo;</Dialog.Title>
+            {catAction === 'rename' ? (
+              <>
+                <Dialog.Description className="mt-0.5 text-sm text-muted-token">
+                  {catCount > 0 ? `วัสดุในหมวดนี้ ${catCount} รายการ (รวมที่ซ่อน) จะเปลี่ยนไปอยู่หมวดชื่อใหม่ทั้งหมด` : 'หมวดนี้ยังไม่มีวัสดุ'}
+                </Dialog.Description>
+                <input className="input-base mt-3" autoFocus value={renameTo} maxLength={CATALOG_LIMITS.category} aria-label="ชื่อหมวดใหม่"
+                  onChange={(e) => setRenameTo(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void applyCategory() } }} />
+              </>
+            ) : (
+              <Dialog.Description className="mt-0.5 text-sm text-muted-token">
+                {catCount > 0
+                  ? `วัสดุในหมวดนี้ ${catCount} รายการ (รวมที่ซ่อน) จะ "ไม่มีหมวด" — วัสดุและแค็ตตาล็อกไม่ถูกลบ หนังสือเก่าไม่เปลี่ยน`
+                  : isDefaultCat && !extraCats.includes(cat) ? 'หมวดมาตรฐานลบออกจากรายการไม่ได้' : 'หมวดนี้ยังไม่มีวัสดุ — เอาออกจากรายการ'}
+              </Dialog.Description>
+            )}
+            <div className="mt-4 flex justify-end gap-2">
+              <Dialog.Close disabled={catBusy} className="btn-secondary">ยกเลิก</Dialog.Close>
+              <button type="button" disabled={catBusy} onClick={() => void applyCategory()} className={catAction === 'delete' ? 'btn-primary bg-urgent' : 'btn-primary'}>
+                {catBusy && <Loader2 className="size-4 animate-spin" />}
+                {catAction === 'rename' ? 'เปลี่ยนชื่อ' : 'ลบหมวด'}
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       <Dialog.Root open={catDialog} onOpenChange={(v) => { setCatDialog(v); if (!v) setNewCat('') }}>
         <Dialog.Portal>
