@@ -1,7 +1,7 @@
 'use client'
 
 import * as Dialog from '@radix-ui/react-dialog'
-import { ArrowDown, ArrowUp, Eye, EyeOff, ImagePlus, Loader2, Package, Pencil, Plus, Stamp, Trash2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Eye, EyeOff, FolderPlus, ImagePlus, Loader2, Package, Pencil, Plus, Stamp, Trash2, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -45,8 +45,14 @@ export function MaterialLibraryClient({ items, missing, stampUrl }: { items: Lib
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [del, setDel] = useState<LibraryItem | null>(null)
   const [stampBusy, setStampBusy] = useState(false)
+  // หมวดที่เพิ่มจากปุ่ม "เพิ่มหมวด" แต่ยังไม่มีวัสดุ — หมวดเกิดจากวัสดุที่ใช้หมวดนั้น จึงอยู่ได้ถึงรีเฟรชหน้าจนกว่าจะมีวัสดุเข้าหมวด
+  const [extraCats, setExtraCats] = useState<string[]>([])
+  const [catDialog, setCatDialog] = useState(false)
+  const [newCat, setNewCat] = useState('')
 
   const categories = useMemo(() => Array.from(new Set(items.map((i) => i.category).filter(Boolean))).sort(), [items])
+  // ตัวเลือกหมวดบนตัวกรอง = หมวดที่มีวัสดุ + หมวดที่เพิ่มเอง + หมวดมาตรฐาน (ว่างก็เลือกดูได้)
+  const allCats = useMemo(() => Array.from(new Set([...categories, ...extraCats, ...CATALOG_CATEGORIES])), [categories, extraCats])
   const shown = items.filter((i) => {
     if (!showHidden && !i.isActive) return false
     if (cat && i.category !== cat) return false
@@ -65,9 +71,23 @@ export function MaterialLibraryClient({ items, missing, stampUrl }: { items: Lib
   }
 
   function startNew() {
-    setDraft(emptyDraft())
+    // กรองหมวดไว้อยู่ = วัสดุใหม่เข้าหมวดนั้นให้เลย
+    setDraft({ ...emptyDraft(), category: cat })
     setPages([])
     setOpen(true)
+  }
+
+  function addCategory() {
+    const name = newCat.replace(/\s+/g, ' ').trim()
+    if (!name) return toast.error('ใส่ชื่อหมวดก่อน')
+    if (name.length > CATALOG_LIMITS.category) return toast.error(`ชื่อหมวดยาวเกินไป (ไม่เกิน ${CATALOG_LIMITS.category} ตัวอักษร)`)
+    const dup = allCats.find((c) => c.toLowerCase() === name.toLowerCase())
+    const use = dup ?? name
+    if (!dup) setExtraCats((x) => [...x, name])
+    setCat(use)
+    setCatDialog(false)
+    setNewCat('')
+    toast.success(dup ? `มีหมวด "${use}" อยู่แล้ว — เลือกให้แล้ว` : `เพิ่มหมวด "${name}" แล้ว — กด "เพิ่มวัสดุ" เพื่อใส่วัสดุเข้าหมวดนี้`)
   }
 
   async function startEdit(it: LibraryItem) {
@@ -252,9 +272,12 @@ export function MaterialLibraryClient({ items, missing, stampUrl }: { items: Lib
           <label htmlFor="ml-cat" className="label-base">หมวด</label>
           <select id="ml-cat" className="input-base" value={cat} onChange={(e) => setCat(e.target.value)}>
             <option value="">ทุกหมวด</option>
-            {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+            {allCats.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
+        <button type="button" className="btn-secondary" onClick={() => setCatDialog(true)}>
+          <FolderPlus className="size-4" /> เพิ่มหมวด
+        </button>
         {hiddenCount > 0 && (
           <label className="flex items-center gap-1.5 pb-2.5 text-sm text-ink-2">
             <input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} />
@@ -307,6 +330,32 @@ export function MaterialLibraryClient({ items, missing, stampUrl }: { items: Lib
         </ul>
       )}
 
+      <Dialog.Root open={catDialog} onOpenChange={(v) => { setCatDialog(v); if (!v) setNewCat('') }}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40 animate-fade-in" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line bg-surface p-5 shadow-e3 animate-pop-in">
+            <Dialog.Title className="text-lg font-bold text-ink">เพิ่มหมวดวัสดุ</Dialog.Title>
+            <Dialog.Description className="mt-0.5 text-sm text-muted-token">
+              พิมพ์ชื่อหมวดใหม่ เช่น โต๊ะ-เก้าอี้ · หมวดจะอยู่ถาวรเมื่อมีวัสดุอยู่ในหมวดนั้น (กดเพิ่มวัสดุต่อได้เลย)
+            </Dialog.Description>
+            <input
+              className="input-base mt-3"
+              autoFocus
+              value={newCat}
+              maxLength={CATALOG_LIMITS.category}
+              placeholder="ชื่อหมวด"
+              aria-label="ชื่อหมวด"
+              onChange={(e) => setNewCat(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCategory() } }}
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <Dialog.Close className="btn-secondary">ยกเลิก</Dialog.Close>
+              <button type="button" className="btn-primary" onClick={addCategory}><FolderPlus className="size-4" /> เพิ่มหมวด</button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
       <Dialog.Root open={open} onOpenChange={(v) => { if (!busy) setOpen(v) }}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40 animate-fade-in" />
@@ -337,7 +386,7 @@ export function MaterialLibraryClient({ items, missing, stampUrl }: { items: Lib
                   <input id="mld-cat" className="input-base" list="mld-cats" value={draft.category} maxLength={CATALOG_LIMITS.category}
                     onChange={(e) => setDraft({ ...draft, category: e.target.value })} />
                   <datalist id="mld-cats">
-                    {Array.from(new Set([...CATALOG_CATEGORIES, ...categories])).map((c) => <option key={c} value={c} />)}
+                    {allCats.map((c) => <option key={c} value={c} />)}
                   </datalist>
                 </div>
                 <div>
