@@ -6,6 +6,7 @@ export const MENU_LABEL = {
   apr: 'รออนุมัติ',
   allow: 'เบี้ยเลี้ยง',
   wage: 'ค่าแรงคงค้าง',
+  bill: 'ส่งบิล',
 } as const
 
 export const copy = {

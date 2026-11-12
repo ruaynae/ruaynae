@@ -55,6 +55,7 @@ export const menuItems = (): QuickItem[] => [
   { label: MENU_LABEL.apr, data: 'm=apr' },
   { label: MENU_LABEL.allow, data: 'm=allow' },
   { label: MENU_LABEL.wage, data: 'm=wage' },
+  { label: MENU_LABEL.bill, data: 'm=bill' },
 ]
 
 export type BubbleButton = {

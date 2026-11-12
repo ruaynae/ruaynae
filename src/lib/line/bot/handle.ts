@@ -11,6 +11,7 @@ import * as approvals from './flows/approvals'
 import { showAttendance } from './flows/attendance'
 import * as expense from './flows/expense'
 import * as wages from './flows/wages'
+import * as bills from './flows/bills'
 
 // ตัวจัดการ webhook — เจ้าของคนเดียว · แชทหนึ่งต่อหนึ่งเท่านั้น (กลุ่ม/ห้องข้ามไป)
 
@@ -53,6 +54,8 @@ async function openMenu(turn: Turn, menu: string) {
       return allowance.showAllowance(turn)
     case 'wage':
       return wages.showWageList(turn)
+    case 'bill':
+      return bills.startBills(turn)
     default:
       return send(turn, [text(copy.help, menuItems())])
   }
@@ -116,7 +119,10 @@ async function onText(turn: Turn, raw: string) {
     const dropped = await rpc<number>('bot_slip_clear', { p_line_user: turn.lineUserId }).catch(() => 0)
     return send(turn, [text(dropped > 0 ? copy.cancelledQueue(dropped) : copy.cancelled, menuItems())])
   }
+  if (/^(ส่งบิล|บิล)$/.test(body)) return bills.startBills(turn)
   switch (turn.session.state) {
+    case 'bill_mode':
+      return bills.onText(turn, body)
     case 'apr_reason':
       return approvals.rejectWithReason(turn, body)
     case 'exp_amount':
@@ -163,6 +169,8 @@ async function handleOne(ev: LineEvent) {
       if (ev.message.type === 'image') {
         const profileId = await ownerProfileId(lineUserId)
         if (!profileId) return send(turn, [text(copy.howToLink)])
+        // โหมดส่งบิล (R41) = รูปคือบิล · นอกโหมด = รูปสลิป/บิลของรายจ่ายใหม่เหมือนเดิม
+        if (turn.session.state === 'bill_mode') return await bills.addBill(turn, ev.message.id, profileId)
         return await expense.addPhoto(turn, ev.message.id, profileId)
       }
       return send(turn, [text(copy.help, menuItems())])

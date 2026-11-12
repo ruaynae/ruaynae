@@ -23,6 +23,7 @@ export type SessionState =
   | 'exp_confirm'
   | 'allow_pick'
   | 'wage_pick'
+  | 'bill_mode'
 
 export type Session = { state: SessionState; payload: Record<string, unknown> }
 
@@ -44,4 +45,5 @@ export const TTL_SEC: Record<SessionState, number> = {
   exp_confirm: 1800,
   allow_pick: 1800,
   wage_pick: 900,
+  bill_mode: 1800,
 }
