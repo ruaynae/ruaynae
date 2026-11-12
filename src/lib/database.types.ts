@@ -119,6 +119,7 @@ export type Database = {
       }
       app_settings: {
         Row: {
+          bill_check_from: string
           address: string | null
           bank_account: string | null
           branch_label: string | null
@@ -133,6 +134,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          bill_check_from?: string
           address?: string | null
           bank_account?: string | null
           branch_label?: string | null
@@ -147,6 +149,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          bill_check_from?: string
           address?: string | null
           bank_account?: string | null
           branch_label?: string | null
@@ -460,6 +463,126 @@ export type Database = {
         }
         Relationships: []
       }
+      bill_matches: {
+        Row: {
+          bill_id: string
+          created_at: string
+          created_by: string | null
+          matched_by: string
+          transaction_id: string
+        }
+        Insert: {
+          bill_id: string
+          created_at?: string
+          created_by?: string | null
+          matched_by: string
+          transaction_id: string
+        }
+        Update: {
+          bill_id?: string
+          created_at?: string
+          created_by?: string | null
+          matched_by?: string
+          transaction_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bill_matches_bill_id_fkey"
+            columns: ["bill_id"]
+            isOneToOne: false
+            referencedRelation: "bills"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bill_matches_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bill_matches_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bills: {
+        Row: {
+          amount: number | null
+          bill_date: string | null
+          bill_no: string | null
+          byte_size: number
+          content_type: string
+          created_at: string
+          created_by: string | null
+          file_name: string
+          id: string
+          ignored: boolean
+          note: string
+          object_key: string
+          page_no: number | null
+          read_status: string
+          source: string
+          updated_at: string
+          vat_amount: number | null
+          vendor: string | null
+          vendor_tax_id: string | null
+        }
+        Insert: {
+          amount?: number | null
+          bill_date?: string | null
+          bill_no?: string | null
+          byte_size: number
+          content_type: string
+          created_at?: string
+          created_by?: string | null
+          file_name?: string
+          id?: string
+          ignored?: boolean
+          note?: string
+          object_key: string
+          page_no?: number | null
+          read_status?: string
+          source?: string
+          updated_at?: string
+          vat_amount?: number | null
+          vendor?: string | null
+          vendor_tax_id?: string | null
+        }
+        Update: {
+          amount?: number | null
+          bill_date?: string | null
+          bill_no?: string | null
+          byte_size?: number
+          content_type?: string
+          created_at?: string
+          created_by?: string | null
+          file_name?: string
+          id?: string
+          ignored?: boolean
+          note?: string
+          object_key?: string
+          page_no?: number | null
+          read_status?: string
+          source?: string
+          updated_at?: string
+          vat_amount?: number | null
+          vendor?: string | null
+          vendor_tax_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bills_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       branding: {
         Row: {
           company_name: string
@@ -483,6 +606,7 @@ export type Database = {
       }
       categories: {
         Row: {
+          bill_required: boolean
           created_at: string
           id: string
           is_active: boolean
@@ -492,6 +616,7 @@ export type Database = {
           sort_order: number
         }
         Insert: {
+          bill_required?: boolean
           created_at?: string
           id?: string
           is_active?: boolean
@@ -501,6 +626,7 @@ export type Database = {
           sort_order?: number
         }
         Update: {
+          bill_required?: boolean
           created_at?: string
           id?: string
           is_active?: boolean
@@ -2268,6 +2394,7 @@ export type Database = {
       }
       transactions: {
         Row: {
+          bill_not_required: boolean
           amount: number
           approved_at: string | null
           approved_by: string | null
@@ -2295,6 +2422,7 @@ export type Database = {
           via_line: boolean
         }
         Insert: {
+          bill_not_required?: boolean
           amount: number
           approved_at?: string | null
           approved_by?: string | null
@@ -2322,6 +2450,7 @@ export type Database = {
           via_line?: boolean
         }
         Update: {
+          bill_not_required?: boolean
           amount?: number
           approved_at?: string | null
           approved_by?: string | null

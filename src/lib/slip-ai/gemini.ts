@@ -2,6 +2,7 @@ import 'server-only'
 
 import { getSupabaseAdmin } from '@/lib/supabase/admin'
 import { parseSlipReply, SLIP_PROMPT, type SlipRead } from './parse'
+import { BILL_PROMPT, parseBillReply, type BillRead } from '@/lib/bills'
 
 /**
  * อ่านสลิปด้วย Gemini API (31 ต.ค. 2569 · เจ้าของเลือกลองแบบฟรีก่อน)
@@ -54,12 +55,12 @@ async function errorReason(res: Response): Promise<string> {
 
 const KEY_PROBLEM = /API_KEY|PERMISSION_DENIED|UNAUTHENTICATED|SERVICE_DISABLED|BILLING/i
 
-async function call(model: string, key: string, image: Buffer, mime: string): Promise<Reply> {
+async function call(model: string, key: string, image: Buffer, mime: string, prompt = SLIP_PROMPT): Promise<Reply> {
   const res = await fetch(`${API}/${model}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
     body: JSON.stringify({
-      contents: [{ parts: [{ inline_data: { mime_type: mime, data: image.toString('base64') } }, { text: SLIP_PROMPT }] }],
+      contents: [{ parts: [{ inline_data: { mime_type: mime, data: image.toString('base64') } }, { text: prompt }] }],
       generationConfig: { responseMimeType: 'application/json', temperature: 0, maxOutputTokens: 1024 },
     }),
     cache: 'no-store',
@@ -95,6 +96,34 @@ export async function readSlip(image: Buffer, mime: string, today: string): Prom
     return { ok: false, reason: 'ERROR' }
   } catch (e) {
     console.error('[slip-ai] เรียกไม่สำเร็จ', (e as Error).name)
+    return { ok: false, reason: 'ERROR' }
+  }
+}
+
+export type BillAiResult =
+  | { ok: true; read: BillRead }
+  | { ok: false; reason: 'OFF' | 'UNREADABLE' | 'QUOTA' | 'KEY_REJECTED' | 'ERROR' }
+
+/** รูปบิล → ผู้ขาย/เลขผู้เสียภาษี/เลขที่/วันที่/ยอด/VAT (R41 · ระบบตรวจบิล) — คีย์และรุ่นเดียวกับอ่านสลิป */
+export async function readBill(image: Buffer, mime: string, today: string): Promise<BillAiResult> {
+  const key = await slipAiKey().catch(() => null)
+  if (!key) return { ok: false, reason: 'OFF' }
+  try {
+    for (const model of SLIP_AI_MODELS) {
+      const r = await call(model, key, image, mime, BILL_PROMPT)
+      if (r.status === 404) continue
+      if (r.status === 429) return { ok: false, reason: 'QUOTA' }
+      if (r.text === null) {
+        console.error('[bill-ai] Google ตอบผิดพลาด', r.status, model, r.reason ?? '')
+        if (r.status === 401 || r.status === 403 || KEY_PROBLEM.test(r.reason ?? '')) return { ok: false, reason: 'KEY_REJECTED' }
+        return { ok: false, reason: 'ERROR' }
+      }
+      const read = parseBillReply(r.text, today)
+      return read ? { ok: true, read } : { ok: false, reason: 'UNREADABLE' }
+    }
+    return { ok: false, reason: 'ERROR' }
+  } catch (e) {
+    console.error('[bill-ai] เรียกไม่สำเร็จ', (e as Error).name)
     return { ok: false, reason: 'ERROR' }
   }
 }

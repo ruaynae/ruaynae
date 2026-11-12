@@ -2,6 +2,7 @@ import {
   Banknote,
   BarChart3,
   CalendarDays,
+  FileCheck2,
   FileText,
   FolderArchive,
   GanttChart,
@@ -56,6 +57,8 @@ export const NAV: NavGroup[] = [
       { href: '/', label: 'วันนี้', sub: 'งานประจำวันและสรุปทุกโครงการ', icon: Home },
       { href: '/sites', label: 'โครงการ', sub: 'งานที่กำลังทำอยู่', icon: Warehouse },
       { href: '/ledger', label: 'รายรับ-รายจ่าย', sub: 'ทุกรายการ ค้นหาและกรอง', icon: Receipt },
+      // ระบบตรวจบิล (R41) — จับคู่บิล/ใบเสร็จจากผู้ขายกับรายจ่าย · ข้อมูลภาษีของบริษัท จึงเป็นของเจ้าของ
+      { href: '/bills', label: 'ตรวจบิล', sub: 'จ่ายแล้ว ได้บิลกลับมาหรือยัง', icon: FileCheck2, ownerOnly: true },
       // เอกสารมีค่างานและกำไรอยู่ในตัว จึงเป็นของเจ้าของเหมือน site_finance
       {
         href: '/documents',
